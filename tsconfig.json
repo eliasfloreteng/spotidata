@@ -1,0 +1,31 @@
+{
+	"extends": "./.svelte-kit/tsconfig.json",
+	"compilerOptions": {
+		"allowJs": true,
+		"checkJs": true,
+		// Server modules import each other with explicit .ts extensions so the
+		// exact same files run under Bun (SvelteKit) and plain Node (worker).
+		"allowImportingTsExtensions": true,
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+		"resolveJsonModule": true,
+		"skipLibCheck": true,
+		"sourceMap": true,
+		"strict": true,
+		"moduleResolution": "bundler",
+		"target": "ES2022",
+		"module": "ESNext",
+		"types": ["node"]
+	},
+	"include": [
+		"src/**/*.ts",
+		"src/**/*.js",
+		"src/**/*.svelte",
+		"scripts/**/*.ts",
+		"worker/**/*.ts",
+		"drizzle.config.ts",
+		"vite.config.ts",
+		".svelte-kit/ambient.d.ts",
+		".svelte-kit/types/**/$types.d.ts"
+	]
+}

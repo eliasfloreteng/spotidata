@@ -1,0 +1,4823 @@
+{
+  "version": "8",
+  "dialect": "postgres",
+  "id": "f0a98d72-fe76-4657-8590-40436d994307",
+  "prevIds": [
+    "00000000-0000-0000-0000-000000000000"
+  ],
+  "ddl": [
+    {
+      "name": "graphile_worker",
+      "entityType": "schemas"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "auth_states",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "auth_tokens",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "settings",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "spotify_users",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "album_artists",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "album_genres",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "album_images",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "albums",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "artist_genres",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "artist_images",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "artists",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "canonical_overrides",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "canonical_track_artists",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "canonical_tracks",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "genres",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "spotify_tracks",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "track_artists",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "followed_artists",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "library_canonical",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "library_tracks",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "playlist_images",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "playlist_tracks",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "playlists",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "saved_albums",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "saved_tracks",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "api_call_stats",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "ingest_raw",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "rate_limiter",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "sync_events",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "sync_phases",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "sync_runs",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "state",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "auth_states"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "auth_states"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "expires_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "auth_states"
+    },
+    {
+      "type": "smallint",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "1",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "auth_tokens"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "access_token",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "auth_tokens"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "refresh_token",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "auth_tokens"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'Bearer'",
+      "generated": null,
+      "identity": null,
+      "name": "token_type",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "auth_tokens"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "scope",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "auth_tokens"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "access_expires_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "auth_tokens"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "authorized_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "auth_tokens"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": {
+        "as": "((authorized_at AT TIME ZONE 'UTC' + interval '180 days') AT TIME ZONE 'UTC')",
+        "type": "stored"
+      },
+      "identity": null,
+      "name": "refresh_expires_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "auth_tokens"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "last_refresh_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "auth_tokens"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "last_refresh_error",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "auth_tokens"
+    },
+    {
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "false",
+      "generated": null,
+      "identity": null,
+      "name": "needs_reauth",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "auth_tokens"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "auth_tokens"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "key",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "settings"
+    },
+    {
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "value",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "settings"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "settings"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_users"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "display_name",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_users"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "href",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_users"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "uri",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_users"
+    },
+    {
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'{}'",
+      "generated": null,
+      "identity": null,
+      "name": "external_urls",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_users"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "followers_total",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_users"
+    },
+    {
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "false",
+      "generated": null,
+      "identity": null,
+      "name": "is_me",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_users"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "email",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_users"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "country",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_users"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "product",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_users"
+    },
+    {
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "explicit_filter_enabled",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_users"
+    },
+    {
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "explicit_filter_locked",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_users"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "first_seen_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_users"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "fetched_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_users"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_users"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "album_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "album_artists"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "artist_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "album_artists"
+    },
+    {
+      "type": "smallint",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "0",
+      "generated": null,
+      "identity": null,
+      "name": "position",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "album_artists"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "album_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "album_genres"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "genre",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "album_genres"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "album_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "album_images"
+    },
+    {
+      "type": "smallint",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "position",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "album_images"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "url",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "album_images"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "width",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "album_images"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "height",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "album_images"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "name",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "album_type",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "release_date",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "release_date_precision",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "type": "date",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": {
+        "as": "spotidata.parse_release_date(release_date)",
+        "type": "stored"
+      },
+      "identity": null,
+      "name": "release_date_start",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "total_tracks",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "label",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "type": "smallint",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "popularity",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "upc",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "copyrights",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 1,
+      "default": "'{}'",
+      "generated": null,
+      "identity": null,
+      "name": "available_markets",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "restrictions",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "href",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "uri",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'{}'",
+      "generated": null,
+      "identity": null,
+      "name": "external_urls",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'simplified'",
+      "generated": null,
+      "identity": null,
+      "name": "detail_level",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "false",
+      "generated": null,
+      "identity": null,
+      "name": "tracks_complete",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "tracks_fetched_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "first_seen_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "fetched_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "artist_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "artist_genres"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "genre",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "artist_genres"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "artist_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "artist_images"
+    },
+    {
+      "type": "smallint",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "position",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "artist_images"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "url",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "artist_images"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "width",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "artist_images"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "height",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "artist_images"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "artists"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "name",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "artists"
+    },
+    {
+      "type": "smallint",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "popularity",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "artists"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "followers_total",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "artists"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "href",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "artists"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "uri",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "artists"
+    },
+    {
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'{}'",
+      "generated": null,
+      "identity": null,
+      "name": "external_urls",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "artists"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'simplified'",
+      "generated": null,
+      "identity": null,
+      "name": "detail_level",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "artists"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "first_seen_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "artists"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "fetched_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "artists"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "artists"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "track_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "canonical_overrides"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "canonical_track_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "canonical_overrides"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "reason",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "canonical_overrides"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "canonical_overrides"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "canonical_track_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "canonical_track_artists"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "artist_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "canonical_track_artists"
+    },
+    {
+      "type": "smallint",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "position",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "canonical_track_artists"
+    },
+    {
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "on_representative",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "canonical_track_artists"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "canonical_tracks"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "kind",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "canonical_tracks"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "isrc",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "canonical_tracks"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "title",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "canonical_tracks"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "duration_ms",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "canonical_tracks"
+    },
+    {
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "false",
+      "generated": null,
+      "identity": null,
+      "name": "explicit",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "canonical_tracks"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "representative_track_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "canonical_tracks"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "primary_artist_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "canonical_tracks"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "primary_album_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "canonical_tracks"
+    },
+    {
+      "type": "smallint",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "max_popularity",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "canonical_tracks"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "1",
+      "generated": null,
+      "identity": null,
+      "name": "copy_count",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "canonical_tracks"
+    },
+    {
+      "type": "date",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "earliest_release_date",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "canonical_tracks"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "refreshed_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "canonical_tracks"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "name",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "genres"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "first_seen_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "genres"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "name",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "album_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "duration_ms",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "type": "smallint",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "1",
+      "generated": null,
+      "identity": null,
+      "name": "disc_number",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "type": "smallint",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "0",
+      "generated": null,
+      "identity": null,
+      "name": "track_number",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "false",
+      "generated": null,
+      "identity": null,
+      "name": "explicit",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "type": "smallint",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "popularity",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "isrc",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "preview_url",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "false",
+      "generated": null,
+      "identity": null,
+      "name": "is_local",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "is_playable",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "linked_from_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "restriction_reason",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 1,
+      "default": "'{}'",
+      "generated": null,
+      "identity": null,
+      "name": "available_markets",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "href",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "uri",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'{}'",
+      "generated": null,
+      "identity": null,
+      "name": "external_urls",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'simplified'",
+      "generated": null,
+      "identity": null,
+      "name": "detail_level",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "canonical_track_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "first_seen_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "fetched_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "track_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "track_artists"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "artist_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "track_artists"
+    },
+    {
+      "type": "smallint",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "0",
+      "generated": null,
+      "identity": null,
+      "name": "position",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "track_artists"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "artist_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "followed_artists"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "first_seen_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "followed_artists"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "removed_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "followed_artists"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "canonical_track_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "library_canonical"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "first_added_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "library_canonical"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "latest_added_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "library_canonical"
+    },
+    {
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "liked",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "library_canonical"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "copy_count_in_library",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "library_canonical"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "owned_playlist_count",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "library_canonical"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "duration_ms",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "library_canonical"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "primary_artist_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "library_canonical"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "primary_album_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "library_canonical"
+    },
+    {
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "explicit",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "library_canonical"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "track_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "library_tracks"
+    },
+    {
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "via_liked",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "library_tracks"
+    },
+    {
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "via_owned_playlist",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "library_tracks"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "liked_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "library_tracks"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "first_added_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "library_tracks"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "0",
+      "generated": null,
+      "identity": null,
+      "name": "owned_playlist_count",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "library_tracks"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "playlist_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlist_images"
+    },
+    {
+      "type": "smallint",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "position",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlist_images"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "url",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlist_images"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "width",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlist_images"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "height",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlist_images"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "playlist_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlist_tracks"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "position",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlist_tracks"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "track_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlist_tracks"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "added_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlist_tracks"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "added_by_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlist_tracks"
+    },
+    {
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "false",
+      "generated": null,
+      "identity": null,
+      "name": "is_local",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlist_tracks"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "local_name",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlist_tracks"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "local_artist",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlist_tracks"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlists"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "name",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlists"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "description",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlists"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "owner_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlists"
+    },
+    {
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "false",
+      "generated": null,
+      "identity": null,
+      "name": "is_owned",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlists"
+    },
+    {
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "false",
+      "generated": null,
+      "identity": null,
+      "name": "collaborative",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlists"
+    },
+    {
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "public",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlists"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "snapshot_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlists"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "total_tracks",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlists"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "href",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlists"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "uri",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlists"
+    },
+    {
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'{}'",
+      "generated": null,
+      "identity": null,
+      "name": "external_urls",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlists"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "items_synced_snapshot_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlists"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "items_synced_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlists"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "first_seen_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlists"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "removed_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlists"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "playlists"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "album_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "saved_albums"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "added_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "saved_albums"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "removed_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "saved_albums"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "track_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "saved_tracks"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "added_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "saved_tracks"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "removed_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "saved_tracks"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "bucket",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "api_call_stats"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "0",
+      "generated": null,
+      "identity": null,
+      "name": "requests",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "api_call_stats"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "0",
+      "generated": null,
+      "identity": null,
+      "name": "errors",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "api_call_stats"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "0",
+      "generated": null,
+      "identity": null,
+      "name": "rate_limited",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "api_call_stats"
+    },
+    {
+      "type": "bigint",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "0",
+      "generated": null,
+      "identity": null,
+      "name": "bytes",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "api_call_stats"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "entity_type",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "ingest_raw"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "entity_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "ingest_raw"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "fetched_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "ingest_raw"
+    },
+    {
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "payload",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "ingest_raw"
+    },
+    {
+      "type": "smallint",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "1",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "rate_limiter"
+    },
+    {
+      "type": "numeric",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'20'",
+      "generated": null,
+      "identity": null,
+      "name": "tokens",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "rate_limiter"
+    },
+    {
+      "type": "numeric",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'20'",
+      "generated": null,
+      "identity": null,
+      "name": "capacity",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "rate_limiter"
+    },
+    {
+      "type": "numeric",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'1'",
+      "generated": null,
+      "identity": null,
+      "name": "refill_per_sec",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "rate_limiter"
+    },
+    {
+      "type": "numeric",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'2.5'",
+      "generated": null,
+      "identity": null,
+      "name": "target_per_sec",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "rate_limiter"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "last_refill",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "rate_limiter"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "blocked_until",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "rate_limiter"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "last_429_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "rate_limiter"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "last_429_retry_after_s",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "rate_limiter"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "0",
+      "generated": null,
+      "identity": null,
+      "name": "consecutive_429",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "rate_limiter"
+    },
+    {
+      "type": "bigint",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "0",
+      "generated": null,
+      "identity": null,
+      "name": "requests_total",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "rate_limiter"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "rate_limiter"
+    },
+    {
+      "type": "bigint",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": {
+        "type": "always",
+        "name": "sync_events_id_seq",
+        "increment": "1",
+        "startWith": "1",
+        "minValue": "1",
+        "maxValue": "9223372036854775807",
+        "cache": 1,
+        "cycle": false
+      },
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_events"
+    },
+    {
+      "type": "bigint",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "run_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_events"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "phase_key",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_events"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "level",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_events"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "message",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_events"
+    },
+    {
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "data",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_events"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_events"
+    },
+    {
+      "type": "bigint",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": {
+        "type": "always",
+        "name": "sync_phases_id_seq",
+        "increment": "1",
+        "startWith": "1",
+        "minValue": "1",
+        "maxValue": "9223372036854775807",
+        "cache": 1,
+        "cycle": false
+      },
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_phases"
+    },
+    {
+      "type": "bigint",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "run_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_phases"
+    },
+    {
+      "type": "smallint",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "ordinal",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_phases"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "key",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_phases"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "label",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_phases"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'pending'",
+      "generated": null,
+      "identity": null,
+      "name": "status",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_phases"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "0",
+      "generated": null,
+      "identity": null,
+      "name": "total",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_phases"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "0",
+      "generated": null,
+      "identity": null,
+      "name": "done",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_phases"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "0",
+      "generated": null,
+      "identity": null,
+      "name": "failed",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_phases"
+    },
+    {
+      "type": "bigint",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "0",
+      "generated": null,
+      "identity": null,
+      "name": "items",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_phases"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "started_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_phases"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "finished_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_phases"
+    },
+    {
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'{}'",
+      "generated": null,
+      "identity": null,
+      "name": "meta",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_phases"
+    },
+    {
+      "type": "bigint",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": {
+        "type": "always",
+        "name": "sync_runs_id_seq",
+        "increment": "1",
+        "startWith": "1",
+        "minValue": "1",
+        "maxValue": "9223372036854775807",
+        "cache": 1,
+        "cycle": false
+      },
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_runs"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "mode",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_runs"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "status",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_runs"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "trigger",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_runs"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "started_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_runs"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "finished_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_runs"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "error",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_runs"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "0",
+      "generated": null,
+      "identity": null,
+      "name": "api_requests",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_runs"
+    },
+    {
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'{}'",
+      "generated": null,
+      "identity": null,
+      "name": "stats",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_runs"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "sync_runs"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "(true)",
+          "isExpression": true,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": "\"is_me\"",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "spotify_users_me_uq",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "spotify_users"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "artist_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "album_artists_artist_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "album_artists"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "release_date_start",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "albums_release_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "label",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": "\"label\" is not null",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "albums_label_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": "not \"tracks_complete\"",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "albums_incomplete_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "\"name\" gin_trgm_ops",
+          "isExpression": true,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "gin",
+      "concurrently": false,
+      "name": "albums_name_trgm_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "genre",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "artist_genres_genre_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "artist_genres"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": "\"detail_level\" = 'simplified'",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "artists_needs_hydrate_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "artists"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "\"name\" gin_trgm_ops",
+          "isExpression": true,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "gin",
+      "concurrently": false,
+      "name": "artists_name_trgm_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "artists"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "artist_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "cta_artist_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "canonical_track_artists"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "primary_artist_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "canonical_tracks_artist_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "canonical_tracks"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "\"title\" gin_trgm_ops",
+          "isExpression": true,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "gin",
+      "concurrently": false,
+      "name": "canonical_tracks_title_trgm_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "canonical_tracks"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "album_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "disc_number",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "track_number",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "tracks_album_order_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "isrc",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": "\"isrc\" is not null",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "tracks_isrc_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "canonical_track_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "tracks_canonical_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": "\"detail_level\" = 'simplified' and not \"is_local\"",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "tracks_needs_hydrate_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "\"name\" gin_trgm_ops",
+          "isExpression": true,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "gin",
+      "concurrently": false,
+      "name": "tracks_name_trgm_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "artist_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "track_artists_artist_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "track_artists"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "first_added_at",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "library_canonical_added_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "library_canonical"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "primary_artist_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "library_canonical_artist_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "library_canonical"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "primary_album_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "library_canonical_album_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "library_canonical"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "track_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "playlist_tracks_track_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "playlist_tracks"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "added_at",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "playlist_tracks_added_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "playlist_tracks"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "is_owned",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": "\"removed_at\" is null",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "playlists_owned_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "playlists"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "added_at",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": "\"removed_at\" is null",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "saved_tracks_added_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "saved_tracks"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "run_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "\"id\" desc",
+          "isExpression": true,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "sync_events_run_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "sync_events"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "(true)",
+          "isExpression": true,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": "\"status\" in ('queued','running','paused_rate_limited','paused_auth')",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "sync_runs_one_active_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "sync_runs"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "\"created_at\" desc",
+          "isExpression": true,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "sync_runs_created_ix",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "sync_runs"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "album_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "albums",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "album_artists_album_id_albums_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "album_artists"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "artist_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "artists",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "album_artists_artist_id_artists_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "album_artists"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "album_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "albums",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "album_genres_album_id_albums_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "album_genres"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "genre"
+      ],
+      "schemaTo": "public",
+      "tableTo": "genres",
+      "columnsTo": [
+        "name"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "album_genres_genre_genres_name_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "album_genres"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "album_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "albums",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "album_images_album_id_albums_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "album_images"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "artist_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "artists",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "artist_genres_artist_id_artists_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "artist_genres"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "genre"
+      ],
+      "schemaTo": "public",
+      "tableTo": "genres",
+      "columnsTo": [
+        "name"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "artist_genres_genre_genres_name_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "artist_genres"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "artist_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "artists",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "artist_images_artist_id_artists_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "artist_images"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "canonical_track_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "canonical_tracks",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "canonical_track_artists_wA7YHl8ozld2_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "canonical_track_artists"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "artist_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "artists",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "canonical_track_artists_artist_id_artists_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "canonical_track_artists"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "primary_artist_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "artists",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "name": "canonical_tracks_primary_artist_id_artists_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "canonical_tracks"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "primary_album_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "albums",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "name": "canonical_tracks_primary_album_id_albums_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "canonical_tracks"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "album_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "albums",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "name": "spotify_tracks_album_id_albums_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "canonical_track_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "canonical_tracks",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "spotify_tracks_canonical_track_id_canonical_tracks_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "track_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "spotify_tracks",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "track_artists_track_id_spotify_tracks_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "track_artists"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "artist_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "artists",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "track_artists_artist_id_artists_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "track_artists"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "artist_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "artists",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "followed_artists_artist_id_artists_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "followed_artists"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "canonical_track_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "canonical_tracks",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "library_canonical_canonical_track_id_canonical_tracks_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "library_canonical"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "track_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "spotify_tracks",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "library_tracks_track_id_spotify_tracks_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "library_tracks"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "playlist_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "playlists",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "playlist_images_playlist_id_playlists_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "playlist_images"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "playlist_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "playlists",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "playlist_tracks_playlist_id_playlists_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "playlist_tracks"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "track_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "spotify_tracks",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "name": "playlist_tracks_track_id_spotify_tracks_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "playlist_tracks"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "owner_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "spotify_users",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "name": "playlists_owner_id_spotify_users_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "playlists"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "album_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "albums",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "saved_albums_album_id_albums_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "saved_albums"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "track_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "spotify_tracks",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "saved_tracks_track_id_spotify_tracks_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "saved_tracks"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "run_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "sync_runs",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "sync_events_run_id_sync_runs_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "sync_events"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "run_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "sync_runs",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "sync_phases_run_id_sync_runs_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "sync_phases"
+    },
+    {
+      "columns": [
+        "album_id",
+        "artist_id"
+      ],
+      "nameExplicit": false,
+      "name": "album_artists_pkey",
+      "entityType": "pks",
+      "schema": "public",
+      "table": "album_artists"
+    },
+    {
+      "columns": [
+        "album_id",
+        "genre"
+      ],
+      "nameExplicit": false,
+      "name": "album_genres_pkey",
+      "entityType": "pks",
+      "schema": "public",
+      "table": "album_genres"
+    },
+    {
+      "columns": [
+        "album_id",
+        "position"
+      ],
+      "nameExplicit": false,
+      "name": "album_images_pkey",
+      "entityType": "pks",
+      "schema": "public",
+      "table": "album_images"
+    },
+    {
+      "columns": [
+        "artist_id",
+        "genre"
+      ],
+      "nameExplicit": false,
+      "name": "artist_genres_pkey",
+      "entityType": "pks",
+      "schema": "public",
+      "table": "artist_genres"
+    },
+    {
+      "columns": [
+        "artist_id",
+        "position"
+      ],
+      "nameExplicit": false,
+      "name": "artist_images_pkey",
+      "entityType": "pks",
+      "schema": "public",
+      "table": "artist_images"
+    },
+    {
+      "columns": [
+        "canonical_track_id",
+        "artist_id"
+      ],
+      "nameExplicit": false,
+      "name": "canonical_track_artists_pkey",
+      "entityType": "pks",
+      "schema": "public",
+      "table": "canonical_track_artists"
+    },
+    {
+      "columns": [
+        "track_id",
+        "artist_id"
+      ],
+      "nameExplicit": false,
+      "name": "track_artists_pkey",
+      "entityType": "pks",
+      "schema": "public",
+      "table": "track_artists"
+    },
+    {
+      "columns": [
+        "playlist_id",
+        "position"
+      ],
+      "nameExplicit": false,
+      "name": "playlist_images_pkey",
+      "entityType": "pks",
+      "schema": "public",
+      "table": "playlist_images"
+    },
+    {
+      "columns": [
+        "playlist_id",
+        "position"
+      ],
+      "nameExplicit": false,
+      "name": "playlist_tracks_pkey",
+      "entityType": "pks",
+      "schema": "public",
+      "table": "playlist_tracks"
+    },
+    {
+      "columns": [
+        "entity_type",
+        "entity_id"
+      ],
+      "nameExplicit": false,
+      "name": "ingest_raw_pkey",
+      "entityType": "pks",
+      "schema": "public",
+      "table": "ingest_raw"
+    },
+    {
+      "columns": [
+        "state"
+      ],
+      "nameExplicit": false,
+      "name": "auth_states_pkey",
+      "schema": "public",
+      "table": "auth_states",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "auth_tokens_pkey",
+      "schema": "public",
+      "table": "auth_tokens",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "key"
+      ],
+      "nameExplicit": false,
+      "name": "settings_pkey",
+      "schema": "public",
+      "table": "settings",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "spotify_users_pkey",
+      "schema": "public",
+      "table": "spotify_users",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "albums_pkey",
+      "schema": "public",
+      "table": "albums",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "artists_pkey",
+      "schema": "public",
+      "table": "artists",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "track_id"
+      ],
+      "nameExplicit": false,
+      "name": "canonical_overrides_pkey",
+      "schema": "public",
+      "table": "canonical_overrides",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "canonical_tracks_pkey",
+      "schema": "public",
+      "table": "canonical_tracks",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "name"
+      ],
+      "nameExplicit": false,
+      "name": "genres_pkey",
+      "schema": "public",
+      "table": "genres",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "spotify_tracks_pkey",
+      "schema": "public",
+      "table": "spotify_tracks",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "artist_id"
+      ],
+      "nameExplicit": false,
+      "name": "followed_artists_pkey",
+      "schema": "public",
+      "table": "followed_artists",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "canonical_track_id"
+      ],
+      "nameExplicit": false,
+      "name": "library_canonical_pkey",
+      "schema": "public",
+      "table": "library_canonical",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "track_id"
+      ],
+      "nameExplicit": false,
+      "name": "library_tracks_pkey",
+      "schema": "public",
+      "table": "library_tracks",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "playlists_pkey",
+      "schema": "public",
+      "table": "playlists",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "album_id"
+      ],
+      "nameExplicit": false,
+      "name": "saved_albums_pkey",
+      "schema": "public",
+      "table": "saved_albums",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "track_id"
+      ],
+      "nameExplicit": false,
+      "name": "saved_tracks_pkey",
+      "schema": "public",
+      "table": "saved_tracks",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "bucket"
+      ],
+      "nameExplicit": false,
+      "name": "api_call_stats_pkey",
+      "schema": "public",
+      "table": "api_call_stats",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "rate_limiter_pkey",
+      "schema": "public",
+      "table": "rate_limiter",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "sync_events_pkey",
+      "schema": "public",
+      "table": "sync_events",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "sync_phases_pkey",
+      "schema": "public",
+      "table": "sync_phases",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "sync_runs_pkey",
+      "schema": "public",
+      "table": "sync_runs",
+      "entityType": "pks"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        "run_id",
+        "key"
+      ],
+      "nullsNotDistinct": false,
+      "name": "sync_phases_run_key_uq",
+      "entityType": "uniques",
+      "schema": "public",
+      "table": "sync_phases"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "isrc"
+      ],
+      "nullsNotDistinct": false,
+      "name": "canonical_tracks_isrc_key",
+      "schema": "public",
+      "table": "canonical_tracks",
+      "entityType": "uniques"
+    },
+    {
+      "value": "\"id\" = 1",
+      "name": "auth_tokens_singleton",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "auth_tokens"
+    },
+    {
+      "value": "\"detail_level\" in ('simplified','full')",
+      "name": "albums_detail_level",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "value": "\"album_type\" is null or \"album_type\" in ('album','single','compilation')",
+      "name": "albums_type",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "albums"
+    },
+    {
+      "value": "\"detail_level\" in ('simplified','full')",
+      "name": "artists_detail_level",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "artists"
+    },
+    {
+      "value": "\"kind\" in ('isrc','fallback')",
+      "name": "canonical_tracks_kind",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "canonical_tracks"
+    },
+    {
+      "value": "\"detail_level\" in ('simplified','full')",
+      "name": "spotify_tracks_detail_level",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "spotify_tracks"
+    },
+    {
+      "value": "\"entity_type\" in ('track','album','artist','playlist','user')",
+      "name": "ingest_raw_entity_type",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "ingest_raw"
+    },
+    {
+      "value": "\"id\" = 1",
+      "name": "rate_limiter_singleton",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "rate_limiter"
+    },
+    {
+      "value": "\"level\" in ('debug','info','warn','error')",
+      "name": "sync_events_level",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "sync_events"
+    },
+    {
+      "value": "\"status\" in ('pending','seeding','running','completed','failed','skipped')",
+      "name": "sync_phases_status",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "sync_phases"
+    },
+    {
+      "value": "\"mode\" in ('full','incremental','ondemand','repair')",
+      "name": "sync_runs_mode",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "sync_runs"
+    },
+    {
+      "value": "\"status\" in ('queued','running','paused_rate_limited','paused_auth','completed','failed','cancelled')",
+      "name": "sync_runs_status",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "sync_runs"
+    }
+  ],
+  "renames": []
+}

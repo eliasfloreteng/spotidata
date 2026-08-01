@@ -1,0 +1,170 @@
+/* ── Spotidata design tokens ────────────────────────────────────────────
+   Near-black surfaces, violet→magenta→orange accents. Categorical series
+   deliberately do NOT sample the accent gradient: its mid hues are
+   indistinguishable side by side. See charts/scales.ts. */
+
+:root {
+	--bg: #0a0a0c;
+	--bg-elevated: #101014;
+	--card: #131318;
+	--card-hover: #17171d;
+	--hairline: rgba(255, 255, 255, 0.06);
+	--hairline-strong: rgba(255, 255, 255, 0.12);
+
+	--text: #ecedf1;
+	--text-muted: #9a9bab;
+	--text-faint: #63647a;
+
+	--accent: #7c3aed;
+	--accent-2: #c026d3;
+	--accent-3: #f97316;
+	--accent-soft: rgba(124, 58, 237, 0.16);
+
+	--good: #34d399;
+	--warn: #fbbf24;
+	--bad: #f43f5e;
+
+	--radius: 16px;
+	--radius-sm: 10px;
+	--radius-lg: 22px;
+
+	--gap: 18px;
+	--shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 32px rgba(0, 0, 0, 0.35);
+
+	--font: 'Inter var', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui,
+		sans-serif;
+	--mono: 'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, monospace;
+
+	color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+	padding: 0;
+	background: var(--bg);
+	color: var(--text);
+	font-family: var(--font);
+	font-size: 15px;
+	line-height: 1.5;
+	-webkit-font-smoothing: antialiased;
+	text-rendering: optimizeLegibility;
+}
+
+body {
+	min-height: 100vh;
+	/* Grain sits on the page background only — never over text or chart marks,
+	   where it eats small-type contrast. */
+	background-image: var(--grain, none);
+	background-attachment: fixed;
+}
+
+h1,
+h2,
+h3,
+h4 {
+	margin: 0;
+	font-weight: 600;
+	letter-spacing: -0.02em;
+	line-height: 1.2;
+}
+
+h1 {
+	font-size: 1.6rem;
+}
+h2 {
+	font-size: 1.15rem;
+}
+h3 {
+	font-size: 0.95rem;
+}
+
+a {
+	color: inherit;
+	text-decoration: none;
+}
+a:hover {
+	color: #fff;
+}
+
+/* Every number in the UI is tabular so columns and deltas do not jitter. */
+.num,
+td.num,
+.stat-value {
+	font-variant-numeric: tabular-nums;
+	font-feature-settings: 'tnum' 1;
+}
+
+button,
+input,
+select,
+textarea {
+	font: inherit;
+	color: inherit;
+}
+
+.card {
+	background: var(--card);
+	border: 1px solid var(--hairline);
+	border-radius: var(--radius);
+	box-shadow: var(--shadow);
+}
+
+.muted {
+	color: var(--text-muted);
+}
+.faint {
+	color: var(--text-faint);
+}
+
+.btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 9px 16px;
+	border-radius: 999px;
+	border: 1px solid var(--hairline-strong);
+	background: var(--bg-elevated);
+	cursor: pointer;
+	transition:
+		background 0.15s ease,
+		border-color 0.15s ease,
+		transform 0.1s ease;
+}
+.btn:hover {
+	background: var(--card-hover);
+	border-color: rgba(255, 255, 255, 0.2);
+}
+.btn:active {
+	transform: translateY(1px);
+}
+.btn-primary {
+	background: linear-gradient(100deg, var(--accent), var(--accent-2));
+	border-color: transparent;
+	color: #fff;
+	font-weight: 550;
+}
+.btn-primary:hover {
+	filter: brightness(1.1);
+	background: linear-gradient(100deg, var(--accent), var(--accent-2));
+}
+
+:focus-visible {
+	outline: 2px solid var(--accent-2);
+	outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		transition-duration: 0.01ms !important;
+	}
+}
