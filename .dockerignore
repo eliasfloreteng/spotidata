@@ -1,0 +1,11 @@
+.git
+.env
+node_modules
+.svelte-kit
+build
+backups
+docs
+# A deployment that bind-mounts the database next to the compose file must not
+# ship it into the build context.
+pgdata
+*.tsbuildinfo
