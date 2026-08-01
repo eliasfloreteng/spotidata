@@ -6,6 +6,12 @@
   drops a series never repaints the survivors). Lines cross freely, which is the
   all-pairs case the palette caps at three slots — so every series carries
   secondary encoding: a direct label at BOTH ends plus hover isolation.
+
+  Past the eight slots the palette cycles rather than folding the tail into one
+  grey, which would leave those series identical to EACH OTHER — the one thing
+  the slots exist to prevent. The second pass is dashed with hollow dots, so a
+  repeated hue is still a distinct mark, and the ordering guarantees the two
+  halves of a pair are ranks apart rather than adjacent.
 -->
 <script lang="ts">
 	import { line, curveBumpX } from 'd3-shape';
@@ -13,7 +19,7 @@
 	import ChartFrame from './ChartFrame.svelte';
 	import Legend from './Legend.svelte';
 	import Tooltip from './Tooltip.svelte';
-	import { fmtInt, seriesColor, type Geometry } from './scales';
+	import { CATEGORICAL, fmtInt, seriesColor, type Geometry } from './scales';
 	import type { BumpDatum } from './types';
 
 	type Props = {
@@ -27,6 +33,8 @@
 		valueFormat?: (n: number) => string;
 		/** Noun for the value in the tooltip. */
 		unit?: string;
+		/** Label for a datum's `delta` row; omitted when no datum carries one. */
+		deltaLabel?: string;
 	};
 
 	let {
@@ -37,7 +45,8 @@
 		ariaLabel,
 		height = 340,
 		valueFormat = fmtInt,
-		unit = 'plays'
+		unit = 'plays',
+		deltaLabel = 'new this period'
 	}: Props = $props();
 
 	const DOT_R = 4.5;
@@ -60,7 +69,16 @@
 		return allNumeric ? seen.slice().sort((a, b) => Number(a) - Number(b)) : seen;
 	});
 
-	type Series = { key: string; label: string; color: string; points: (BumpDatum | null)[] };
+	type Series = {
+		key: string;
+		label: string;
+		color: string;
+		/** Second time round the palette — drawn dashed, with hollow dots. */
+		repeat: boolean;
+		points: (BumpDatum | null)[];
+	};
+
+	const DASH = '7 5';
 
 	const series = $derived.by<Series[]>(() => {
 		const groups = new Map<string, BumpDatum[]>();
@@ -81,7 +99,8 @@
 		return ordered.map(([key, rows], i) => ({
 			key,
 			label: rows[0]?.label ?? key,
-			color: seriesColor(i),
+			color: seriesColor(i % CATEGORICAL.length),
+			repeat: i >= CATEGORICAL.length,
 			points: periods.map((p) => rows.find((r) => r.period === p) ?? null)
 		}));
 	});
@@ -132,7 +151,7 @@
 	}
 
 	let hovered = $state<string | null>(null);
-	let tip = $state<{ x: number; y: number; label: string; color: string; period: string; rank: number; value: number } | null>(null);
+	let tip = $state<{ x: number; y: number; label: string; color: string; period: string; rank: number; value: number; delta?: number } | null>(null);
 
 	const firstPeriod = $derived(periods[0]);
 	const lastPeriod = $derived(periods[periods.length - 1]);
@@ -165,7 +184,12 @@
 			mark="dot"
 			active={hovered}
 			onhover={(k) => (hovered = k)}
-			items={series.map((s) => ({ key: s.key, label: s.label, color: s.color }))}
+			items={series.map((s) => ({
+				key: s.key,
+				label: s.label,
+				color: s.color,
+				hollow: s.repeat
+			}))}
 		/>
 	{/snippet}
 
@@ -208,6 +232,7 @@
 				d={pathFor(s, g)}
 				stroke={s.color}
 				stroke-width={hovered === s.key ? 3 : 2}
+				stroke-dasharray={s.repeat ? DASH : undefined}
 				opacity={dim ? 0.14 : 1}
 			/>
 		{/each}
@@ -228,7 +253,8 @@
 							cx={x(String(periods[i] ?? '')) ?? 0}
 							cy={y(pt.rank)}
 							r={DOT_R}
-							fill={s.color}
+							fill={s.repeat ? 'var(--card)' : s.color}
+							stroke={s.repeat ? s.color : undefined}
 							class="dot"
 							role="presentation"
 							onmouseenter={() => {
@@ -240,7 +266,8 @@
 									color: s.color,
 									period: String(pt.period),
 									rank: pt.rank,
-									value: pt.value
+									value: pt.value,
+									delta: pt.delta
 								};
 							}}
 							onmouseleave={() => {
@@ -276,7 +303,10 @@
 				title={tip.label}
 				rows={[
 					{ label: String(tip.period), value: `#${tip.rank}`, color: tip.color },
-					{ label: unit, value: valueFormat(tip.value) }
+					{ label: unit, value: valueFormat(tip.value) },
+					...(tip.delta === undefined
+						? []
+						: [{ label: deltaLabel, value: `+${valueFormat(tip.delta)}` }])
 				]}
 			/>
 		{/if}

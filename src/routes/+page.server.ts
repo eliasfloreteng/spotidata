@@ -28,7 +28,7 @@ export const load: PageServerLoad = async ({ url, locals, setHeaders }) => {
 		q.totals(range),
 		q.additionsByDay(range),
 		q.growth(range),
-		q.topArtistsByYear(range, 6),
+		q.topArtistsByYear(range, 10),
 		q.topArtists(range, 15),
 		q.albumCompletion(range, { limit: 12, orderBy: 'pct' }),
 		q.albumCompletion(range, { limit: 12, orderBy: 'saved', minTracks: 1 }),

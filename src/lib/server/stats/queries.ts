@@ -136,51 +136,77 @@ export interface BumpRow {
 	label: string;
 	rank: number;
 	value: number;
+	delta: number;
 }
 
 /**
- * The N artists that most often reached the top N in a year, ranked against
- * each other year by year (so `rank` is a position within those N, not the
- * artist's rank across the whole library).
+ * Standing of the biggest artists at the end of each year: `value` is how many
+ * of their recordings the library held by then, `delta` how many arrived that
+ * year, and `rank` their position among the N series returned (not across the
+ * whole library).
+ *
+ * Ranking the running total rather than the year's adds is what makes this
+ * readable. A year's adds are spiky — an artist with a quiet year drops
+ * hundreds of places and their line vanishes — while the total moves a place
+ * or two at a time, so every artist holds a rank in every year after their
+ * first and the lines stay continuous.
  */
 export async function topArtistsByYear(r: Range, topN = 8): Promise<BumpRow[]> {
 	const rows = await query<BumpRow>(sql`
 		with per_year as (
+		  -- No lower bound: a filtered view still ranks by the true library
+		  -- total, the same way growth() carries its pre-window base in.
 		  select extract(year from lc.first_added_at at time zone ${r.tz})::int as yr,
 		         cta.artist_id, count(*)::int as n
 		    from library_canonical lc
 		    join canonical_track_artists cta
 		      on cta.canonical_track_id = lc.canonical_track_id
 		   where cta.on_representative and cta.position = 0
-		     and lc.${win(r)}
+		     and lc.first_added_at < ${r.to}
 		   group by 1, 2
+		), grid as (
+		  -- Every artist gets a row per year so the running total carries across
+		  -- years they added nothing, instead of skipping to their next add.
+		  select y.yr, a.artist_id
+		    from generate_series((select min(yr) from per_year),
+		                         (select max(yr) from per_year)) as y(yr)
+		   cross join (select distinct artist_id from per_year) a
+		), cumulative as (
+		  select g.yr, g.artist_id,
+		         coalesce(p.n, 0) as added,
+		         sum(coalesce(p.n, 0)) over (partition by g.artist_id order by g.yr)::int
+		           as total
+		    from grid g
+		    left join per_year p on p.yr = g.yr and p.artist_id = g.artist_id
+		), shown as (
+		  -- Artists appear the year their first track lands, and the pre-window
+		  -- years drop out now that they have done their job for the totals.
+		  select * from cumulative
+		   where total > 0
+		     and yr >= extract(year from ${r.from}::timestamptz at time zone ${r.tz})::int
 		), ranked as (
-		  select *, row_number() over (partition by yr order by n desc, artist_id) as rk
-		    from per_year
+		  select *, row_number() over (partition by yr order by total desc, artist_id) as rk
+		    from shown
 		), keep as (
-		  -- Keeping every artist that ever cracked the top N piles ~30 series
-		  -- onto one chart. Rank the contenders by how often they placed (then
-		  -- by total volume) and keep only that many lines.
+		  -- Everyone that ever held a top-N place, best placing first, capped at
+		  -- the N lines the chart can actually tell apart. Ordering by the peak
+		  -- rather than the final standing keeps an artist who led for years and
+		  -- then went quiet — that fall is the story the chart exists to show.
 		  select artist_id
 		    from ranked
 		   where rk <= ${topN}
 		   group by artist_id
-		   order by count(*) desc, sum(n) desc
+		   order by min(rk), max(total) desc
 		   limit ${topN}
 		)
-		-- Rank is re-derived over the kept cohort only. The global rank leaves
-		-- holes wherever a headliner had a quiet year (buried at #170 behind
-		-- one-off artists), which breaks its line and can empty a whole year
-		-- off the axis; ranking within the cohort keeps every line continuous
-		-- across the years the artist actually added something.
 		select r.yr as period, r.artist_id as key, a.name as label,
-		       row_number() over (partition by r.yr order by r.n desc, r.artist_id)::int
+		       row_number() over (partition by r.yr order by r.total desc, r.artist_id)::int
 		         as rank,
-		       r.n as value
+		       r.total as value, r.added::int as delta
 		  from ranked r
 		  join keep k on k.artist_id = r.artist_id
 		  join artists a on a.id = r.artist_id
-		 order by r.yr, r.n desc, r.artist_id
+		 order by r.yr, r.total desc, r.artist_id
 	`);
 	return rows;
 }

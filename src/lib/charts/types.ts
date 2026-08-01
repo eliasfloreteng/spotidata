@@ -15,6 +15,8 @@ export type BumpDatum = {
 	label: string;
 	rank: number;
 	value: number;
+	/** Change in `value` since the previous period, shown in the tooltip. */
+	delta?: number;
 };
 
 /** A point in a time series. Strings may be `YYYY-MM` or `YYYY-MM-DD`. */
@@ -39,6 +41,13 @@ export type BarListDatum = {
 
 export type DonutDatum = { key?: string; label: string; value: number };
 
-export type LegendItem = { key: string; label: string; color: string; value?: string };
+export type LegendItem = {
+	key: string;
+	label: string;
+	color: string;
+	value?: string;
+	/** Draws the mark hollow — for series whose hue is a second-cycle repeat. */
+	hollow?: boolean;
+};
 
 export type TooltipRow = { label: string; value: string; color?: string };

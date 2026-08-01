@@ -166,9 +166,11 @@
 	<BumpChart
 		data={data.bump}
 		title="Top artists by year"
-		topN={6}
-		subtitle="These artists ranked against each other by tracks added — hover a line to isolate it"
-		unit="tracks"
+		topN={10}
+		height={430}
+		subtitle="Rank by recordings held at the end of each year — hover a line to isolate it"
+		unit="tracks in library"
+		deltaLabel="added that year"
 	/>
 </section>
 

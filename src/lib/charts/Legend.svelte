@@ -29,13 +29,25 @@
 					onfocus={() => onhover(item.key)}
 					onblur={() => onhover(null)}
 				>
-					<i class="mark" class:dot={mark === 'dot'} style:background={item.color}></i>
+					<i
+						class="mark"
+						class:dot={mark === 'dot'}
+						class:hollow={item.hollow}
+						style:background={item.hollow ? 'transparent' : item.color}
+						style:border-color={item.color}
+					></i>
 					<span class="label">{item.label}</span>
 					{#if item.value}<span class="value num">{item.value}</span>{/if}
 				</button>
 			{:else}
 				<span class="entry">
-					<i class="mark" class:dot={mark === 'dot'} style:background={item.color}></i>
+					<i
+						class="mark"
+						class:dot={mark === 'dot'}
+						class:hollow={item.hollow}
+						style:background={item.hollow ? 'transparent' : item.color}
+						style:border-color={item.color}
+					></i>
 					<span class="label">{item.label}</span>
 					{#if item.value}<span class="value num">{item.value}</span>{/if}
 				</span>
@@ -94,6 +106,11 @@
 		width: 9px;
 		height: 9px;
 		border-radius: 50%;
+	}
+
+	/* Matches the dashed line and hollow dots its series draws in the plot. */
+	.mark.hollow {
+		border: 2px solid;
 	}
 
 	.label {
