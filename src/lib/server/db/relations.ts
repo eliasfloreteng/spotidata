@@ -47,7 +47,20 @@ export const relations = defineRelations(schema, (r) => ({
 			from: r.albums.id,
 			to: r.spotifyTracks.albumId
 		}),
-		saved: r.one.savedAlbums({ from: r.albums.id, to: r.savedAlbums.albumId })
+		saved: r.one.savedAlbums({ from: r.albums.id, to: r.savedAlbums.albumId }),
+		group: r.one.albumGroups({ from: r.albums.albumGroupId, to: r.albumGroups.id })
+	},
+
+	albumGroups: {
+		editions: r.many.albums({ from: r.albumGroups.id, to: r.albums.albumGroupId }),
+		representative: r.one.albums({
+			from: r.albumGroups.representativeAlbumId,
+			to: r.albums.id
+		}),
+		primaryArtist: r.one.artists({
+			from: r.albumGroups.primaryArtistId,
+			to: r.artists.id
+		})
 	},
 
 	spotifyTracks: {

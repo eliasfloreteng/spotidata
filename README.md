@@ -64,6 +64,14 @@ The table holds zero user data and is rebuilt idempotently by
 *One recording, eleven track ids — singles, album cuts, deluxe editions and
 regional releases all collapse onto the same page.*
 
+**An album is its track list.** `album_groups` collapses editions the same way:
+two albums are one release when they carry the same canonical tracks, ignoring
+order — 17,868 albums fall into 16,964 groups, with 824 groups holding a genuine
+duplicate. Titles are never compared ("Monsters, Inc. (Original Motion Picture
+Soundtrack)" and "Monsters Inc Original Soundtrack" are the same record), and
+only albums held in full are eligible, so a half-fetched album can never be
+fused into a single that happens to match its subset.
+
 **The library** is liked songs ∪ tracks in playlists you own. Other playlists
 are ingested in full but excluded from library statistics.
 
@@ -129,7 +137,8 @@ Each of these failed silently rather than loudly, so they have guards:
 ```
 db/migrations/     committed drizzle output
 db/sql/pre/        extensions + parse_release_date (migrations depend on them)
-db/sql/post/       fallback_key, rate limiter, refresh_canonical, refresh_library
+db/sql/post/       fallback_key, rate limiter, refresh_canonical, refresh_library,
+                   refresh_album_groups
 src/lib/server/    db/ spotify/ ingest/ queue/ stats/ entities/
 src/lib/charts/    d3 computes, Svelte renders — no d3-selection
 src/routes/        dashboard, entity pages, /sync, /settings, /api

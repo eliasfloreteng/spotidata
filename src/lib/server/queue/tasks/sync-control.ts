@@ -138,6 +138,10 @@ export const derive: Task = async (payload, helpers) => {
 		sql`select * from spotidata.refresh_library()`
 	);
 	await db.execute(sql`select spotidata.refresh_album_completeness()`);
+	// Album grouping reads tracks_complete, so it has to follow the line above.
+	const { rows: groupRows } = await db.execute<{ groups: number; albums: number }>(
+		sql`select * from spotidata.refresh_album_groups()`
+	);
 	// Keep the planner honest after a bulk load; every chart depends on it.
 	await db.execute(sql`analyze`);
 
@@ -145,6 +149,13 @@ export const derive: Task = async (payload, helpers) => {
 		runId,
 		'info',
 		`Library: ${rows[0]?.tracks ?? 0} tracks → ${rows[0]?.canonical ?? 0} recordings`,
+		null,
+		'derive'
+	);
+	await logEvent(
+		runId,
+		'info',
+		`Albums: ${groupRows[0]?.albums ?? 0} editions, ${groupRows[0]?.groups ?? 0} with a duplicate`,
 		null,
 		'derive'
 	);
@@ -162,6 +173,7 @@ export const canonicalizeFinal: Task = async (payload, helpers) => {
 	await db.execute(sql`select spotidata.refresh_canonical_tracks()`);
 	await db.execute(sql`select spotidata.refresh_library()`);
 	await db.execute(sql`select spotidata.refresh_album_completeness()`);
+	await db.execute(sql`select spotidata.refresh_album_groups()`);
 	await db.execute(sql`analyze`);
 	await helpers.addJob('sync:finalize', { runId }, { jobKey: `sync:${runId}:finalize` });
 };

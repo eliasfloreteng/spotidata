@@ -75,6 +75,39 @@ export const artistImages = table(
 
 // ----------------------------------------------------------------- albums
 
+/**
+ * One row per *release*, collapsing the editions Spotify keeps apart: a single
+ * re-issued for three markets, an album and its "Deluxe" twin with an identical
+ * track list, a soundtrack listed once as `album` and once as `compilation`.
+ * Two albums group when they carry the same canonical tracks, ignoring order.
+ *
+ * DERIVED by `spotidata.refresh_album_groups()`; like `canonicalTracks` it
+ * holds ZERO user data, so a regrouping can never orphan anything. Albums we do
+ * not hold in full keep a `solo` group of their own — see the SQL for why.
+ */
+export const albumGroups = table(
+	'album_groups',
+	{
+		/** 'trk:<24 hex>' for a track-set match, 'alb:<album id>' for a group of one. */
+		id: text().primaryKey(),
+		kind: text().$type<'tracks' | 'solo'>().notNull(),
+		/** The chosen edition's title; see the ORDER BY in refresh_album_groups. */
+		title: text().notNull(),
+		representativeAlbumId: text().notNull(),
+		primaryArtistId: text().references(() => artists.id),
+		trackCount: integer().notNull().default(0),
+		/** Editions in the group; > 1 means we actually deduplicated something. */
+		copyCount: integer().notNull().default(1),
+		earliestReleaseDate: date(),
+		refreshedAt: tsNow()
+	},
+	(t) => [
+		check('album_groups_kind', sql`${t.kind} in ('tracks','solo')`),
+		index('album_groups_artist_ix').on(t.primaryArtistId),
+		index('album_groups_dupes_ix').on(t.id).where(sql`${t.copyCount} > 1`)
+	]
+);
+
 export const albums = table(
 	'albums',
 	{
@@ -109,10 +142,12 @@ export const albums = table(
 		/** True once every one of `totalTracks` rows exists in spotify_tracks. */
 		tracksComplete: boolean().notNull().default(false),
 		tracksFetchedAt: ts(),
+		albumGroupId: text().references(() => albumGroups.id, { onDelete: 'set null' }),
 		...provenance
 	},
 	(t) => [
 		check('albums_detail_level', sql`${t.detailLevel} in ('simplified','full')`),
+		index('albums_group_ix').on(t.albumGroupId),
 		check('albums_type', sql`${t.albumType} is null or ${t.albumType} in ('album','single','compilation')`),
 		index('albums_release_ix').on(t.releaseDateStart),
 		index('albums_label_ix').on(t.label).where(sql`${t.label} is not null`),

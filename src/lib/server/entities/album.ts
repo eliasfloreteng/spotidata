@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { query } from '../db/index.ts';
-import { cover, iso, trackArtistsJson, type ArtistRef } from './shared.ts';
+import { cover, iso, thumb, trackArtistsJson, type ArtistRef } from './shared.ts';
 
 export interface Copyright {
 	text: string;
@@ -76,6 +76,40 @@ export interface AlbumTrack {
 	/** The recording is in the library, but through a copy on another album. */
 	viaOtherCopy: boolean;
 	liked: boolean;
+}
+
+export interface AlbumEdition {
+	id: string;
+	name: string;
+	albumType: string | null;
+	releaseDate: string | null;
+	cover: string | null;
+	saved: boolean;
+	/** The edition the group resolves to; the one the rest are duplicates of. */
+	representative: boolean;
+}
+
+/**
+ * The *other* albums carrying exactly this album's canonical tracks — regional
+ * re-issues, a re-release under a tidier title, an `album`/`compilation` pair.
+ * Empty unless `spotidata.refresh_album_groups()` actually found a duplicate.
+ */
+export async function getAlbumEditions(albumId: string): Promise<AlbumEdition[]> {
+	return query<AlbumEdition>(sql`
+		select al.id,
+		       al.name,
+		       al.album_type   as "albumType",
+		       al.release_date as "releaseDate",
+		       ${thumb('album_images', 'album_id', 'al.id')} as cover,
+		       (sa.album_id is not null)                 as saved,
+		       (al.id = g.representative_album_id)       as representative
+		  from albums me
+		  join album_groups g on g.id = me.album_group_id and g.copy_count > 1
+		  join albums al on al.album_group_id = g.id and al.id <> me.id
+		  left join saved_albums sa on sa.album_id = al.id and sa.removed_at is null
+		 where me.id = ${albumId}
+		 order by al.release_date_start nulls last, al.id
+	`);
 }
 
 export async function getAlbumTracks(albumId: string): Promise<AlbumTrack[]> {

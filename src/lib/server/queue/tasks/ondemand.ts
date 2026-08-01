@@ -79,6 +79,11 @@ export const ondemandEntity: Task = async (payload, helpers) => {
 	// Regroup only what changed; a full refresh over 168k rows would be absurd
 	// for one page view.
 	await db.execute(sql`select spotidata.refresh_canonical_tracks()`);
+	// The album grouping keys on canonical ids and on tracks_complete, so both
+	// have to follow the regroup. Together they cost ~0.5s against the ~4s the
+	// line above already spends.
+	await db.execute(sql`select spotidata.refresh_album_completeness()`);
+	await db.execute(sql`select spotidata.refresh_album_groups()`);
 	await notify(kind, id, 'ready');
 };
 

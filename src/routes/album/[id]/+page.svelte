@@ -6,12 +6,13 @@
 	import SpotifyLink from '$lib/components/SpotifyLink.svelte';
 	import { num, shortDate, trackTime, longDuration } from '$lib/utils/format.ts';
 	import { trackHref } from '$lib/utils/qs.ts';
-	import type { AlbumTrack } from '$lib/server/entities/album.ts';
+	import type { AlbumEdition, AlbumTrack } from '$lib/server/entities/album.ts';
 
 	let { data } = $props();
 
 	const album = $derived(data.pending ? null : data.album);
 	const tracks = $derived<AlbumTrack[]>(data.pending ? [] : data.tracks);
+	const editions = $derived<AlbumEdition[]>(data.pending ? [] : data.editions);
 
 	const held = $derived(tracks.filter((t) => t.inLibrary).length);
 	const viaCopy = $derived(tracks.filter((t) => t.viaOtherCopy).length);
@@ -55,6 +56,11 @@
 				{#if album.savedAt}<Chip tone="good">Saved {shortDate(album.savedAt)}</Chip>{/if}
 				{#if album.upc}<Chip title="Universal Product Code">UPC <span class="mono">{album.upc}</span></Chip>{/if}
 				{#if album.marketCount > 0}<Chip>{num(album.marketCount)} markets</Chip>{/if}
+				{#if editions.length > 0}
+					<Chip tone="accent" title="Other releases with exactly these recordings">
+						{editions.length + 1} editions
+					</Chip>
+				{/if}
 				{#each album.genres as g (g)}<Chip tone="accent">{g}</Chip>{/each}
 				{#if data.refreshing}<Chip tone="warn">Refreshing from Spotify…</Chip>{/if}
 			</div>
@@ -140,6 +146,34 @@
 			</table>
 		</div>
 	</section>
+
+	{#if editions.length > 0}
+		<section class="card">
+			<h2>Other editions</h2>
+			<p class="faint sub">
+				{editions.length === 1 ? 'One other release carries' : `${num(editions.length)} other releases carry`}
+				exactly these recordings — a re-issue, a regional duplicate or the same record filed under
+				a second type.
+			</p>
+			<ul class="editions">
+				{#each editions as e (e.id)}
+					<li>
+						<a href="/album/{e.id}">
+							<Cover src={e.cover} alt="{e.name} cover" size={44} />
+							<span class="ed">
+								<span class="edname">{e.name}</span>
+								<span class="faint xs">
+									{e.albumType ?? 'release'} · {e.releaseDate ?? 'unknown date'}
+								</span>
+							</span>
+						</a>
+						{#if e.representative}<Chip>Primary</Chip>{/if}
+						{#if e.saved}<Chip tone="good">Saved</Chip>{/if}
+					</li>
+				{/each}
+			</ul>
+		</section>
+	{/if}
 
 	{#if album.copyrights && album.copyrights.length > 0}
 		<section class="card">
@@ -312,6 +346,36 @@
 		background: rgba(255, 255, 255, 0.08);
 		color: var(--text-faint);
 		vertical-align: middle;
+	}
+	.editions {
+		list-style: none;
+		margin: 10px 0 0;
+		padding: 0;
+		display: grid;
+		gap: 8px;
+	}
+	.editions li {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.editions a {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		min-width: 0;
+		flex: 1;
+	}
+	.ed {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+	.edname {
+		font-size: 0.9rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.copy {
 		list-style: none;
