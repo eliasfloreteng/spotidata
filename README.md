@@ -6,6 +6,11 @@ presents it as a dark, chart-heavy dashboard, resyncing in the background.
 Bun · TypeScript · SvelteKit 2 (Svelte 5 runes) · Postgres 18 · Drizzle v1 ·
 Graphile Worker · d3 v7.
 
+![The dashboard: library totals, then a per-year calendar of tracks added](docs/screenshots/dashboard-hero.png)
+
+*Top of the dashboard — [see the whole page](docs/screenshots/dashboard.png), sixteen
+charts over a 8.8k-recording library.*
+
 ## Why local ingest
 
 The Spotify API is shrinking — audio-features, recommendations and
@@ -54,8 +59,15 @@ The table holds zero user data and is rebuilt idempotently by
 `spotidata.refresh_canonical_tracks()`; anything user-authored keys on
 `spotify_tracks.id` so a regrouping can never orphan it.
 
+![A track page listing eleven Spotify ids that share one ISRC](docs/screenshots/track-page.png)
+
+*One recording, eleven track ids — singles, album cuts, deluxe editions and
+regional releases all collapse onto the same page.*
+
 **The library** is liked songs ∪ tracks in playlists you own. Other playlists
 are ingested in full but excluded from library statistics.
+
+![The liked songs table, sortable and searchable](docs/screenshots/liked-page.png)
 
 **Bulk endpoints still work**, contrary to widespread claims. `/albums?ids=`
 takes 20 ids *and embeds each album's first 50 tracks*, which is why a full
@@ -76,6 +88,17 @@ skips every Spotify job wholesale instead of burning retries.
 over `library_canonical` (8.8k rows, resident in shared buffers) — all sixteen
 dashboard queries run in ~130 ms total. MVs also cannot be parameterized by an
 arbitrary time range, which the range picker requires.
+
+**Charts are d3 for maths, Svelte for DOM** — no `d3-selection`. Every component
+in `src/lib/charts` renders at `/_charts` against synthetic data, including the
+empty and single-point cases that are easy to get wrong.
+
+<details>
+<summary>The chart gallery (click to expand)</summary>
+
+![Every chart component rendered against synthetic data](docs/screenshots/charts-gallery.png)
+
+</details>
 
 ## Traps this codebase has already hit
 
