@@ -167,7 +167,7 @@
 		data={data.bump}
 		title="Top artists by year"
 		topN={6}
-		subtitle="Rank by tracks added that year — hover a line to isolate it"
+		subtitle="These artists ranked against each other by tracks added — hover a line to isolate it"
 		unit="tracks"
 	/>
 </section>

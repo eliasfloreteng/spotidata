@@ -124,7 +124,11 @@ export interface BumpRow {
 	value: number;
 }
 
-/** Top-N artists per year, including every artist that ever reached the top N. */
+/**
+ * The N artists that most often reached the top N in a year, ranked against
+ * each other year by year (so `rank` is a position within those N, not the
+ * artist's rank across the whole library).
+ */
 export async function topArtistsByYear(r: Range, topN = 8): Promise<BumpRow[]> {
 	const rows = await query<BumpRow>(sql`
 		with per_year as (
@@ -150,12 +154,19 @@ export async function topArtistsByYear(r: Range, topN = 8): Promise<BumpRow[]> {
 		   order by count(*) desc, sum(n) desc
 		   limit ${topN}
 		)
+		-- Rank is re-derived over the kept cohort only. The global rank leaves
+		-- holes wherever a headliner had a quiet year (buried at #170 behind
+		-- one-off artists), which breaks its line and can empty a whole year
+		-- off the axis; ranking within the cohort keeps every line continuous
+		-- across the years the artist actually added something.
 		select r.yr as period, r.artist_id as key, a.name as label,
-		       r.rk::int as rank, r.n as value
+		       row_number() over (partition by r.yr order by r.n desc, r.artist_id)::int
+		         as rank,
+		       r.n as value
 		  from ranked r
 		  join keep k on k.artist_id = r.artist_id
 		  join artists a on a.id = r.artist_id
-		 order by r.yr, r.rk
+		 order by r.yr, r.n desc, r.artist_id
 	`);
 	return rows;
 }

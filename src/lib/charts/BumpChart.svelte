@@ -18,7 +18,7 @@
 
 	type Props = {
 		data: BumpDatum[];
-		/** Ranks below this are dropped; also sets the y domain. */
+		/** Ranks below this are dropped. */
 		topN?: number;
 		title?: string;
 		subtitle?: string;
@@ -44,6 +44,13 @@
 	const RANK_GUTTER = 26;
 
 	const clean = $derived(data.filter((d) => Number.isFinite(d.rank) && d.rank >= 1 && d.rank <= topN));
+
+	/**
+	 * The y domain follows the ranks actually present, not topN: a series can
+	 * sit out a period, so a cohort of N often never fills N places at once and
+	 * a fixed domain would leave dead gridlines under the lines.
+	 */
+	const maxRank = $derived(Math.max(2, ...clean.map((d) => d.rank)));
 
 	/** Periods in first-seen order, numerically sorted when they are numbers. */
 	const periods = $derived.by(() => {
@@ -109,7 +116,7 @@
 
 	function yScale(g: Geometry) {
 		return scaleLinear()
-			.domain([1, Math.max(2, topN)])
+			.domain([1, maxRank])
 			.range([0, Math.max(1, g.innerHeight)]);
 	}
 
@@ -167,7 +174,7 @@
 		{@const y = yScale(g)}
 
 		<!-- rank gridlines -->
-		{#each Array.from({ length: Math.max(2, topN) }, (_, i) => i + 1) as rank (rank)}
+		{#each Array.from({ length: maxRank }, (_, i) => i + 1) as rank (rank)}
 			<line class="grid" x1="0" x2={g.innerWidth} y1={y(rank)} y2={y(rank)} />
 			<text class="rank-tick" x="-9" y={y(rank) + 4}>{rank}</text>
 			<text class="rank-tick" x={g.innerWidth + 9} y={y(rank) + 4} text-anchor="start">{rank}</text>
