@@ -4,9 +4,12 @@
   Nominal categories, so every bar wears the SAME slot-1 hue: bar length already
   encodes the value, and spending the identity channel to re-encode it would be
   wrong. Laid out in flow (HTML) rather than SVG so long names wrap and truncate
-  with real text metrics — a label is never clipped by its own mark.
+  with real text metrics — a label is never clipped by its own mark. Rows carrying
+  an `href` become links to the entity, which is also why the frame drops its
+  `role="img"` summary for those lists.
 -->
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { max } from 'd3-array';
 	import { scaleLinear } from 'd3-scale';
 	import ChartFrame from './ChartFrame.svelte';
@@ -30,6 +33,10 @@
 		unit?: string;
 		/** Bar colour. One hue for the whole list by design. */
 		color?: string;
+		/** Artwork edge, in px. */
+		artSize?: number;
+		/** Controls parked at the top right of the header — a "see all" link. */
+		actions?: Snippet;
 	};
 
 	let {
@@ -43,7 +50,9 @@
 		showShare = false,
 		showRank = true,
 		unit = 'plays',
-		color = CATEGORICAL[0]
+		color = CATEGORICAL[0],
+		artSize = 34,
+		actions
 	}: Props = $props();
 
 	const ROW = 34;
@@ -51,6 +60,9 @@
 	const rows = $derived(
 		data.filter((d) => Number.isFinite(d.value)).slice(0, Math.max(1, limit))
 	);
+	/** A null url still reserves the column; only an absent key drops it. */
+	const hasArt = $derived(rows.some((d) => d.image !== undefined));
+	const linked = $derived(rows.some((d) => d.href));
 	const total = $derived(data.reduce((t, d) => t + (Number.isFinite(d.value) ? d.value : 0), 0));
 	const top = $derived(max(rows, (d) => d.value) ?? 0);
 	const scale = $derived(scaleLinear().domain([0, top || 1]).range([0, 100]).clamp(true));
@@ -76,9 +88,11 @@
 <ChartFrame
 	{title}
 	{subtitle}
+	{actions}
 	ariaLabel={label}
 	{height}
 	layout="flow"
+	semantic={linked}
 	margin={{ top: 0, right: 0, bottom: 0, left: 0 }}
 	empty={rows.length === 0}
 >
@@ -87,9 +101,37 @@
 			{#each rows as d, i (d.label + i)}
 				<li>
 					{#if showRank}<span class="rank num">{i + 1}</span>{/if}
+					{#if hasArt}
+						{#if d.image}
+							<img
+								class="art"
+								class:round={d.round}
+								src={d.image}
+								alt=""
+								width={artSize}
+								height={artSize}
+								style:width="{artSize}px"
+								style:height="{artSize}px"
+								loading="lazy"
+								decoding="async"
+							/>
+						{:else}
+							<span
+								class="art blank"
+								class:round={d.round}
+								style:width="{artSize}px"
+								style:height="{artSize}px"
+								aria-hidden="true"
+							></span>
+						{/if}
+					{/if}
 					<span class="body">
 						<span class="line">
-							<span class="name" title={d.label}>{d.label}</span>
+							{#if d.href}
+								<a class="name" href={d.href} title={d.label}>{d.label}</a>
+							{:else}
+								<span class="name" title={d.label}>{d.label}</span>
+							{/if}
 							<span class="values">
 								<span class="value num">{valueFormat(d.value)}</span>
 								{#if secondaryOf(d)}<span class="pct num">{secondaryOf(d)}</span>{/if}
@@ -137,6 +179,23 @@
 		font-variant-numeric: tabular-nums;
 	}
 
+	.art {
+		flex: none;
+		display: block;
+		object-fit: cover;
+		border-radius: 5px;
+		background: var(--bg-elevated);
+		border: 1px solid var(--hairline);
+	}
+
+	.art.round {
+		border-radius: 50%;
+	}
+
+	.blank {
+		background: linear-gradient(135deg, rgba(124, 58, 237, 0.18), rgba(192, 38, 211, 0.08));
+	}
+
 	.body {
 		flex: 1;
 		min-width: 0;
@@ -157,6 +216,11 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		min-width: 0;
+	}
+
+	a.name:hover {
+		color: #fff;
+		text-decoration: underline;
 	}
 
 	.values {

@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { query } from '../db/index.ts';
+import { iso, thumb, type ArtistRef } from '../entities/shared.ts';
 import type { Range } from './range.ts';
 
 /**
@@ -291,6 +292,43 @@ export async function albumCompletion(
 	return rows;
 }
 
+export interface PlaylistCount {
+	id: string;
+	name: string;
+	isOwned: boolean;
+	tracks: number;
+	inLibrary: number;
+	imageUrl: string | null;
+}
+
+/**
+ * Playlists by how many items landed in them inside the window.
+ *
+ * This is the one panel that cannot key off `library_canonical`: a playlist's
+ * own `added_at` is what makes it answer to the range picker. All-time skips
+ * the filter entirely rather than bounding it, so the counts match the
+ * playlists page — `r.from` is the first *library* addition (later than an
+ * older non-owned playlist's items) and `added_at` is null for items Spotify
+ * never dated.
+ */
+export async function topPlaylists(r: Range, limit = 10): Promise<PlaylistCount[]> {
+	const rows = await query<PlaylistCount>(sql`
+		select p.id, p.name, p.is_owned as "isOwned",
+		       count(*)::int                    as tracks,
+		       count(lt.track_id)::int          as "inLibrary",
+		       ${thumb('playlist_images', 'playlist_id', 'p.id')} as "imageUrl"
+		  from playlists p
+		  join playlist_tracks pt on pt.playlist_id = p.id
+		  left join library_tracks lt on lt.track_id = pt.track_id
+		 where p.removed_at is null
+		   ${r.isAllTime ? sql`` : sql`and pt.added_at >= ${r.from} and pt.added_at < ${r.to}`}
+		 group by p.id, p.name, p.is_owned
+		 order by tracks desc, p.name
+		 limit ${limit}
+	`);
+	return rows;
+}
+
 export interface LabelCount {
 	label: string;
 	tracks: number;
@@ -308,6 +346,46 @@ export async function topLabels(r: Range, limit = 15): Promise<LabelCount[]> {
 		 where al.label is not null and ${realAlbum('al')} and lc.${win(r)}
 		 group by al.label
 		 order by tracks desc
+		 limit ${limit}
+	`);
+	return rows;
+}
+
+// ------------------------------------------------------- latest additions
+
+export interface RecentTrack {
+	canonicalTrackId: string;
+	title: string;
+	addedAt: string;
+	liked: boolean;
+	albumId: string | null;
+	albumName: string | null;
+	cover: string | null;
+	artists: ArtistRef[];
+}
+
+/** The newest recordings in the window — the top of the library list, with art. */
+export async function recentAdditions(r: Range, limit = 12): Promise<RecentTrack[]> {
+	const rows = await query<RecentTrack>(sql`
+		select ct.id                as "canonicalTrackId",
+		       ct.title,
+		       ${iso('lc.first_added_at')} as "addedAt",
+		       lc.liked,
+		       al.id                as "albumId",
+		       al.name              as "albumName",
+		       ${thumb('album_images', 'album_id', 'al.id')} as cover,
+		       coalesce((
+		         select jsonb_agg(jsonb_build_object('id', ar.id, 'name', ar.name)
+		                          order by cta.position)
+		           from canonical_track_artists cta
+		           join artists ar on ar.id = cta.artist_id
+		          where cta.canonical_track_id = ct.id and cta.on_representative
+		       ), '[]'::jsonb)      as artists
+		  from library_canonical lc
+		  join canonical_tracks ct on ct.id = lc.canonical_track_id
+		  left join albums al on al.id = ct.primary_album_id
+		 where lc.${win(r)}
+		 order by lc.first_added_at desc, ct.title
 		 limit ${limit}
 	`);
 	return rows;
@@ -436,6 +514,8 @@ export interface DuplicateRow {
 	canonicalTrackId: string;
 	title: string;
 	artist: string | null;
+	artistId: string | null;
+	cover: string | null;
 	copies: number;
 	names: string[];
 }
@@ -443,7 +523,8 @@ export interface DuplicateRow {
 export async function duplicates(r: Range, limit = 20): Promise<DuplicateRow[]> {
 	const rows = await query<DuplicateRow>(sql`
 		select ct.id as "canonicalTrackId", ct.title,
-		       a.name as artist, ct.copy_count as copies,
+		       a.name as artist, a.id as "artistId", ct.copy_count as copies,
+		       ${thumb('album_images', 'album_id', 'ct.primary_album_id')} as cover,
 		       (select array_agg(distinct st.name)
 		          from spotify_tracks st where st.canonical_track_id = ct.id) as names
 		  from library_canonical lc

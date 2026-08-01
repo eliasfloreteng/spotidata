@@ -37,6 +37,13 @@ export type BarListDatum = {
 	secondary?: number;
 	/** Small line under the label — album artist, label owner, etc. */
 	sublabel?: string;
+	/** Turns the label into a link to the entity's page. */
+	href?: string;
+	/** Artwork URL. Present-but-null draws a placeholder tile; omit on every
+	 *  row (labels, genres) to drop the artwork column entirely. */
+	image?: string | null;
+	/** Artists read as a circle, releases as a rounded square. */
+	round?: boolean;
 };
 
 export type DonutDatum = { key?: string; label: string; value: number };

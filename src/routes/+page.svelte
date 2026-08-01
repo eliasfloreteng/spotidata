@@ -7,9 +7,11 @@
 		Histogram,
 		CATEGORICAL
 	} from '$lib/charts/index.ts';
+	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
+	import Cover from '$lib/components/Cover.svelte';
 	import StatTile from '$lib/components/StatTile.svelte';
 	import RangePicker from '$lib/components/RangePicker.svelte';
-	import { num, longDuration, pct, shortDate } from '$lib/utils/format.ts';
+	import { num, longDuration, pct, relativeTime, shortDate } from '$lib/utils/format.ts';
 
 	let { data } = $props();
 
@@ -52,11 +54,17 @@
 
 	const monthlyTrend = $derived(data.growth.slice(-24).map((g) => g.added));
 
+	// Every leaderboard row carries the id it came from, so a bar is a way into
+	// the entity rather than a dead end. `image` present-but-null keeps the
+	// artwork column aligned; labels omit the key and lose the column.
 	const artistBars = $derived(
 		data.artists.map((a) => ({
 			label: a.name,
 			value: a.tracks,
-			sublabel: `${a.albums} album${a.albums === 1 ? '' : 's'}`
+			sublabel: `${a.albums} album${a.albums === 1 ? '' : 's'}`,
+			href: `/artist/${a.id}`,
+			image: a.imageUrl,
+			round: true
 		}))
 	);
 	const albumPctBars = $derived(
@@ -64,7 +72,9 @@
 			label: a.name,
 			value: a.saved,
 			secondary: a.pct,
-			sublabel: `${a.artist ?? '—'} · ${a.saved}/${a.totalTracks}`
+			sublabel: `${a.artist ?? '—'} · ${a.saved}/${a.totalTracks}`,
+			href: `/album/${a.id}`,
+			image: a.imageUrl
 		}))
 	);
 	const albumSavedBars = $derived(
@@ -72,7 +82,18 @@
 			label: a.name,
 			value: a.saved,
 			secondary: a.pct,
-			sublabel: `${a.artist ?? '—'} · ${a.totalTracks} tracks`
+			sublabel: `${a.artist ?? '—'} · ${a.totalTracks} tracks`,
+			href: `/album/${a.id}`,
+			image: a.imageUrl
+		}))
+	);
+	const playlistBars = $derived(
+		data.playlists.map((p) => ({
+			label: p.name,
+			value: p.tracks,
+			sublabel: `${p.isOwned ? 'yours' : 'followed'} · ${num(p.inLibrary)} in library`,
+			href: `/playlist/${p.id}`,
+			image: p.imageUrl
 		}))
 	);
 	const labelBars = $derived(data.labels.map((l) => ({ label: l.label, value: l.tracks })));
@@ -148,6 +169,36 @@
 	/>
 </section>
 
+<section class="card recent">
+	<header class="cardhead">
+		<div>
+			<h2>Latest additions</h2>
+			<p class="faint sub">The newest recordings in this range</p>
+		</div>
+		<a class="more" href="/library">All tracks →</a>
+	</header>
+	<ul class="tiles-art">
+		{#each data.recent as r (r.canonicalTrackId)}
+			<li>
+				<a class="art" href="/track/{r.canonicalTrackId}" aria-label={r.title}>
+					<Cover src={r.cover} alt="{r.albumName ?? r.title} cover" size="fill" />
+				</a>
+				<a class="title" href="/track/{r.canonicalTrackId}" title={r.title}>
+					{r.title || '(untitled)'}
+				</a>
+				<span class="by muted">
+					<ArtistLinks artists={r.artists} />
+				</span>
+				<span class="faint when">
+					{relativeTime(r.addedAt)}{#if r.liked} · liked{/if}
+				</span>
+			</li>
+		{:else}
+			<li class="faint">Nothing added in this range.</li>
+		{/each}
+	</ul>
+</section>
+
 <div class="grid two">
 	<section class="card">
 		<AreaChart
@@ -202,8 +253,25 @@
 			subtitle="By distinct recordings in the library"
 			unit="tracks"
 			limit={15}
-		/>
+		>
+			{#snippet actions()}<a class="more" href="/artists">All artists →</a>{/snippet}
+		</BarList>
 	</section>
+	<section class="card">
+		<BarList
+			data={playlistBars}
+			title="Biggest playlists"
+			subtitle="Items added in this range — the ones you own are what define the library"
+			unit="tracks"
+			limit={10}
+			color={CATEGORICAL[1]}
+		>
+			{#snippet actions()}<a class="more" href="/playlists">All playlists →</a>{/snippet}
+		</BarList>
+	</section>
+</div>
+
+<div class="grid two">
 	<section class="card">
 		<BarList
 			data={albumSavedBars}
@@ -211,11 +279,10 @@
 			subtitle="Absolute count"
 			unit="tracks"
 			limit={12}
-		/>
+		>
+			{#snippet actions()}<a class="more" href="/albums">All albums →</a>{/snippet}
+		</BarList>
 	</section>
-</div>
-
-<div class="grid two">
 	<section class="card">
 		<BarList
 			data={albumPctBars}
@@ -225,12 +292,12 @@
 			limit={12}
 		/>
 	</section>
-	<section class="card">
-		<BarList data={labelBars} title="Top labels" unit="tracks" limit={10} color={CATEGORICAL[2]} />
-	</section>
 </div>
 
 <div class="grid two">
+	<section class="card">
+		<BarList data={labelBars} title="Top labels" unit="tracks" limit={10} color={CATEGORICAL[2]} />
+	</section>
 	<section class="card">
 		<Histogram
 			values={releaseValues}
@@ -242,18 +309,19 @@
 			xFormat={(n: number) => String(Math.round(n))}
 		/>
 	</section>
-	<section class="card">
-		<Histogram
-			values={durationValues}
-			title="Track lengths"
-			xLabel="minutes"
-			unit="recordings"
-			binCount={30}
-			color={CATEGORICAL[3]}
-			xFormat={(n: number) => `${n.toFixed(0)}m`}
-		/>
-	</section>
 </div>
+
+<section class="card wide">
+	<Histogram
+		values={durationValues}
+		title="Track lengths"
+		xLabel="minutes"
+		unit="recordings"
+		binCount={30}
+		color={CATEGORICAL[3]}
+		xFormat={(n: number) => `${n.toFixed(0)}m`}
+	/>
+</section>
 
 <section class="card">
 	<h2>Most duplicated recordings</h2>
@@ -265,8 +333,16 @@
 		<tbody>
 			{#each data.duplicates as d (d.canonicalTrackId)}
 				<tr>
-					<td><a href="/track/{d.canonicalTrackId}">{d.title || '(untitled)'}</a></td>
-					<td class="muted">{d.artist ?? '—'}</td>
+					<td>
+						<a class="rec" href="/track/{d.canonicalTrackId}">
+							<Cover src={d.cover} alt="{d.title} cover" size={30} />
+							<span class="ellipsis">{d.title || '(untitled)'}</span>
+						</a>
+					</td>
+					<td class="muted">
+						{#if d.artistId}<a href="/artist/{d.artistId}">{d.artist}</a>{:else}{d.artist ??
+								'—'}{/if}
+					</td>
 					<td class="r num">{d.copies}</td>
 					<td class="faint small">{(d.names ?? []).slice(0, 3).join(' · ')}</td>
 				</tr>
@@ -320,6 +396,75 @@
 	.sub {
 		font-size: 0.8rem;
 		margin: 0 0 12px;
+	}
+	.cardhead {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 16px;
+	}
+	.cardhead .sub {
+		margin-bottom: 14px;
+	}
+	.more {
+		flex: none;
+		font-size: 0.78rem;
+		color: var(--text-muted);
+		white-space: nowrap;
+	}
+	.more:hover {
+		color: var(--text);
+	}
+	.tiles-art {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		/* Six across on a full-width card, folding to two on a phone. */
+		grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+		gap: 16px 14px;
+	}
+	.tiles-art li {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		min-width: 0;
+	}
+	.tiles-art .art {
+		display: block;
+		margin-bottom: 6px;
+	}
+	.tiles-art .art:hover {
+		filter: brightness(1.1);
+	}
+	.title,
+	.by,
+	.when {
+		font-size: 0.8rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.by,
+	.when {
+		font-size: 0.74rem;
+	}
+	a.title:hover {
+		text-decoration: underline;
+	}
+	.rec {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		min-width: 0;
+	}
+	.rec:hover .ellipsis {
+		text-decoration: underline;
+	}
+	.ellipsis {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	table {
 		width: 100%;

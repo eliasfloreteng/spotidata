@@ -26,6 +26,12 @@
 		margin?: Partial<Margin> | ((width: number) => Partial<Margin>);
 		/** 'svg' wraps children in <svg><g transform>; 'flow' renders plain HTML. */
 		layout?: 'svg' | 'flow';
+		/**
+		 * Flow content that is already readable DOM — a list, links, text. The
+		 * `role="img"` summary is dropped, because it would turn every descendant
+		 * presentational and make links unreachable from the a11y tree.
+		 */
+		semantic?: boolean;
 		/** Render the empty state instead of the plot. */
 		empty?: boolean;
 		emptyMessage?: string;
@@ -47,6 +53,7 @@
 		height,
 		margin,
 		layout = 'svg',
+		semantic = false,
 		empty = false,
 		emptyMessage = 'No data in this range',
 		legend,
@@ -108,6 +115,8 @@
 						{@render children(geom)}
 					</g>
 				</svg>
+			{:else if semantic}
+				<div class="flow">{@render children(geom)}</div>
 			{:else}
 				<div class="flow" role="img" aria-label={ariaLabel}>
 					{@render children(geom)}
