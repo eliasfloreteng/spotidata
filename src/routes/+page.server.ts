@@ -1,4 +1,4 @@
-import { resolveRange, dataVersion } from '$lib/server/stats/range.ts';
+import { resolveRange, dataVersion, zonedDay } from '$lib/server/stats/range.ts';
 import * as q from '$lib/server/stats/queries.ts';
 import type { PageServerLoad } from './$types';
 
@@ -48,7 +48,17 @@ export const load: PageServerLoad = async ({ url, locals, setHeaders }) => {
 	setHeaders({ 'cache-control': 'private, max-age=0, must-revalidate' });
 
 	return {
-		range: { from: range.from.toISOString(), to: range.to.toISOString(), preset: range.preset },
+		range: {
+			from: range.from.toISOString(),
+			to: range.to.toISOString(),
+			preset: range.preset,
+			// The picker works in whole days and shows an inclusive end, so the
+			// half-open upper bound steps back inside the window first.
+			days: {
+				from: zonedDay(range.from, range.tz),
+				to: zonedDay(new Date(range.to.getTime() - 1), range.tz)
+			}
+		},
 		version: await dataVersion(),
 		totals,
 		byDay,

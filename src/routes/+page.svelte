@@ -93,7 +93,7 @@
 		<h1>Library</h1>
 		<p class="muted">{shortDate(t.firstAdded)} — {shortDate(t.lastAdded)}</p>
 	</div>
-	<RangePicker />
+	<RangePicker days={data.range.days} />
 </header>
 
 <section class="tiles">
