@@ -1,4 +1,5 @@
 import { sql, type SQL } from 'drizzle-orm';
+import type { ActiveFilters } from '../../filters.ts';
 import { query } from '../db/index.ts';
 import { cover, iso, thumb, trackArtistsJson, type ArtistRef } from './shared.ts';
 
@@ -7,12 +8,39 @@ import { cover, iso, thumb, trackArtistsJson, type ArtistRef } from './shared.ts
  * COUNT: the window is evaluated before LIMIT, so one round trip yields both
  * the page and the total. Empty pages report zero, which is what the pager
  * should show anyway.
+ *
+ * Window functions run after GROUP BY and HAVING, so this stays correct on the
+ * aggregate index queries even when a filter is applied in HAVING.
  */
 const total = sql`(count(*) over ())::int as total`;
 
 /** Matches a trigram-indexed name; `%` and `_` are escaped so they stay literal. */
 function like(expr: SQL, q: string): SQL {
 	return sql`${expr} ilike ${'%' + q.replace(/[\\%_]/g, (c) => '\\' + c) + '%'}`;
+}
+
+/**
+ * Looks a filter value up in a per-query table of SQL fragments.
+ *
+ * The value has already been checked against the group's vocabulary by
+ * `filterParams`, but this lookup is what actually keeps it out of the SQL:
+ * the fragments are literals written here, and an unrecognised value simply
+ * finds nothing.
+ */
+function clauseFor(value: string, table: Record<string, SQL>): SQL | null {
+	return (value && table[value]) || null;
+}
+
+/** ANDs the active fragments onto a WHERE that already ends in a condition. */
+function andAll(parts: (SQL | null)[]): SQL {
+	const active = parts.filter((p): p is SQL => p !== null);
+	return active.length ? sql` and ${sql.join(active, sql` and `)}` : sql``;
+}
+
+/** Same, as a HAVING clause — for predicates over aggregates. */
+function havingAll(parts: (SQL | null)[]): SQL {
+	const active = parts.filter((p): p is SQL => p !== null);
+	return active.length ? sql`having ${sql.join(active, sql` and `)}` : sql``;
 }
 
 // ------------------------------------------------------------------ liked
@@ -42,15 +70,32 @@ export interface LikedRow {
 	artists: ArtistRef[];
 }
 
+/** `copies` counts the recording across the whole library, so a liked track with no
+ *  canonical grouping (never resolved to an ISRC) counts as a single copy. */
+const COPIES_CLAUSES = (expr: SQL) => ({
+	dupes: sql`${expr} > 1`,
+	unique: sql`${expr} = 1`
+});
+
+const EXPLICIT_CLAUSES = (expr: SQL) => ({
+	yes: sql`${expr}`,
+	no: sql`not ${expr}`
+});
+
 export async function likedTracks(opts: {
 	order: SQL;
 	limit: number;
 	offset: number;
 	q: string;
+	filters: ActiveFilters;
 }): Promise<LikedRow[]> {
 	const filter = opts.q
 		? sql`and (${like(sql`st.name`, opts.q)} or ${like(sql`pa.name`, opts.q)} or ${like(sql`al.name`, opts.q)})`
 		: sql``;
+	const where = andAll([
+		clauseFor(opts.filters.copies, COPIES_CLAUSES(sql`coalesce(ct.copy_count, 1)`)),
+		clauseFor(opts.filters.explicit, EXPLICIT_CLAUSES(sql`st.explicit`))
+	]);
 	return query<LikedRow>(sql`
 		select ${total},
 		       st.id,
@@ -73,7 +118,7 @@ export async function likedTracks(opts: {
 		    select ar.name from track_artists ta join artists ar on ar.id = ta.artist_id
 		     where ta.track_id = st.id order by ta.position limit 1
 		  ) pa on true
-		 where sv.removed_at is null ${filter}
+		 where sv.removed_at is null ${filter}${where}
 		 order by ${opts.order}, st.id
 		 limit ${opts.limit} offset ${opts.offset}
 	`);
@@ -111,15 +156,27 @@ export interface LibraryRow {
 	artists: ArtistRef[];
 }
 
+const LIBRARY_SOURCE_CLAUSES = {
+	liked: sql`lc.liked`,
+	playlist: sql`lc.owned_playlist_count > 0`,
+	'liked-only': sql`lc.liked and lc.owned_playlist_count = 0`
+};
+
 export async function libraryRecordings(opts: {
 	order: SQL;
 	limit: number;
 	offset: number;
 	q: string;
+	filters: ActiveFilters;
 }): Promise<LibraryRow[]> {
 	const filter = opts.q
-		? sql`where (${like(sql`ct.title`, opts.q)} or ${like(sql`pa.name`, opts.q)} or ${like(sql`al.name`, opts.q)})`
+		? sql` and (${like(sql`ct.title`, opts.q)} or ${like(sql`pa.name`, opts.q)} or ${like(sql`al.name`, opts.q)})`
 		: sql``;
+	const where = andAll([
+		clauseFor(opts.filters.source, LIBRARY_SOURCE_CLAUSES),
+		clauseFor(opts.filters.copies, COPIES_CLAUSES(sql`ct.copy_count`)),
+		clauseFor(opts.filters.explicit, EXPLICIT_CLAUSES(sql`ct.explicit`))
+	]);
 	return query<LibraryRow>(sql`
 		select ${total},
 		       ct.id                 as "canonicalTrackId",
@@ -148,13 +205,28 @@ export async function libraryRecordings(opts: {
 		  join canonical_tracks ct on ct.id = lc.canonical_track_id
 		  left join albums al on al.id = ct.primary_album_id
 		  left join artists pa on pa.id = ct.primary_artist_id
-		  ${filter}
+		 where true${filter}${where}
 		 order by ${opts.order}, ct.id
 		 limit ${opts.limit} offset ${opts.offset}
 	`);
 }
 
 // ----------------------------------------------------------- index pages
+
+export const ARTIST_SORTS = {
+	tracks: 'count(distinct lc.canonical_track_id)',
+	name: 'a.name',
+	albums: 'count(distinct lc.primary_album_id)',
+	duration: 'sum(lc.duration_ms)',
+	popularity: 'a.popularity',
+	followers: 'a.followers_total'
+} as const;
+export type ArtistSort = keyof typeof ARTIST_SORTS;
+
+const FOLLOWED_CLAUSES = {
+	yes: sql`bool_or(fa.artist_id is not null)`,
+	no: sql`not bool_or(fa.artist_id is not null)`
+};
 
 export interface ArtistIndexRow {
 	total: number;
@@ -171,11 +243,21 @@ export interface ArtistIndexRow {
 }
 
 export async function artistIndex(opts: {
+	order: SQL;
 	limit: number;
 	offset: number;
 	q: string;
+	genre: string;
+	filters: ActiveFilters;
 }): Promise<ArtistIndexRow[]> {
-	const filter = opts.q ? sql`and ${like(sql`a.name`, opts.q)}` : sql``;
+	const filter = opts.q ? sql` and ${like(sql`a.name`, opts.q)}` : sql``;
+	// A genre is free text rather than a closed vocabulary, so it is bound as a
+	// parameter and matched exactly against the artist's own genre rows.
+	const genre = opts.genre
+		? sql` and exists (select 1 from artist_genres g
+		                    where g.artist_id = a.id and g.genre = ${opts.genre})`
+		: sql``;
+	const having = havingAll([clauseFor(opts.filters.followed, FOLLOWED_CLAUSES)]);
 	return query<ArtistIndexRow>(sql`
 		select ${total},
 		       a.id,
@@ -193,12 +275,63 @@ export async function artistIndex(opts: {
 		  join canonical_track_artists cta on cta.artist_id = a.id
 		  join library_canonical lc on lc.canonical_track_id = cta.canonical_track_id
 		  left join followed_artists fa on fa.artist_id = a.id and fa.removed_at is null
-		 where true ${filter}
+		 where true${filter}${genre}
 		 group by a.id, a.name, a.popularity, a.followers_total
-		 order by tracks desc, a.name
+		 ${having}
+		 order by ${opts.order}, a.name
 		 limit ${opts.limit} offset ${opts.offset}
 	`);
 }
+
+/**
+ * Genres that actually occur among the artists in the library, most common
+ * first — the vocabulary for the genre filter. Spotify hands out hundreds of
+ * these, so the tail is cut off rather than rendered into a select nobody can
+ * scan.
+ */
+export async function libraryGenres(limit = 40): Promise<{ genre: string; artists: number }[]> {
+	return query<{ genre: string; artists: number }>(sql`
+		select g.genre, count(distinct a.id)::int as artists
+		  from artist_genres g
+		  join artists a on a.id = g.artist_id
+		  join canonical_track_artists cta on cta.artist_id = a.id
+		  join library_canonical lc on lc.canonical_track_id = cta.canonical_track_id
+		 group by g.genre
+		 order by artists desc, g.genre
+		 limit ${limit}
+	`);
+}
+
+/** How much of the album is in the library, as a fraction — the "coverage" bar. */
+const albumShare = 'count(distinct st.canonical_track_id)::numeric / nullif(al.total_tracks, 0)';
+
+export const ALBUM_SORTS = {
+	tracks: 'count(distinct st.canonical_track_id)',
+	coverage: albumShare,
+	name: 'al.name',
+	artist: 'max(pa.name)',
+	released: 'al.release_date_start',
+	total: 'al.total_tracks',
+	popularity: 'al.popularity'
+} as const;
+export type AlbumSort = keyof typeof ALBUM_SORTS;
+
+const ALBUM_TYPE_CLAUSES = {
+	album: sql`al.album_type = 'album'`,
+	single: sql`al.album_type = 'single'`,
+	compilation: sql`al.album_type = 'compilation'`
+};
+
+const ALBUM_SAVED_CLAUSES = {
+	yes: sql`bool_or(sa.album_id is not null)`,
+	no: sql`not bool_or(sa.album_id is not null)`
+};
+
+/** Albums with an unknown track count match neither side; there is nothing to compare against. */
+const ALBUM_COVERAGE_CLAUSES = {
+	full: sql`count(distinct st.canonical_track_id) >= al.total_tracks`,
+	partial: sql`count(distinct st.canonical_track_id) < al.total_tracks`
+};
 
 export interface AlbumIndexRow {
 	total: number;
@@ -216,11 +349,18 @@ export interface AlbumIndexRow {
 }
 
 export async function albumIndex(opts: {
+	order: SQL;
 	limit: number;
 	offset: number;
 	q: string;
+	filters: ActiveFilters;
 }): Promise<AlbumIndexRow[]> {
-	const filter = opts.q ? sql`and (${like(sql`al.name`, opts.q)} or ${like(sql`pa.name`, opts.q)})` : sql``;
+	const filter = opts.q ? sql` and (${like(sql`al.name`, opts.q)} or ${like(sql`pa.name`, opts.q)})` : sql``;
+	const where = andAll([clauseFor(opts.filters.type, ALBUM_TYPE_CLAUSES)]);
+	const having = havingAll([
+		clauseFor(opts.filters.saved, ALBUM_SAVED_CLAUSES),
+		clauseFor(opts.filters.coverage, ALBUM_COVERAGE_CLAUSES)
+	]);
 	return query<AlbumIndexRow>(sql`
 		select ${total},
 		       al.id,
@@ -242,12 +382,35 @@ export async function albumIndex(opts: {
 		    select ar.id, ar.name from album_artists aa join artists ar on ar.id = aa.artist_id
 		     where aa.album_id = al.id order by aa.position limit 1
 		  ) pa on true
-		 where true ${filter}
-		 group by al.id, al.name, al.album_type, al.release_date, al.total_tracks, al.popularity
-		 order by tracks desc, al.release_date_start desc nulls last, al.name
+		 where true${filter}${where}
+		 group by al.id, al.name, al.album_type, al.release_date, al.release_date_start,
+		          al.total_tracks, al.popularity
+		 ${having}
+		 order by ${opts.order}, al.name
 		 limit ${opts.limit} offset ${opts.offset}
 	`);
 }
+
+export const PLAYLIST_SORTS = {
+	tracks: 's.stored',
+	name: 'p.name',
+	library: 's.in_library',
+	duration: 's.duration_ms',
+	added: 's.last_added',
+	owner: 'coalesce(u.display_name, p.owner_id)'
+} as const;
+export type PlaylistSort = keyof typeof PLAYLIST_SORTS;
+
+const PLAYLIST_OWNER_CLAUSES = {
+	mine: sql`p.is_owned`,
+	others: sql`not p.is_owned`
+};
+
+const PLAYLIST_ACCESS_CLAUSES = {
+	collab: sql`p.collaborative`,
+	public: sql`p.public`,
+	private: sql`p.public is false`
+};
 
 export interface PlaylistIndexRow {
 	total: number;
@@ -267,13 +430,19 @@ export interface PlaylistIndexRow {
 }
 
 export async function playlistIndex(opts: {
+	order: SQL;
 	limit: number;
 	offset: number;
 	q: string;
+	filters: ActiveFilters;
 }): Promise<PlaylistIndexRow[]> {
 	const filter = opts.q
-		? sql`and (${like(sql`p.name`, opts.q)} or ${like(sql`coalesce(p.description, '')`, opts.q)})`
+		? sql` and (${like(sql`p.name`, opts.q)} or ${like(sql`coalesce(p.description, '')`, opts.q)})`
 		: sql``;
+	const where = andAll([
+		clauseFor(opts.filters.owner, PLAYLIST_OWNER_CLAUSES),
+		clauseFor(opts.filters.access, PLAYLIST_ACCESS_CLAUSES)
+	]);
 	return query<PlaylistIndexRow>(sql`
 		select ${total},
 		       p.id,
@@ -301,8 +470,8 @@ export async function playlistIndex(opts: {
 		      left join library_tracks lt on lt.track_id = pt.track_id
 		     where pt.playlist_id = p.id
 		  ) s on true
-		 where p.removed_at is null ${filter}
-		 order by s.stored desc nulls last, p.name
+		 where p.removed_at is null${filter}${where}
+		 order by ${opts.order}, p.name
 		 limit ${opts.limit} offset ${opts.offset}
 	`);
 }

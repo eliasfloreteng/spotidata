@@ -1,9 +1,12 @@
 <script lang="ts">
 	import Chip from '$lib/components/Chip.svelte';
 	import Cover from '$lib/components/Cover.svelte';
+	import FilterBar from '$lib/components/FilterBar.svelte';
 	import Pager from '$lib/components/Pager.svelte';
 	import SearchBox from '$lib/components/SearchBox.svelte';
+	import SortTh from '$lib/components/SortTh.svelte';
 	import SpotifyLink from '$lib/components/SpotifyLink.svelte';
+	import { ALBUM_FILTERS } from '$lib/filters.ts';
 	import { num } from '$lib/utils/format.ts';
 
 	let { data } = $props();
@@ -15,12 +18,14 @@
 	<div>
 		<h1>Albums</h1>
 		<p class="muted">
-			{num(data.total)} albums{#if data.q} matching “{data.q}”{/if} — ranked by how many of their
-			tracks are in your library.
+			{num(data.total)} albums{#if data.q} matching “{data.q}”{/if} — every album with at least
+			one track in your library.
 		</p>
 	</div>
-	<SearchBox value={data.q} placeholder="Search albums or artists" keep={[]} />
+	<SearchBox value={data.q} placeholder="Search albums or artists" />
 </header>
+
+<FilterBar groups={ALBUM_FILTERS} active={data.filters} />
 
 <section class="card">
 	<div class="scroll">
@@ -28,13 +33,13 @@
 			<thead>
 				<tr>
 					<th class="idx">#</th>
-					<th>Album</th>
-					<th>Artist</th>
+					<SortTh key="name" label="Album" active={data.sort} dir={data.dir} initial="asc" />
+					<SortTh key="artist" label="Artist" active={data.sort} dir={data.dir} initial="asc" />
 					<th>Type</th>
-					<th class="r">Released</th>
-					<th class="r">Yours</th>
-					<th class="cov">Coverage</th>
-					<th class="r">Pop.</th>
+					<SortTh key="released" label="Released" active={data.sort} dir={data.dir} right />
+					<SortTh key="tracks" label="Yours" active={data.sort} dir={data.dir} right />
+					<SortTh key="coverage" label="Coverage" active={data.sort} dir={data.dir} />
+					<SortTh key="popularity" label="Pop." active={data.sort} dir={data.dir} right />
 					<th class="r"><span class="sr">Spotify</span></th>
 				</tr>
 			</thead>
@@ -137,7 +142,6 @@
 	.small {
 		font-size: 0.82rem;
 	}
-	th.cov,
 	td.cov {
 		padding-left: 14px;
 	}

@@ -1,23 +1,27 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { withParams } from '$lib/utils/qs.ts';
 
 	interface Props {
 		value: string;
 		placeholder?: string;
-		/** Params to carry across the search (sort order and so on). Page resets. */
-		keep?: string[];
 	}
-	let { value, placeholder = 'Search…', keep = ['sort', 'dir'] }: Props = $props();
+	let { value, placeholder = 'Search…' }: Props = $props();
 
+	/**
+	 * A GET form submits only its own fields, so the sort order and every active
+	 * filter ride along as hidden inputs — searching narrows the current view
+	 * rather than resetting it. Only the page number is dropped, since the
+	 * result set changes underneath it.
+	 */
 	const carried = $derived(
-		keep
-			.map((k) => [k, page.url.searchParams.get(k)] as const)
-			.filter((entry): entry is [string, string] => entry[1] !== null)
+		[...page.url.searchParams].filter(([name]) => name !== 'q' && name !== 'page')
 	);
+	const clearHref = $derived(withParams(page.url, { q: null, page: null }));
 </script>
 
 <form class="search" method="GET" action={page.url.pathname} role="search">
-	{#each carried as [name, v] (name)}
+	{#each carried as [name, v], i (i)}
 		<input type="hidden" {name} value={v} />
 	{/each}
 	<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
@@ -31,7 +35,7 @@
 	</svg>
 	<input name="q" type="search" {placeholder} {value} autocomplete="off" aria-label={placeholder} />
 	{#if value}
-		<a class="clear" href={page.url.pathname} aria-label="Clear search">×</a>
+		<a class="clear" href={clearHref} aria-label="Clear search">×</a>
 	{/if}
 </form>
 

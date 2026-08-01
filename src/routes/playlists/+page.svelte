@@ -1,12 +1,23 @@
 <script lang="ts">
 	import Chip from '$lib/components/Chip.svelte';
 	import Cover from '$lib/components/Cover.svelte';
+	import FilterBar from '$lib/components/FilterBar.svelte';
 	import Pager from '$lib/components/Pager.svelte';
 	import SearchBox from '$lib/components/SearchBox.svelte';
 	import SpotifyLink from '$lib/components/SpotifyLink.svelte';
+	import { PLAYLIST_FILTERS } from '$lib/filters.ts';
 	import { longDuration, num, plainText, shortDate } from '$lib/utils/format.ts';
 
 	let { data } = $props();
+
+	const SORTS = [
+		{ key: 'tracks', label: 'Tracks' },
+		{ key: 'name', label: 'Name', initial: 'asc' as const },
+		{ key: 'library', label: 'In library' },
+		{ key: 'duration', label: 'Time' },
+		{ key: 'added', label: 'Last add' },
+		{ key: 'owner', label: 'Owner', initial: 'asc' as const }
+	];
 
 	const owned = $derived(data.rows.filter((p) => p.isOwned).length);
 </script>
@@ -21,8 +32,16 @@
 			shown are yours and count toward the library.
 		</p>
 	</div>
-	<SearchBox value={data.q} placeholder="Search playlists" keep={[]} />
+	<SearchBox value={data.q} placeholder="Search playlists" />
 </header>
+
+<FilterBar
+	groups={PLAYLIST_FILTERS}
+	active={data.filters}
+	sorts={SORTS}
+	sort={data.sort}
+	dir={data.dir}
+/>
 
 <section class="card">
 	<ul class="list">

@@ -2,10 +2,12 @@
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import Cover from '$lib/components/Cover.svelte';
+	import FilterBar from '$lib/components/FilterBar.svelte';
 	import Pager from '$lib/components/Pager.svelte';
 	import SearchBox from '$lib/components/SearchBox.svelte';
 	import SortTh from '$lib/components/SortTh.svelte';
 	import SpotifyLink from '$lib/components/SpotifyLink.svelte';
+	import { LIBRARY_FILTERS } from '$lib/filters.ts';
 	import { num, shortDate, trackTime } from '$lib/utils/format.ts';
 	import { trackHref } from '$lib/utils/qs.ts';
 
@@ -24,6 +26,8 @@
 	</div>
 	<SearchBox value={data.q} placeholder="Search recordings" />
 </header>
+
+<FilterBar groups={LIBRARY_FILTERS} active={data.filters} />
 
 <section class="card">
 	<div class="scroll">

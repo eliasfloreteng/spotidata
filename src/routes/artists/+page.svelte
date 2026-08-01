@@ -1,12 +1,25 @@
 <script lang="ts">
 	import Cover from '$lib/components/Cover.svelte';
+	import FilterBar from '$lib/components/FilterBar.svelte';
 	import Pager from '$lib/components/Pager.svelte';
 	import SearchBox from '$lib/components/SearchBox.svelte';
+	import SelectFilter from '$lib/components/SelectFilter.svelte';
 	import SpotifyLink from '$lib/components/SpotifyLink.svelte';
+	import { ARTIST_FILTERS } from '$lib/filters.ts';
 	import { num, longDuration } from '$lib/utils/format.ts';
 
 	let { data } = $props();
 
+	const SORTS = [
+		{ key: 'tracks', label: 'Recordings' },
+		{ key: 'name', label: 'Name', initial: 'asc' as const },
+		{ key: 'albums', label: 'Albums' },
+		{ key: 'duration', label: 'Time' },
+		{ key: 'popularity', label: 'Popularity' },
+		{ key: 'followers', label: 'Followers' }
+	];
+
+	/** The bar is scaled to the current page, so it stays readable however the list is sorted. */
 	const peak = $derived(Math.max(1, ...data.rows.map((r) => r.tracks)));
 </script>
 
@@ -16,12 +29,22 @@
 	<div>
 		<h1>Artists</h1>
 		<p class="muted">
-			{num(data.total)} artists{#if data.q} matching “{data.q}”{/if} — ranked by distinct
-			recordings in your library.
+			{num(data.total)} artists{#if data.q} matching “{data.q}”{/if}{#if data.genre} in
+				{data.genre}{/if} — everyone credited on a recording in your library.
 		</p>
 	</div>
-	<SearchBox value={data.q} placeholder="Search artists" keep={[]} />
+	<SearchBox value={data.q} placeholder="Search artists" />
 </header>
+
+<FilterBar groups={ARTIST_FILTERS} active={data.filters} sorts={SORTS} sort={data.sort} dir={data.dir}>
+	<SelectFilter
+		param="genre"
+		label="Genre"
+		value={data.genre}
+		anyLabel="Any genre"
+		options={data.genres.map((g) => ({ value: g.genre, label: `${g.genre} (${g.artists})` }))}
+	/>
+</FilterBar>
 
 <section class="card">
 	<ol class="list" start={(data.page - 1) * data.pageSize + 1}>
