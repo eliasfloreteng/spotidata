@@ -17,6 +17,17 @@ import type { Range } from './range.ts';
 
 const win = (r: Range) => sql`first_added_at >= ${r.from} and first_added_at < ${r.to}`;
 
+/**
+ * Album-level stats count real releases only.
+ *
+ * A compilation is someone else's sequencing — a 40-track greatest-hits package
+ * or a label sampler outranks the records the library is actually built from,
+ * and the same recording usually sits on the original album anyway. A NULL type
+ * is an album we have not fetched in full yet, not a compilation, so it stays.
+ */
+const realAlbum = (alias: string) =>
+	sql`${sql.raw(alias)}.album_type is distinct from 'compilation'`;
+
 // ------------------------------------------------------------- headline
 
 export interface Totals {
@@ -36,14 +47,17 @@ export async function totals(r: Range): Promise<Totals> {
 		select count(*)::int                                    as recordings,
 		       coalesce(sum(copy_count_in_library), 0)::int     as copies,
 		       coalesce(sum(duration_ms), 0)::bigint            as "durationMs",
-		       count(distinct primary_artist_id)::int           as artists,
-		       count(distinct primary_album_id)::int            as albums,
+		       count(distinct lc.primary_artist_id)::int        as artists,
+		       count(distinct al.id)::int                       as albums,
 		       avg(case when liked then 1.0 else 0.0 end)       as "likedShare",
 		       avg(case when explicit then 1.0 else 0.0 end)    as "explicitShare",
 		       min(first_added_at)::text                        as "firstAdded",
 		       max(first_added_at)::text                        as "lastAdded"
-		  from library_canonical
-		 where ${win(r)}
+		  from library_canonical lc
+		  -- Joined rather than filtered: a track whose only release is a
+		  -- compilation still counts as a recording, it just adds no album.
+		  left join albums al on al.id = lc.primary_album_id and ${realAlbum('al')}
+		 where lc.${win(r)}
 	`);
 	return (
 		rows[0] ?? {
@@ -185,13 +199,14 @@ export async function topArtists(r: Range, limit = 25): Promise<ArtistCount[]> {
 	const rows = await query<ArtistCount>(sql`
 		select a.id, a.name,
 		       count(distinct lc.canonical_track_id)::int as tracks,
-		       count(distinct lc.primary_album_id)::int   as albums,
+		       count(distinct al.id)::int                 as albums,
 		       (select url from artist_images
 		         where artist_id = a.id order by position desc limit 1) as "imageUrl"
 		  from library_canonical lc
 		  join canonical_track_artists cta
 		    on cta.canonical_track_id = lc.canonical_track_id
 		  join artists a on a.id = cta.artist_id
+		  left join albums al on al.id = lc.primary_album_id and ${realAlbum('al')}
 		 where cta.on_representative and lc.${win(r)}
 		 group by a.id, a.name
 		 order by tracks desc, a.name
@@ -217,6 +232,9 @@ export interface AlbumCompletion {
  * recording, so a song saved off a compilation still credits the original
  * album — "do I have this record?". Strict counts only the exact track rows
  * in the library.
+ *
+ * Either way the compilation itself is never a row here: it is a candidate
+ * album only in the sense that it happens to carry the recording.
  */
 export async function albumCompletion(
 	r: Range,
@@ -236,7 +254,7 @@ export async function albumCompletion(
 		  from library_canonical lc
 		  join spotify_tracks st on st.canonical_track_id = lc.canonical_track_id
 		  join albums al on al.id = st.album_id
-		 where lc.${win(r)}
+		 where ${realAlbum('al')} and lc.${win(r)}
 		   ${strict ? sql`and st.id in (select track_id from library_tracks)` : sql``}
 		 group by al.id, al.name, al.total_tracks
 		having al.total_tracks >= ${minTracks}
@@ -261,7 +279,7 @@ export async function topLabels(r: Range, limit = 15): Promise<LabelCount[]> {
 		  from library_canonical lc
 		  join spotify_tracks st on st.canonical_track_id = lc.canonical_track_id
 		  join albums al on al.id = st.album_id
-		 where al.label is not null and lc.${win(r)}
+		 where al.label is not null and ${realAlbum('al')} and lc.${win(r)}
 		 group by al.label
 		 order by tracks desc
 		 limit ${limit}
