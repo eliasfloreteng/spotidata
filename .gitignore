@@ -39,3 +39,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 !docs/screenshots/*.png
 screenshots
 backups
+
+# Claude
+CLAUDE.local.md
