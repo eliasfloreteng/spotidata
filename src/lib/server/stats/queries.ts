@@ -141,16 +141,22 @@ export interface BumpRow {
 }
 
 /**
- * Standing of the biggest artists at the end of each year: `value` is how many
- * of their recordings the library held by then, `delta` how many arrived that
- * year, and `rank` their position among the N series returned (not across the
- * whole library).
+ * The top N artists of each year: `value` is how many of their recordings the
+ * library held by the end of it, `delta` how many arrived that year, and `rank`
+ * their true standing across the whole library — so #3 means third overall that
+ * year, not third among the lines that happen to be drawn.
  *
  * Ranking the running total rather than the year's adds is what makes this
  * readable. A year's adds are spiky — an artist with a quiet year drops
  * hundreds of places and their line vanishes — while the total moves a place
- * or two at a time, so every artist holds a rank in every year after their
- * first and the lines stay continuous.
+ * or two at a time, so an artist near the top stays near the top.
+ *
+ * Rows are the union of every year's top N, which is wider than N: an artist
+ * contributes rows only for the years they actually placed, and their line
+ * breaks over the years they did not. That gap is the honest reading — they
+ * were not a top artist that year — and it is why the cohort is not capped at
+ * N artists. Doing that (rank the survivors against each other) is what let a
+ * #659 artist draw at #10.
  */
 export async function topArtistsByYear(r: Range, topN = 8): Promise<BumpRow[]> {
 	const rows = await query<BumpRow>(sql`
@@ -186,28 +192,17 @@ export async function topArtistsByYear(r: Range, topN = 8): Promise<BumpRow[]> {
 		   where total > 0
 		     and yr >= extract(year from ${r.from}::timestamptz at time zone ${r.tz})::int
 		), ranked as (
+		  -- Ranked against the whole library, not against the cohort: this is the
+		  -- number the chart prints on its axis, so it has to be the real one.
 		  select *, row_number() over (partition by yr order by total desc, artist_id) as rk
 		    from shown
-		), keep as (
-		  -- Everyone that ever held a top-N place, best placing first, capped at
-		  -- the N lines the chart can actually tell apart. Ordering by the peak
-		  -- rather than the final standing keeps an artist who led for years and
-		  -- then went quiet — that fall is the story the chart exists to show.
-		  select artist_id
-		    from ranked
-		   where rk <= ${topN}
-		   group by artist_id
-		   order by min(rk), max(total) desc
-		   limit ${topN}
 		)
 		select r.yr as period, r.artist_id as key, a.name as label,
-		       row_number() over (partition by r.yr order by r.total desc, r.artist_id)::int
-		         as rank,
-		       r.total as value, r.added::int as delta
+		       r.rk::int as rank, r.total as value, r.added::int as delta
 		  from ranked r
-		  join keep k on k.artist_id = r.artist_id
 		  join artists a on a.id = r.artist_id
-		 order by r.yr, r.total desc, r.artist_id
+		 where r.rk <= ${topN}
+		 order by r.yr, r.rk
 	`);
 	return rows;
 }

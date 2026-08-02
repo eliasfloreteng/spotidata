@@ -114,12 +114,29 @@
 	const singlePeriod = $derived(periods.length < 2);
 
 	/**
-	 * Below this the periods sit closer together than a dot is wide and the
-	 * crossings stop being readable, so the chart scrolls instead. Both label
+	 * A series that only holds a place for part of the span is labelled where it
+	 * enters or leaves, and that label sits inside the plot rather than in a
+	 * gutter — so the periods have to stand a label apart, not just a dot apart,
+	 * or the interior names run into their neighbours.
+	 */
+	const interiorLabels = $derived(
+		series.some((s) => {
+			const first = s.points.findIndex((p) => p !== null);
+			const revIdx = [...s.points].reverse().findIndex((p) => p !== null);
+			const last = revIdx < 0 ? -1 : s.points.length - 1 - revIdx;
+			return first > 0 || (last >= 0 && last < periods.length - 1);
+		})
+	);
+
+	/**
+	 * Below this the periods sit closer together than their marks are wide and
+	 * the crossings stop being readable, so the chart scrolls instead. Both label
 	 * gutters have to fit inside it or the plot area itself goes to nothing.
 	 */
 	const minWidth = $derived(
-		singlePeriod ? 0 : periods.length * 46 + 2 * (labelWidth + RANK_GUTTER)
+		singlePeriod
+			? 0
+			: periods.length * (interiorLabels ? labelWidth : 46) + 2 * (labelWidth + RANK_GUTTER)
 	);
 
 	/**
@@ -256,6 +273,17 @@
 			{@const tail = lastIdx >= 0 ? (s.points[lastIdx] ?? null) : null}
 			{@const headX = x(String(periods[firstIdx] ?? '')) ?? 0}
 			{@const tailX = x(String(periods[lastIdx] ?? '')) ?? 0}
+			<!--
+				A series that holds a place in exactly one period is a single dot, and
+				both of its ends are that same dot — so it takes one label rather than
+				two printed back to back around it. It goes on whichever side lands in
+				a gutter: the right when the dot sits in the last period, the left
+				otherwise.
+			-->
+			{@const oneDot = firstIdx >= 0 && firstIdx === lastIdx}
+			{@const atLastPeriod = lastIdx === periods.length - 1}
+			{@const showHead = head !== null && !singlePeriod && !(oneDot && atLastPeriod)}
+			{@const showTail = tail !== null && (!oneDot || singlePeriod || atLastPeriod)}
 			<g class="series" opacity={dim ? 0.14 : 1}>
 				{#each s.points as pt, i (i)}
 					{#if pt}
@@ -290,12 +318,12 @@
 
 				<!-- direct labels at both ends: the secondary encoding that lets 8
 				     crossing series share a palette validated for adjacency only -->
-				{#if head && !singlePeriod}
+				{#if showHead && head}
 					<text class="end-label" text-anchor="end" x={headX - RANK_GUTTER} y={y(head.rank)}
 						>{s.label}</text
 					>
 				{/if}
-				{#if tail}
+				{#if showTail && tail}
 					<text class="end-label" text-anchor="start" x={tailX + RANK_GUTTER} y={y(tail.rank)}
 						>{s.label}</text
 					>

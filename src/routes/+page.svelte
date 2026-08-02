@@ -217,9 +217,9 @@
 	<BumpChart
 		data={data.bump}
 		title="Top artists by year"
-		topN={10}
+		topN={8}
 		height={430}
-		subtitle="Rank by recordings held at the end of each year — hover a line to isolate it"
+		subtitle="The eight biggest artists each year by recordings held — a line breaks over the years it left the top eight"
 		unit="tracks in library"
 		deltaLabel="added that year"
 	/>
