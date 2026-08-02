@@ -16,6 +16,24 @@
 	const current = $derived(page.url.pathname);
 	const isActive = (href: string) =>
 		href === '/' ? current === '/' : current.startsWith(href);
+
+	let navList = $state<HTMLUListElement | null>(null);
+
+	/**
+	 * On a phone the destinations live in a lane that scrolls sideways, so the
+	 * current one can start out of view — the page then gives no sign of where
+	 * you are. Centre it in the lane, adjusting the lane's own scroll offset
+	 * rather than calling scrollIntoView, which would also move the page.
+	 * A no-op wherever the lane is wide enough to show everything.
+	 */
+	$effect(() => {
+		current;
+		const link = navList?.querySelector<HTMLElement>('a.on');
+		if (!navList || !link) return;
+		const lane = navList.getBoundingClientRect();
+		const target = link.getBoundingClientRect();
+		navList.scrollLeft += target.left - lane.left - (lane.width - target.width) / 2;
+	});
 </script>
 
 <div class="app">
@@ -24,7 +42,7 @@
 			<span class="mark" aria-hidden="true"></span>
 			<span>Spotidata</span>
 		</a>
-		<ul>
+		<ul bind:this={navList}>
 			{#each NAV as item (item.href)}
 				<li>
 					<a href={item.href} class:on={isActive(item.href)} aria-current={isActive(item.href) ? 'page' : undefined}>
@@ -59,13 +77,20 @@
 	.app {
 		max-width: 1220px;
 		margin: 0 auto;
-		padding: 0 22px 90px;
+		/* max() rather than + : the notch gutter replaces the page gutter in
+		   landscape instead of stacking on top of it. */
+		padding-left: max(var(--page-px), env(safe-area-inset-left));
+		padding-right: max(var(--page-px), env(safe-area-inset-right));
+		padding-bottom: calc(80px + env(safe-area-inset-bottom));
 	}
 	nav {
 		display: flex;
 		align-items: center;
 		gap: 22px;
 		padding: 18px 0 22px;
+		flex-wrap: wrap;
+	}
+	nav ul {
 		flex-wrap: wrap;
 	}
 	.brand {
@@ -95,9 +120,11 @@
 		font-size: 0.88rem;
 		color: var(--text-muted);
 	}
-	nav ul a:hover {
-		color: var(--text);
-		background: rgba(255, 255, 255, 0.04);
+	@media (hover: hover) {
+		nav ul a:hover {
+			color: var(--text);
+			background: rgba(255, 255, 255, 0.04);
+		}
 	}
 	nav ul a.on {
 		color: #ddd6fe;
@@ -115,9 +142,11 @@
 		font-size: 0.82rem;
 		color: var(--text-muted);
 	}
-	.chip:hover {
-		color: var(--text);
-		border-color: var(--hairline-strong);
+	@media (hover: hover) {
+		.chip:hover {
+			color: var(--text);
+			border-color: var(--hairline-strong);
+		}
 	}
 	.chip.live {
 		color: #c4b5fd;
@@ -156,5 +185,60 @@
 	}
 	.alert a {
 		text-decoration: underline;
+	}
+
+	/* ── Phone header ──────────────────────────────────────────────────────
+	   Six destinations do not fit one phone row, and wrapping them pushed the
+	   bar to three lines. Instead the links become their own full-bleed lane
+	   that scrolls sideways, under a compact brand row — and the whole bar
+	   sticks, because every page here is long enough to lose the nav. */
+	@media (max-width: 760px) {
+		nav {
+			position: sticky;
+			top: 0;
+			z-index: 20;
+			gap: 10px;
+			padding: calc(10px + env(safe-area-inset-top)) 0 8px;
+			margin-inline: calc(max(var(--page-px), env(safe-area-inset-left)) * -1);
+			padding-inline: max(var(--page-px), env(safe-area-inset-left));
+			background: color-mix(in srgb, var(--bg) 86%, transparent);
+			backdrop-filter: blur(14px);
+			-webkit-backdrop-filter: blur(14px);
+			border-bottom: 1px solid var(--hairline);
+		}
+		nav ul {
+			order: 3;
+			flex: 1 0 100%;
+			flex-wrap: nowrap;
+			overflow-x: auto;
+			overscroll-behavior-x: contain;
+			scroll-snap-type: x proximity;
+			scrollbar-width: none;
+			/* Full-bleed lane: the active pill can sit flush to the screen edge,
+			   which is what makes it read as scrollable. */
+			margin-inline: calc(max(var(--page-px), env(safe-area-inset-left)) * -1);
+			padding-inline: max(var(--page-px), env(safe-area-inset-left));
+		}
+		nav ul::-webkit-scrollbar {
+			display: none;
+		}
+		nav ul li {
+			flex: none;
+			scroll-snap-align: center;
+		}
+		nav ul a {
+			padding: 8px 14px;
+			font-size: 0.92rem;
+		}
+		.brand {
+			font-size: 0.98rem;
+		}
+		.chip {
+			padding: 8px 14px;
+			font-size: 0.85rem;
+		}
+		.alert {
+			margin-top: 12px;
+		}
 	}
 </style>

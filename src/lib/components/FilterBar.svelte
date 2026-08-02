@@ -115,4 +115,21 @@
 	.clear:hover {
 		color: var(--text);
 	}
+
+	@media (pointer: coarse) {
+		/* A 24px pill is a cursor target, not a finger one. */
+		.chip {
+			padding: 8px 14px;
+			font-size: 0.82rem;
+		}
+		.clear {
+			padding: 8px 2px;
+			font-size: 0.82rem;
+		}
+	}
+	@media (max-width: 640px) {
+		.bar {
+			gap: 8px 14px;
+		}
+	}
 </style>

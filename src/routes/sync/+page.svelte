@@ -172,26 +172,27 @@
 
 <section class="card">
 	<h2>Phases</h2>
-	<table>
-		<thead>
-			<tr>
-				<th>Phase</th><th>Status</th>
-				<th class="r">Progress</th><th class="r">Rows</th>
-				<th class="r">Rate</th><th class="r">ETA</th>
-			</tr>
-		</thead>
-		<tbody>
-			{#each status.phases as p (p.key)}
-				<tr class:dim={p.status === 'pending' || p.status === 'skipped'}>
-					<td>{p.label}</td>
-					<td><span class="pill {toneFor(p.status)}">{p.status}</span></td>
-					<td class="r">
-						<div class="bar-row">
-							<div class="bar">
-								<div
-									class="fill"
-									style="width:{p.total > 0 ? Math.min(100, (p.done / p.total) * 100) : 0}%"
-								></div>
+	<div class="scroll-x">
+		<table>
+			<thead>
+				<tr>
+					<th>Phase</th><th>Status</th>
+					<th class="r">Progress</th><th class="r">Rows</th>
+					<th class="r">Rate</th><th class="r">ETA</th>
+				</tr>
+			</thead>
+			<tbody>
+				{#each status.phases as p (p.key)}
+					<tr class:dim={p.status === 'pending' || p.status === 'skipped'}>
+						<td>{p.label}</td>
+						<td><span class="pill {toneFor(p.status)}">{p.status}</span></td>
+						<td class="r">
+							<div class="bar-row">
+								<div class="bar">
+									<div
+										class="fill"
+										style="width:{p.total > 0 ? Math.min(100, (p.done / p.total) * 100) : 0}%"
+									></div>
 							</div>
 							<span class="num small">{num(p.done)}/{num(p.total)}</span>
 						</div>
@@ -200,9 +201,10 @@
 					<td class="r num small">{p.rate ? `${p.rate.toFixed(1)}/s` : '—'}</td>
 					<td class="r num small">{duration(p.etaSeconds)}</td>
 				</tr>
-			{/each}
-		</tbody>
-	</table>
+				{/each}
+			</tbody>
+		</table>
+	</div>
 </section>
 
 <div class="split">
@@ -257,22 +259,24 @@
 
 <section class="card">
 	<h2>Recent runs</h2>
-	<table>
-		<thead>
-			<tr><th>#</th><th>Mode</th><th>Status</th><th class="r">Requests</th><th class="r">Started</th></tr>
-		</thead>
-		<tbody>
-			{#each data.runs as r (r.id)}
-				<tr>
-					<td class="num">{r.id}</td>
-					<td>{r.mode}</td>
-					<td><span class="pill {toneFor(r.status)}">{r.status}</span></td>
-					<td class="r num">{r.apiRequests > 0 ? num(r.apiRequests) : '—'}</td>
-					<td class="r faint small">{relativeTime(r.startedAt)}</td>
-				</tr>
-			{/each}
-		</tbody>
-	</table>
+	<div class="scroll-x">
+		<table>
+			<thead>
+				<tr><th>#</th><th>Mode</th><th>Status</th><th class="r">Requests</th><th class="r">Started</th></tr>
+			</thead>
+			<tbody>
+				{#each data.runs as r (r.id)}
+					<tr>
+						<td class="num">{r.id}</td>
+						<td>{r.mode}</td>
+						<td><span class="pill {toneFor(r.status)}">{r.status}</span></td>
+						<td class="r num">{r.apiRequests > 0 ? num(r.apiRequests) : '—'}</td>
+						<td class="r faint small">{relativeTime(r.startedAt)}</td>
+					</tr>
+					{/each}
+				</tbody>
+			</table>
+	</div>
 </section>
 
 <style>
@@ -292,8 +296,25 @@
 		gap: 8px;
 	}
 	section {
-		padding: 18px 20px;
+		padding: var(--card-py) var(--card-px);
 		margin-bottom: var(--gap);
+	}
+	/* The run summary is a long sentence; sharing a row with two buttons on a
+	   phone left it three words wide. Title, then summary, then the actions —
+	   which get the full width, since starting a resync is the reason to be
+	   on this page from a phone at all. */
+	@media (max-width: 640px) {
+		.head {
+			flex-direction: column;
+			gap: 12px;
+		}
+		.actions {
+			width: 100%;
+		}
+		.actions :global(.btn) {
+			flex: 1;
+			justify-content: center;
+		}
 	}
 	h2 {
 		margin-bottom: 14px;
@@ -305,6 +326,11 @@
 		display: grid;
 		grid-template-columns: 1.6fr 1fr;
 		gap: var(--gap);
+	}
+	/* A track's auto minimum is min-content; without this the widest metric
+	   name decides the page width. */
+	.split > :global(*) {
+		min-width: 0;
 	}
 	@media (max-width: 860px) {
 		.split {
@@ -381,6 +407,9 @@
 		width: 100%;
 		border-collapse: collapse;
 		font-size: 0.9rem;
+		/* Under this the phase name wraps to four lines and the rate runs into
+		   the row count; the lane scrolls instead. */
+		min-width: 560px;
 	}
 	th {
 		text-align: left;
@@ -389,10 +418,15 @@
 		font-size: 0.78rem;
 		padding-bottom: 8px;
 		border-bottom: 1px solid var(--hairline);
+		white-space: nowrap;
 	}
 	td {
-		padding: 7px 0;
+		padding: 7px 10px 7px 0;
 		border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+	}
+	th:last-child,
+	td:last-child {
+		padding-right: 0;
 	}
 	th.r,
 	td.r {

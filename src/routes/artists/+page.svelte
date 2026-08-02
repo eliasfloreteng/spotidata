@@ -88,7 +88,7 @@
 		font-size: 0.86rem;
 	}
 	.card {
-		padding: 10px 18px 16px;
+		padding: 10px var(--card-px) var(--card-py);
 	}
 	.list {
 		list-style: none;
@@ -157,5 +157,25 @@
 	.empty {
 		padding: 30px 0;
 		justify-content: center;
+	}
+
+	/* Phone: the row keeps its identity column and drops the comparison bar —
+	   60px of track next to a photo and a name compares nothing, and the count
+	   it duplicates is already the first thing in the row. */
+	@media (max-width: 640px) {
+		.list li {
+			gap: 10px;
+			padding: 10px 0;
+		}
+		.bar {
+			display: none;
+		}
+		.rank {
+			width: 34px;
+			font-size: 0.88rem;
+		}
+		.who {
+			flex: 1 1 auto;
+		}
 	}
 </style>

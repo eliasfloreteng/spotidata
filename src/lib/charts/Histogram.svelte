@@ -103,7 +103,7 @@
 	subtitle={subtitle ?? (clean.length > 0 ? `${fmtInt(clean.length)} ${unit} · median ${xFormat(mid)}` : undefined)}
 	ariaLabel={label}
 	{height}
-	margin={{ top: 12, right: 14, bottom: 30, left: 46 }}
+	margin={(w: number) => (w < 420 ? { top: 12, right: 8, bottom: 28, left: 32 } : { top: 12, right: 14, bottom: 30, left: 46 })}
 	empty={clean.length === 0}
 >
 	{#snippet children(g: Geometry)}

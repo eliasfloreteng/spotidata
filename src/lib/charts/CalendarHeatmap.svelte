@@ -169,6 +169,14 @@
 	const height = (innerWidth: number) =>
 		Math.max(60, blocks.length * blockHeight(innerWidth) - BLOCK_GAP + 4);
 
+	/**
+	 * A year is 53 columns wide however narrow the card is, and `step` floors the
+	 * pitch at 3px — cells that small are a texture, not a reading. The floor
+	 * here is the pitch at which a month label still fits between two of them;
+	 * under it the calendar scrolls sideways like every other commit graph.
+	 */
+	const minWidth = $derived(maxColumns * 9 + GUTTER + 14);
+
 	const total = $derived(parsed.reduce((t, d) => t + d.value, 0));
 	const activeDays = $derived(parsed.filter((d) => d.value > 0).length);
 	const peak = $derived(max(parsed, (d) => d.value) ?? 0);
@@ -188,6 +196,7 @@
 	{subtitle}
 	ariaLabel={label}
 	{height}
+	{minWidth}
 	margin={{ top: 4, right: 8, bottom: 4, left: 6 }}
 	empty={parsed.length === 0}
 >

@@ -173,4 +173,44 @@
 	.apply:hover {
 		border-color: var(--accent);
 	}
+
+	/* ── Phone ──────────────────────────────────────────────────────────────
+	   Seven presets never fit a phone row. Rather than wrapping the pill group
+	   into a lumpy two-line blob, it keeps its shape and scrolls, full width so
+	   it reads as a control strip instead of a stray right-aligned cluster. */
+	@media (max-width: 640px) {
+		.picker {
+			align-items: stretch;
+			width: 100%;
+		}
+		.range {
+			display: flex;
+			overflow-x: auto;
+			overscroll-behavior-x: contain;
+			scrollbar-width: none;
+		}
+		.range::-webkit-scrollbar {
+			display: none;
+		}
+		.opt {
+			flex: none;
+			padding: 8px 14px;
+			font-size: 0.85rem;
+		}
+		.span {
+			justify-content: flex-start;
+		}
+		.span label {
+			flex: 1 1 140px;
+		}
+		.span input {
+			flex: 1;
+			min-width: 0;
+			padding: 8px 10px;
+		}
+		.apply {
+			flex: none;
+			padding: 9px 18px;
+		}
+	}
 </style>

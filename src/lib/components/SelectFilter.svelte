@@ -83,4 +83,20 @@
 		font-family: inherit;
 		cursor: pointer;
 	}
+
+	@media (max-width: 640px) {
+		/* The genre vocabulary is long enough that the native picker is the right
+		   control on a phone — it just needs a row of its own to be tappable. */
+		.wrap {
+			display: flex;
+			width: 100%;
+			gap: 8px;
+		}
+		select {
+			flex: 1;
+			max-width: none;
+			min-width: 0;
+			padding: 8px 12px;
+		}
+	}
 </style>

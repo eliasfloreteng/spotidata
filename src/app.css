@@ -29,6 +29,11 @@
 	--radius-lg: 22px;
 
 	--gap: 18px;
+	/* Page gutter and card padding are tokens because the full-bleed scroll
+	   lanes below have to cancel them exactly. */
+	--page-px: 22px;
+	--card-px: 18px;
+	--card-py: 16px;
 	--shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 32px rgba(0, 0, 0, 0.35);
 
 	--font: 'Inter var', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui,
@@ -36,6 +41,19 @@
 	--mono: 'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, monospace;
 
 	color-scheme: dark;
+}
+
+/* Phone: tighter everything. One place, so a card, a chart and a scroll lane
+   never disagree about how wide the gutter is. */
+@media (max-width: 640px) {
+	:root {
+		--gap: 12px;
+		--page-px: 14px;
+		--card-px: 14px;
+		--card-py: 14px;
+		--radius: 14px;
+		--radius-lg: 18px;
+	}
 }
 
 *,
@@ -55,6 +73,9 @@ body {
 	line-height: 1.5;
 	-webkit-font-smoothing: antialiased;
 	text-rendering: optimizeLegibility;
+	/* Landscape rotation must not silently rescale the type. */
+	-webkit-text-size-adjust: 100%;
+	text-size-adjust: 100%;
 }
 
 body {
@@ -76,21 +97,42 @@ h4 {
 }
 
 h1 {
-	font-size: 1.6rem;
+	font-size: clamp(1.35rem, 5.4vw, 1.6rem);
 }
 h2 {
-	font-size: 1.15rem;
+	font-size: clamp(1.05rem, 4vw, 1.15rem);
 }
 h3 {
 	font-size: 0.95rem;
 }
 
+/* Long unbroken strings — track titles, playlist names, ISRCs — must not be
+   what makes the page scroll sideways. */
+h1,
+h2,
+h3,
+h4,
+p {
+	overflow-wrap: break-word;
+}
+
 a {
 	color: inherit;
 	text-decoration: none;
+	/* The grey flash fires on scroll-start too; :active below is the real signal. */
+	-webkit-tap-highlight-color: transparent;
 }
-a:hover {
-	color: #fff;
+/* Hover effects only where a cursor exists — on touch they stick after a tap
+   and read as a stuck selection. */
+@media (hover: hover) {
+	a:hover {
+		color: #fff;
+	}
+}
+@media (hover: none) {
+	a:active {
+		color: #fff;
+	}
 }
 
 /* Every number in the UI is tabular so columns and deltas do not jitter. */
@@ -107,6 +149,41 @@ select,
 textarea {
 	font: inherit;
 	color: inherit;
+}
+
+button,
+select,
+[role='button'] {
+	-webkit-tap-highlight-color: transparent;
+}
+
+/* iOS zooms the whole page when a field under 16px takes focus, and never zooms
+   back out. Every control the app ships is smaller than that by design, so the
+   floor is reinstated for touch only — the rendered size on a pointer device is
+   left exactly as designed. */
+@media (pointer: coarse) {
+	input,
+	select,
+	textarea {
+		font-size: max(16px, 1em);
+	}
+}
+
+/* Wide content — a table, a dense chart — scrolls in its own lane rather than
+   making the page scroll sideways. On a phone the lane runs to the card edges,
+   so the first column starts where the text does but the last one can still be
+   dragged into view. */
+.scroll-x {
+	overflow-x: auto;
+	overscroll-behavior-x: contain;
+	-webkit-overflow-scrolling: touch;
+	scrollbar-width: thin;
+}
+@media (max-width: 640px) {
+	.scroll-x {
+		margin-inline: calc(var(--card-px) * -1);
+		padding-inline: var(--card-px);
+	}
 }
 
 .card {
@@ -137,12 +214,21 @@ textarea {
 		border-color 0.15s ease,
 		transform 0.1s ease;
 }
-.btn:hover {
-	background: var(--card-hover);
-	border-color: rgba(255, 255, 255, 0.2);
+@media (hover: hover) {
+	.btn:hover {
+		background: var(--card-hover);
+		border-color: rgba(255, 255, 255, 0.2);
+	}
 }
 .btn:active {
 	transform: translateY(1px);
+}
+/* A finger needs a target a cursor does not. */
+@media (pointer: coarse) {
+	.btn {
+		min-height: 44px;
+		padding: 10px 18px;
+	}
 }
 .btn-primary {
 	background: linear-gradient(100deg, var(--accent), var(--accent-2));
@@ -150,9 +236,11 @@ textarea {
 	color: #fff;
 	font-weight: 550;
 }
-.btn-primary:hover {
-	filter: brightness(1.1);
-	background: linear-gradient(100deg, var(--accent), var(--accent-2));
+@media (hover: hover) {
+	.btn-primary:hover {
+		filter: brightness(1.1);
+		background: linear-gradient(100deg, var(--accent), var(--accent-2));
+	}
 }
 
 :focus-visible {

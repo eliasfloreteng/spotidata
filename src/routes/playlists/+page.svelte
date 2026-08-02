@@ -91,7 +91,7 @@
 		font-size: 0.86rem;
 	}
 	.card {
-		padding: 10px 18px 16px;
+		padding: 10px var(--card-px) var(--card-py);
 	}
 	.list {
 		list-style: none;
@@ -143,5 +143,29 @@
 	.empty {
 		padding: 30px 0;
 		justify-content: center;
+	}
+
+	@media (max-width: 640px) {
+		.list li {
+			gap: 10px;
+			align-items: flex-start;
+		}
+		.pl {
+			gap: 10px;
+			align-items: flex-start;
+		}
+		.pl :global(img),
+		.pl :global(.placeholder) {
+			max-width: 44px;
+			max-height: 44px;
+		}
+		.name {
+			font-size: 0.9rem;
+		}
+		/* The stats line is five facts long; on a phone it wraps to two rows
+		   rather than being truncated, since the last of them is the owner. */
+		.desc {
+			font-size: 0.76rem;
+		}
 	}
 </style>

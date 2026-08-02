@@ -73,4 +73,24 @@
 	.clear:hover {
 		color: var(--text);
 	}
+
+	@media (max-width: 640px) {
+		/* Its own full-width row under the page title — the field is the primary
+		   way into a list of thousands on a phone, not a right-hand accessory. */
+		.search {
+			display: flex;
+			width: 100%;
+			height: 44px;
+			padding: 0 14px;
+		}
+		input[name='q'] {
+			width: 100%;
+			min-width: 0;
+		}
+		.clear {
+			flex: none;
+			padding: 0 4px;
+			font-size: 1.3rem;
+		}
+	}
 </style>

@@ -83,37 +83,39 @@
 		{#if data.topTracks.length === 0}
 			<p class="faint">Nothing by this artist is in your library.</p>
 		{:else}
-			<table>
-				<thead>
-					<tr>
-						<th class="idx">#</th><th>Track</th><th>Album</th>
-						<th class="r">Length</th><th class="r">Pop.</th><th class="r">Added</th>
-					</tr>
-				</thead>
-				<tbody>
-					{#each data.topTracks as t, i (t.canonicalTrackId)}
+			<div class="scroll-x">
+				<table>
+					<thead>
 						<tr>
-							<td class="idx num faint">{i + 1}</td>
-							<td>
-								<div class="cell">
-									<Cover src={t.cover} alt="{t.albumName ?? t.title} cover" size={32} />
-									<div>
-										<a href={trackHref(t.canonicalTrackId)}>{t.title}</a>
-										{#if t.liked}<span class="heart" title="Liked">♥</span>{/if}
-										{#if t.copyCount > 1}<span class="faint xs"> · {t.copyCount} copies</span>{/if}
-									</div>
-								</div>
-							</td>
-							<td class="muted small">
-								{#if t.albumId}<a href="/album/{t.albumId}">{t.albumName}</a>{:else}—{/if}
-							</td>
-							<td class="r num muted">{trackTime(t.durationMs)}</td>
-							<td class="r num">{t.popularity ?? '—'}</td>
-							<td class="r muted small nowrap">{shortDate(t.firstAddedAt)}</td>
+							<th class="idx">#</th><th>Track</th><th>Album</th>
+							<th class="r">Length</th><th class="r">Pop.</th><th class="r">Added</th>
 						</tr>
-					{/each}
-				</tbody>
-			</table>
+					</thead>
+					<tbody>
+						{#each data.topTracks as t, i (t.canonicalTrackId)}
+							<tr>
+								<td class="idx num faint">{i + 1}</td>
+								<td>
+									<div class="cell">
+										<Cover src={t.cover} alt="{t.albumName ?? t.title} cover" size={32} />
+										<div>
+											<a href={trackHref(t.canonicalTrackId)}>{t.title}</a>
+											{#if t.liked}<span class="heart" title="Liked">♥</span>{/if}
+											{#if t.copyCount > 1}<span class="faint xs"> · {t.copyCount} copies</span>{/if}
+										</div>
+									</div>
+								</td>
+								<td class="muted small">
+									{#if t.albumId}<a href="/album/{t.albumId}">{t.albumName}</a>{:else}—{/if}
+								</td>
+								<td class="r num muted">{trackTime(t.durationMs)}</td>
+								<td class="r num">{t.popularity ?? '—'}</td>
+								<td class="r muted small nowrap">{shortDate(t.firstAddedAt)}</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
 		{/if}
 	</section>
 
@@ -151,6 +153,23 @@
 		flex: 1;
 		min-width: 260px;
 	}
+	/* Phone: portrait and name side by side rather than stacked — a round 168px
+	   photo above the title is all headroom and no information. */
+	@media (max-width: 640px) {
+		.hero {
+			gap: 14px;
+			align-items: center;
+		}
+		.hero :global(img),
+		.hero :global(.placeholder) {
+			max-width: 30vw;
+			max-height: 30vw;
+		}
+		.meta {
+			flex: 1 1 180px;
+			min-width: 0;
+		}
+	}
 	.eyebrow {
 		margin: 0 0 6px;
 		font-size: 0.72rem;
@@ -187,8 +206,14 @@
 		gap: var(--gap);
 		margin-bottom: var(--gap);
 	}
+	@media (max-width: 640px) {
+		.tiles {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 10px;
+		}
+	}
 	.card {
-		padding: 16px 18px;
+		padding: var(--card-py) var(--card-px);
 		margin-bottom: var(--gap);
 	}
 	h2 {
@@ -202,6 +227,8 @@
 		width: 100%;
 		border-collapse: collapse;
 		font-size: 0.9rem;
+		/* Under this the columns crush each other; the lane scrolls instead. */
+		min-width: 620px;
 	}
 	th {
 		text-align: left;
@@ -238,6 +265,12 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
 		gap: 16px;
+	}
+	@media (max-width: 640px) {
+		.grid {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+			gap: 14px 10px;
+		}
 	}
 	.release {
 		display: block;

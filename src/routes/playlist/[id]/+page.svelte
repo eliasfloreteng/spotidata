@@ -83,7 +83,7 @@
 	<section class="card">
 		<h2>Tracks</h2>
 		<p class="faint sub">In playlist order. {num(p.storedTracks - p.resolvedTracks)} items have no catalog track (local files, episodes or withdrawn tracks).</p>
-		<div class="scroll">
+		<div class="scroll-x">
 			<table>
 				<thead>
 					<tr>
@@ -157,6 +157,24 @@
 		flex: 1;
 		min-width: 260px;
 	}
+	/* Phone: the blocks stack, so the artwork gives up the half-screen it would
+	   otherwise take before the title. max-* rather than width, so it overrides
+	   Cover's inline square without an !important. */
+	@media (max-width: 640px) {
+		.hero {
+			gap: 14px;
+			align-items: flex-start;
+		}
+		.hero :global(img),
+		.hero :global(.placeholder) {
+			max-width: 42vw;
+			max-height: 42vw;
+		}
+		.meta {
+			flex: 1 1 100%;
+			min-width: 0;
+		}
+	}
 	.eyebrow {
 		margin: 0 0 6px;
 		font-size: 0.72rem;
@@ -194,6 +212,12 @@
 		gap: var(--gap);
 		margin-bottom: var(--gap);
 	}
+	@media (max-width: 640px) {
+		.tiles {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 10px;
+		}
+	}
 	.snap {
 		margin: 0 0 var(--gap);
 		font-size: 0.78rem;
@@ -202,7 +226,7 @@
 		color: var(--warn);
 	}
 	.card {
-		padding: 16px 18px;
+		padding: var(--card-py) var(--card-px);
 		margin-bottom: var(--gap);
 	}
 	h2 {
@@ -212,13 +236,12 @@
 		font-size: 0.8rem;
 		margin: 0 0 12px;
 	}
-	.scroll {
-		overflow-x: auto;
-	}
 	table {
 		width: 100%;
 		border-collapse: collapse;
 		font-size: 0.9rem;
+		/* Under this the columns crush each other; the lane scrolls instead. */
+		min-width: 660px;
 	}
 	th {
 		text-align: left;
@@ -270,12 +293,17 @@
 	.mono {
 		font-family: var(--mono);
 	}
+	/* Absolute positioning would escape the table's scroll lane — with no
+	   positioned ancestor its containing block is the viewport, so a label
+	   parked 800px along the header drags the whole document that wide. In
+	   flow at 1px it cannot. */
 	.sr {
-		position: absolute;
+		display: inline-block;
 		width: 1px;
 		height: 1px;
 		overflow: hidden;
 		clip-path: inset(50%);
+		white-space: nowrap;
 	}
 	a:hover {
 		text-decoration: underline;

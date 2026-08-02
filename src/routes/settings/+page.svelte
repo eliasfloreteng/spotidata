@@ -170,12 +170,37 @@
 	}
 	dd {
 		margin: 0;
+		/* Account ids and token dates are unbroken strings wider than the value
+		   column; without this they run off the card rather than wrapping. */
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+	/* Phone: the 150px label column leaves the value nothing to live in, so
+	   label and value stack into pairs instead of columns. */
+	@media (max-width: 640px) {
+		section {
+			padding: var(--card-py) var(--card-px);
+		}
+		dl {
+			grid-template-columns: 1fr;
+			gap: 10px;
+		}
+		dt {
+			font-size: 0.78rem;
+			text-transform: uppercase;
+			letter-spacing: 0.06em;
+			color: var(--text-faint);
+		}
+		dd + dt {
+			margin-top: 4px;
+		}
 	}
 	.row {
 		display: flex;
 		gap: 8px;
 		align-items: center;
 		margin-top: 12px;
+		flex-wrap: wrap;
 	}
 	.row form {
 		display: inline;

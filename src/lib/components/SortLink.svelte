@@ -60,4 +60,16 @@
 		background: var(--accent-soft);
 		border-color: rgba(124, 58, 237, 0.4);
 	}
+
+	@media (pointer: coarse) {
+		a.chip {
+			padding: 8px 14px;
+			font-size: 0.82rem;
+		}
+		/* Column headers stay small — the table is dense by design — but the tap
+		   area is grown downward into the header's own padding. */
+		a:not(.chip) {
+			padding: 6px 0;
+		}
+	}
 </style>

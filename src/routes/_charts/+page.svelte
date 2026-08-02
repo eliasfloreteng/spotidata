@@ -271,7 +271,7 @@
 	}
 
 	.tile {
-		padding: 16px 18px;
+		padding: var(--card-py) var(--card-px);
 	}
 
 	.tile-label {

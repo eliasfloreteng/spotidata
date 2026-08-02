@@ -326,29 +326,31 @@
 <section class="card">
 	<h2>Most duplicated recordings</h2>
 	<p class="faint sub">One ISRC, many Spotify tracks — these collapse into a single recording.</p>
-	<table>
-		<thead>
-			<tr><th>Recording</th><th>Artist</th><th class="r">Copies</th><th>Appears as</th></tr>
-		</thead>
-		<tbody>
-			{#each data.duplicates as d (d.canonicalTrackId)}
-				<tr>
-					<td>
-						<a class="rec" href="/track/{d.canonicalTrackId}">
-							<Cover src={d.cover} alt="{d.title} cover" size={30} />
-							<span class="ellipsis">{d.title || '(untitled)'}</span>
-						</a>
-					</td>
-					<td class="muted">
-						{#if d.artistId}<a href="/artist/{d.artistId}">{d.artist}</a>{:else}{d.artist ??
-								'—'}{/if}
-					</td>
-					<td class="r num">{d.copies}</td>
-					<td class="faint small">{(d.names ?? []).slice(0, 3).join(' · ')}</td>
-				</tr>
-			{/each}
-		</tbody>
-	</table>
+	<div class="scroll-x">
+		<table>
+			<thead>
+				<tr><th>Recording</th><th>Artist</th><th class="r">Copies</th><th>Appears as</th></tr>
+			</thead>
+			<tbody>
+				{#each data.duplicates as d (d.canonicalTrackId)}
+					<tr>
+						<td>
+							<a class="rec" href="/track/{d.canonicalTrackId}">
+								<Cover src={d.cover} alt="{d.title} cover" size={30} />
+								<span class="ellipsis">{d.title || '(untitled)'}</span>
+							</a>
+						</td>
+						<td class="muted">
+							{#if d.artistId}<a href="/artist/{d.artistId}">{d.artist}</a>{:else}{d.artist ??
+									'—'}{/if}
+						</td>
+						<td class="r num">{d.copies}</td>
+						<td class="faint small">{(d.names ?? []).slice(0, 3).join(' · ')}</td>
+					</tr>
+				{/each}
+			</tbody>
+		</table>
+	</div>
 </section>
 
 <style>
@@ -375,6 +377,12 @@
 		gap: var(--gap);
 		margin-bottom: var(--gap);
 	}
+	/* A grid track's auto minimum is its item's min-content, and a bar list's
+	   sublabels are nowrap — without this the column grows past the viewport
+	   and takes the whole page sideways with it. */
+	.grid > :global(*) {
+		min-width: 0;
+	}
 	.grid.two {
 		grid-template-columns: 1fr 1fr;
 	}
@@ -383,12 +391,31 @@
 			grid-template-columns: 1fr;
 		}
 	}
+	/* Two tiles across is the floor: one per row turns the header into a
+	   half-screen of scrolling before the first chart. */
+	@media (max-width: 640px) {
+		.tiles {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 10px;
+		}
+	}
 	.card {
-		padding: 16px 18px;
+		padding: var(--card-py) var(--card-px);
 	}
 	.card.wide {
 		margin-bottom: var(--gap);
-		overflow-x: auto;
+	}
+	/* A chart draws its own card. On a phone the section wrapped around it is a
+	   second border and 28px of gutter spent framing a frame — 7% of the screen
+	   for nothing. It stays on wider viewports, where the inset reads as
+	   deliberate rather than as lost width. */
+	@media (max-width: 640px) {
+		.card:has(> :global(.chart-frame)) {
+			padding: 0;
+			border: 0;
+			background: none;
+			box-shadow: none;
+		}
 	}
 	h2 {
 		margin-bottom: 2px;
@@ -420,9 +447,15 @@
 		margin: 0;
 		padding: 0;
 		display: grid;
-		/* Six across on a full-width card, folding to two on a phone. */
+		/* Six across on a full-width card, three on a phone. */
 		grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
 		gap: 16px 14px;
+	}
+	@media (max-width: 640px) {
+		.tiles-art {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+			gap: 14px 10px;
+		}
 	}
 	.tiles-art li {
 		display: flex;
@@ -470,6 +503,9 @@
 		width: 100%;
 		border-collapse: collapse;
 		font-size: 0.9rem;
+		/* Below this the title and the alias list crush each other; the lane
+		   scrolls instead. No effect anywhere the card is already wider. */
+		min-width: 520px;
 	}
 	th {
 		text-align: left;

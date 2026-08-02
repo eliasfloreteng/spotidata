@@ -29,6 +29,7 @@
 		border: 1px solid var(--hairline);
 		border-radius: var(--radius);
 		padding: 15px 17px;
+		min-width: 0;
 	}
 	.tile.muted {
 		opacity: 0.55;
@@ -56,5 +57,30 @@
 		color: var(--text-faint);
 		font-size: 0.76rem;
 		margin-top: 3px;
+	}
+
+	/* Two tiles share a phone row, so the value has to survive a ~150px column:
+	   it scales with the viewport and the longest ones ("22 days 13 hr") wrap
+	   rather than forcing the grid wider. */
+	@media (max-width: 640px) {
+		.tile {
+			padding: 12px 13px;
+		}
+		.label {
+			font-size: 0.72rem;
+		}
+		/* The trend is a garnish, not the reading — on a half-width tile it gives
+		   ground to the label rather than crowding it. It has a viewBox, so it
+		   scales rather than clips. */
+		.top :global(svg) {
+			max-width: 46px;
+		}
+		.value {
+			font-size: clamp(1.15rem, 5.4vw, 1.45rem);
+			overflow-wrap: break-word;
+		}
+		.sub {
+			font-size: 0.7rem;
+		}
 	}
 </style>

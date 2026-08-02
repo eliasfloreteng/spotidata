@@ -202,7 +202,7 @@
 	{subtitle}
 	ariaLabel={label}
 	{height}
-	margin={{ top: 12, right: 18, bottom: 28, left: 52 }}
+	margin={(w: number) => (w < 420 ? { top: 12, right: 10, bottom: 26, left: 36 } : { top: 12, right: 18, bottom: 28, left: 52 })}
 	empty={isEmpty}
 >
 	{#snippet legend()}

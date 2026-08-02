@@ -103,4 +103,28 @@
 	.small {
 		font-size: 0.8rem;
 	}
+
+	@media (pointer: coarse) {
+		.pg {
+			min-width: 42px;
+			padding: 10px 10px;
+			font-size: 0.86rem;
+		}
+		.gap {
+			padding: 10px 2px;
+		}
+	}
+	@media (max-width: 640px) {
+		/* Prev/Next carry the paging on a phone; the numbers stay for orientation
+		   and to jump, and get their own centred row rather than being squeezed
+		   against the count. */
+		.pager {
+			justify-content: center;
+			gap: 8px;
+		}
+		.pages {
+			flex: 1 0 100%;
+			justify-content: center;
+		}
+	}
 </style>

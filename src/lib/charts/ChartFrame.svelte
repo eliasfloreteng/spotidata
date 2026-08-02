@@ -22,6 +22,13 @@
 		ariaLabel: string;
 		/** SVG height in px, or a function of the inner (post-margin) width. */
 		height: number | ((innerWidth: number) => number);
+		/**
+		 * Width the plot refuses to go below. Under it the plot scrolls sideways
+		 * inside the card instead of squeezing its marks into each other — the
+		 * only honest answer on a phone for a chart whose density is fixed by the
+		 * data (a year of calendar cells, a decade of bump periods).
+		 */
+		minWidth?: number;
 		/** Overrides merged over DEFAULT_MARGIN; may depend on measured width. */
 		margin?: Partial<Margin> | ((width: number) => Partial<Margin>);
 		/** 'svg' wraps children in <svg><g transform>; 'flow' renders plain HTML. */
@@ -51,6 +58,7 @@
 		subtitle,
 		ariaLabel,
 		height,
+		minWidth = 0,
 		margin,
 		layout = 'svg',
 		semantic = false,
@@ -97,33 +105,39 @@
 		<div class="legend">{@render legend()}</div>
 	{/if}
 
-	<div class="plot" bind:clientWidth={width}>
-		{#if empty}
-			<div class="empty" style:min-height="{Math.min(fallbackHeight, 200)}px">
-				<span>{emptyMessage}</span>
-			</div>
-		{:else if width > 0 && svgHeight > 0}
-			{#if layout === 'svg'}
-				<svg
-					{width}
-					height={svgHeight}
-					viewBox="0 0 {width} {svgHeight}"
-					role="img"
-					aria-label={ariaLabel}
-				>
-					<g transform="translate({m.left},{m.top})">
-						{@render children(geom)}
-					</g>
-				</svg>
-			{:else if semantic}
-				<div class="flow">{@render children(geom)}</div>
-			{:else}
-				<div class="flow" role="img" aria-label={ariaLabel}>
-					{@render children(geom)}
+	<div class="lane" class:scrolls={minWidth > 0}>
+		<div
+			class="plot"
+			bind:clientWidth={width}
+			style:min-width={minWidth > 0 ? `${minWidth}px` : undefined}
+		>
+			{#if empty}
+				<div class="empty" style:min-height="{Math.min(fallbackHeight, 200)}px">
+					<span>{emptyMessage}</span>
 				</div>
+			{:else if width > 0 && svgHeight > 0}
+				{#if layout === 'svg'}
+					<svg
+						{width}
+						height={svgHeight}
+						viewBox="0 0 {width} {svgHeight}"
+						role="img"
+						aria-label={ariaLabel}
+					>
+						<g transform="translate({m.left},{m.top})">
+							{@render children(geom)}
+						</g>
+					</svg>
+				{:else if semantic}
+					<div class="flow">{@render children(geom)}</div>
+				{:else}
+					<div class="flow" role="img" aria-label={ariaLabel}>
+						{@render children(geom)}
+					</div>
+				{/if}
+				{#if overlay}{@render overlay(geom)}{/if}
 			{/if}
-			{#if overlay}{@render overlay(geom)}{/if}
-		{/if}
+		</div>
 	</div>
 
 	{#if footer}
@@ -137,7 +151,7 @@
 		flex-direction: column;
 		gap: 12px;
 		margin: 0;
-		padding: 18px 18px 16px;
+		padding: var(--card-py) var(--card-px);
 		min-width: 0;
 	}
 
@@ -146,6 +160,15 @@
 		align-items: flex-start;
 		justify-content: space-between;
 		gap: 16px;
+	}
+
+	@media (max-width: 640px) {
+		.chart-frame {
+			gap: 10px;
+		}
+		header {
+			gap: 10px;
+		}
 	}
 
 	.titles {
@@ -173,6 +196,22 @@
 
 	.legend {
 		margin-top: -2px;
+	}
+
+	.lane {
+		min-width: 0;
+	}
+
+	/* Only a chart that asked for a floor gets a scroll container; everything
+	   else keeps resizing to fit, which is the better answer when it can. */
+	.lane.scrolls {
+		overflow-x: auto;
+		overscroll-behavior-x: contain;
+		-webkit-overflow-scrolling: touch;
+		scrollbar-width: thin;
+		/* Runs to the card edge so the last column can be dragged into view. */
+		margin-inline: calc(var(--card-px) * -1);
+		padding-inline: var(--card-px);
 	}
 
 	.plot {

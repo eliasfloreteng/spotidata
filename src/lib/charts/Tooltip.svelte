@@ -26,7 +26,8 @@
 
 	let { x, y, containerWidth, title, rows, offset = 12 }: Props = $props();
 
-	const WIDTH = 178;
+	/** Never wider than the plot it has to stay inside. */
+	const WIDTH = $derived(Math.min(178, Math.max(120, containerWidth - 16)));
 	const flip = $derived(x + offset + WIDTH > containerWidth && x - offset - WIDTH > 0);
 	const left = $derived(clamp(flip ? x - offset - WIDTH : x + offset, 0, Math.max(0, containerWidth - WIDTH)));
 </script>

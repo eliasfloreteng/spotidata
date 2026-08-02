@@ -114,6 +114,15 @@
 	const singlePeriod = $derived(periods.length < 2);
 
 	/**
+	 * Below this the periods sit closer together than a dot is wide and the
+	 * crossings stop being readable, so the chart scrolls instead. Both label
+	 * gutters have to fit inside it or the plot area itself goes to nothing.
+	 */
+	const minWidth = $derived(
+		singlePeriod ? 0 : periods.length * 46 + 2 * (labelWidth + RANK_GUTTER)
+	);
+
+	/**
 	 * Gutters are a function of the measured width: in a narrow card the plot
 	 * must not be squeezed to nothing (or the marks pile up on the axis), so the
 	 * label gutter gives way first, down to a floor.
@@ -176,6 +185,7 @@
 	{subtitle}
 	ariaLabel={label}
 	{height}
+	{minWidth}
 	{margin}
 	empty={series.length === 0 || periods.length === 0}
 >

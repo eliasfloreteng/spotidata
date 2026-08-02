@@ -30,7 +30,7 @@
 <FilterBar groups={LIKED_FILTERS} active={data.filters} />
 
 <section class="card">
-	<div class="scroll">
+	<div class="scroll-x">
 		<table>
 			<thead>
 				<tr>
@@ -102,15 +102,14 @@
 		font-size: 0.86rem;
 	}
 	.card {
-		padding: 16px 18px;
-	}
-	.scroll {
-		overflow-x: auto;
+		padding: var(--card-py) var(--card-px);
 	}
 	table {
 		width: 100%;
 		border-collapse: collapse;
 		font-size: 0.9rem;
+		/* Under this the columns crush each other; the lane scrolls instead. */
+		min-width: 760px;
 	}
 	th {
 		text-align: left;
@@ -158,12 +157,17 @@
 		padding: 28px 0;
 		text-align: center;
 	}
+	/* Absolute positioning would escape the table's scroll lane — with no
+	   positioned ancestor its containing block is the viewport, so a label
+	   parked 800px along the header drags the whole document that wide. In
+	   flow at 1px it cannot. */
 	.sr {
-		position: absolute;
+		display: inline-block;
 		width: 1px;
 		height: 1px;
 		overflow: hidden;
 		clip-path: inset(50%);
+		white-space: nowrap;
 	}
 	a:hover {
 		text-decoration: underline;
