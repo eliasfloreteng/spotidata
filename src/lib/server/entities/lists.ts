@@ -159,7 +159,8 @@ export interface LibraryRow {
 const LIBRARY_SOURCE_CLAUSES = {
 	liked: sql`lc.liked`,
 	playlist: sql`lc.owned_playlist_count > 0`,
-	'liked-only': sql`lc.liked and lc.owned_playlist_count = 0`
+	'liked-only': sql`lc.liked and lc.owned_playlist_count = 0`,
+	'playlist-only': sql`lc.owned_playlist_count > 0 and not lc.liked`
 };
 
 export async function libraryRecordings(opts: {

@@ -63,7 +63,8 @@ export const LIBRARY_FILTERS: FilterGroup[] = [
 		options: [
 			{ value: 'liked', label: 'Liked' },
 			{ value: 'playlist', label: 'In your playlists' },
-			{ value: 'liked-only', label: 'Liked, not in a playlist' }
+			{ value: 'liked-only', label: 'Liked, not in a playlist' },
+			{ value: 'playlist-only', label: 'In a playlist, not liked' }
 		]
 	},
 	COPIES,
