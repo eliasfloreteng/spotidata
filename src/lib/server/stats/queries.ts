@@ -262,6 +262,9 @@ export interface AlbumCompletion {
  *
  * Either way the compilation itself is never a row here: it is a candidate
  * album only in the sense that it happens to carry the recording.
+ *
+ * Singles are dropped too — a saved single is a complete "album" by
+ * definition, so they would crowd out the records the panel is asking about.
  */
 export async function albumCompletion(
 	r: Range,
@@ -281,7 +284,8 @@ export async function albumCompletion(
 		  from library_canonical lc
 		  join spotify_tracks st on st.canonical_track_id = lc.canonical_track_id
 		  join albums al on al.id = st.album_id
-		 where ${realAlbum('al')} and lc.${win(r)}
+		 where ${realAlbum('al')} and al.album_type is distinct from 'single'
+		   and lc.${win(r)}
 		   ${strict ? sql`and st.id in (select track_id from library_tracks)` : sql``}
 		 group by al.id, al.name, al.total_tracks
 		having al.total_tracks >= ${minTracks}
