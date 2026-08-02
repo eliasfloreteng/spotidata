@@ -317,7 +317,7 @@
 							cy={y(pt.rank)}
 							r={DOT_R}
 							fill={s.repeat ? 'var(--card)' : s.color}
-							stroke={s.repeat ? s.color : undefined}
+							style:stroke={s.repeat ? s.color : 'var(--card)'}
 							class="dot"
 							role="presentation"
 							onmouseenter={() => {
@@ -426,8 +426,11 @@
 	}
 
 	.dot {
-		/* the 2px surface ring keeps dots legible where lines cross */
-		stroke: var(--card);
+		/* The ring is 2px of surface on a solid dot — which keeps it legible where
+		   lines cross — and the hue itself on a hollow one, so it has to be set
+		   per mark. It goes on as a style rather than a `stroke` attribute: a
+		   presentation attribute loses to any rule in here, and a stroke of
+		   var(--card) over a fill of var(--card) is an invisible dot. */
 		stroke-width: 2;
 		cursor: pointer;
 	}
