@@ -9,9 +9,10 @@
 
   Past the eight slots the palette cycles rather than folding the tail into one
   grey, which would leave those series identical to EACH OTHER — the one thing
-  the slots exist to prevent. The second pass is dashed with hollow dots, so a
-  repeated hue is still a distinct mark, and the ordering guarantees the two
-  halves of a pair are ranks apart rather than adjacent.
+  the slots exist to prevent. Each pass over the hues takes its own stroke
+  pattern (solid, dashed, dotted) and every pass after the first draws hollow
+  dots, so a repeated hue is still a distinct mark, and the ordering guarantees
+  the members of a hue's family are ranks apart rather than adjacent.
 -->
 <script lang="ts">
 	import { line, curveBumpX } from 'd3-shape';
@@ -73,12 +74,15 @@
 		key: string;
 		label: string;
 		color: string;
-		/** Second time round the palette — drawn dashed, with hollow dots. */
+		/** Stroke pattern for this pass over the palette; undefined is solid. */
+		dash: string | undefined;
+		/** Past the first pass round the palette — drawn with hollow dots. */
 		repeat: boolean;
 		points: (BumpDatum | null)[];
 	};
 
-	const DASH = '7 5';
+	/** One stroke per pass over the hues: 8 slots × 3 = 24 distinguishable series. */
+	const DASHES = [undefined, '7 5', '1.5 4'];
 
 	const series = $derived.by<Series[]>(() => {
 		const groups = new Map<string, BumpDatum[]>();
@@ -96,14 +100,28 @@
 			const rb = b[1].find((d) => periods.indexOf(d.period) === fb)?.rank ?? topN;
 			return ra - rb;
 		});
-		return ordered.map(([key, rows], i) => ({
-			key,
-			label: rows[0]?.label ?? key,
-			color: seriesColor(i % CATEGORICAL.length),
-			repeat: i >= CATEGORICAL.length,
-			points: periods.map((p) => rows.find((r) => r.period === p) ?? null)
-		}));
+		return ordered.map(([key, rows], i) => {
+			const pass = Math.floor(i / CATEGORICAL.length);
+			return {
+				key,
+				label: rows[0]?.label ?? key,
+				color: seriesColor(i % CATEGORICAL.length),
+				dash: DASHES[pass % DASHES.length],
+				repeat: pass > 0,
+				points: periods.map((p) => rows.find((r) => r.period === p) ?? null)
+			};
+		});
 	});
+
+	/**
+	 * A cohort that is the union of each period's top N runs to many times N, and
+	 * a legend that long is a wall of names rather than a key — it costs more rows
+	 * than the plot and nobody scans it for the entry they want. Past the point
+	 * where hue plus stroke still names a series on its own, the direct labels at
+	 * both ends of every line carry identity by themselves and the legend is
+	 * dropped.
+	 */
+	const keyable = $derived(series.length <= CATEGORICAL.length * DASHES.length);
 
 	/** Reserve just enough gutter for the longest label, within sane bounds. */
 	const labelWidth = $derived(
@@ -132,11 +150,17 @@
 	 * Below this the periods sit closer together than their marks are wide and
 	 * the crossings stop being readable, so the chart scrolls instead. Both label
 	 * gutters have to fit inside it or the plot area itself goes to nothing.
+	 *
+	 * An interior gap can hold two names — one series leaving at this period, the
+	 * next arriving at the following one — and each stands its own RANK_GUTTER off
+	 * its dot, so the gap owes a label plus both of those clearances or the two
+	 * names meet in the middle and read as one.
 	 */
 	const minWidth = $derived(
 		singlePeriod
 			? 0
-			: periods.length * (interiorLabels ? labelWidth : 46) + 2 * (labelWidth + RANK_GUTTER)
+			: periods.length * (interiorLabels ? labelWidth + 2 * RANK_GUTTER : 46) +
+				2 * (labelWidth + RANK_GUTTER)
 	);
 
 	/**
@@ -197,6 +221,20 @@
 	);
 </script>
 
+{#snippet legendRow()}
+	<Legend
+		mark="dot"
+		active={hovered}
+		onhover={(k) => (hovered = k)}
+		items={series.map((s) => ({
+			key: s.key,
+			label: s.label,
+			color: s.color,
+			hollow: s.repeat
+		}))}
+	/>
+{/snippet}
+
 <ChartFrame
 	{title}
 	{subtitle}
@@ -204,22 +242,9 @@
 	{height}
 	{minWidth}
 	{margin}
+	legend={keyable ? legendRow : undefined}
 	empty={series.length === 0 || periods.length === 0}
 >
-	{#snippet legend()}
-		<Legend
-			mark="dot"
-			active={hovered}
-			onhover={(k) => (hovered = k)}
-			items={series.map((s) => ({
-				key: s.key,
-				label: s.label,
-				color: s.color,
-				hollow: s.repeat
-			}))}
-		/>
-	{/snippet}
-
 	{#snippet children(g: Geometry)}
 		{@const x = xScale(g)}
 		{@const y = yScale(g)}
@@ -259,7 +284,7 @@
 				d={pathFor(s, g)}
 				stroke={s.color}
 				stroke-width={hovered === s.key ? 3 : 2}
-				stroke-dasharray={s.repeat ? DASH : undefined}
+				stroke-dasharray={s.dash}
 				opacity={dim ? 0.14 : 1}
 			/>
 		{/each}
@@ -344,7 +369,13 @@
 					{ label: unit, value: valueFormat(tip.value) },
 					...(tip.delta === undefined
 						? []
-						: [{ label: deltaLabel, value: `+${valueFormat(tip.delta)}` }])
+						: [
+								{
+									label: deltaLabel,
+									// Signed, because a delta against a previous period can fall.
+									value: `${tip.delta < 0 ? '−' : '+'}${valueFormat(Math.abs(tip.delta))}`
+								}
+							])
 				]}
 			/>
 		{/if}

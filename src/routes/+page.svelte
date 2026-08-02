@@ -217,11 +217,11 @@
 	<BumpChart
 		data={data.bump}
 		title="Top artists by year"
-		topN={8}
+		topN={10}
 		height={430}
-		subtitle="The eight biggest artists each year by recordings held — a line breaks over the years it left the top eight"
-		unit="tracks in library"
-		deltaLabel="added that year"
+		subtitle="The ten artists you added most of each year — most place in a single year, and a line breaks over the years it missed the top ten"
+		unit="added that year"
+		deltaLabel="vs the year before"
 	/>
 </section>
 

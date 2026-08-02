@@ -141,67 +141,55 @@ export interface BumpRow {
 }
 
 /**
- * The top N artists of each year: `value` is how many of their recordings the
- * library held by the end of it, `delta` how many arrived that year, and `rank`
- * their true standing across the whole library — so #3 means third overall that
- * year, not third among the lines that happen to be drawn.
+ * Each year's top N artists, ranked on that year alone: `value` is how many of
+ * their recordings the library picked up during the year, `rank` their standing
+ * among every artist added that year, and `delta` the change against their
+ * previous year (negative when the year was quieter).
  *
- * Ranking the running total rather than the year's adds is what makes this
- * readable. A year's adds are spiky — an artist with a quiet year drops
- * hundreds of places and their line vanishes — while the total moves a place
- * or two at a time, so an artist near the top stays near the top.
+ * Ranking the year's own adds rather than a running library total is what makes
+ * this a portrait of the year. A running total barely moves once it is large, so
+ * the same handful of names hold the top places for a decade and every year
+ * after the first reads as a near-copy of it. Year-by-year the cohort turns
+ * over: a summer spent on one record puts that artist at #1 and nowhere else.
  *
- * Rows are the union of every year's top N, which is wider than N: an artist
- * contributes rows only for the years they actually placed, and their line
- * breaks over the years they did not. That gap is the honest reading — they
- * were not a top artist that year — and it is why the cohort is not capped at
- * N artists. Doing that (rank the survivors against each other) is what let a
- * #659 artist draw at #10.
+ * Rows are the union of every year's top N, which is far wider than N — most
+ * artists place in a single year. An artist contributes rows only for the years
+ * they actually placed, and their line breaks over the years they did not; that
+ * gap is the honest reading, not a missing measurement.
  */
-export async function topArtistsByYear(r: Range, topN = 8): Promise<BumpRow[]> {
+export async function topArtistsByYear(r: Range, topN = 10): Promise<BumpRow[]> {
 	const rows = await query<BumpRow>(sql`
 		with per_year as (
-		  -- No lower bound: a filtered view still ranks by the true library
-		  -- total, the same way growth() carries its pre-window base in.
+		  -- One year either side of the window, so the first shown year can still
+		  -- compare against its predecessor; the padding drops out after ranking.
 		  select extract(year from lc.first_added_at at time zone ${r.tz})::int as yr,
 		         cta.artist_id, count(*)::int as n
 		    from library_canonical lc
 		    join canonical_track_artists cta
 		      on cta.canonical_track_id = lc.canonical_track_id
 		   where cta.on_representative and cta.position = 0
+		     and lc.first_added_at >= ${r.from}::timestamptz - interval '1 year'
 		     and lc.first_added_at < ${r.to}
 		   group by 1, 2
-		), grid as (
-		  -- Every artist gets a row per year so the running total carries across
-		  -- years they added nothing, instead of skipping to their next add.
-		  select y.yr, a.artist_id
-		    from generate_series((select min(yr) from per_year),
-		                         (select max(yr) from per_year)) as y(yr)
-		   cross join (select distinct artist_id from per_year) a
-		), cumulative as (
-		  select g.yr, g.artist_id,
-		         coalesce(p.n, 0) as added,
-		         sum(coalesce(p.n, 0)) over (partition by g.artist_id order by g.yr)::int
-		           as total
-		    from grid g
-		    left join per_year p on p.yr = g.yr and p.artist_id = g.artist_id
-		), shown as (
-		  -- Artists appear the year their first track lands, and the pre-window
-		  -- years drop out now that they have done their job for the totals.
-		  select * from cumulative
-		   where total > 0
-		     and yr >= extract(year from ${r.from}::timestamptz at time zone ${r.tz})::int
 		), ranked as (
-		  -- Ranked against the whole library, not against the cohort: this is the
-		  -- number the chart prints on its axis, so it has to be the real one.
-		  select *, row_number() over (partition by yr order by total desc, artist_id) as rk
-		    from shown
+		  -- Ranked against every artist of that year, not against the cohort: this
+		  -- is the number the chart prints on its axis, so it has to be the real
+		  -- one. Ties break on artist_id to keep the ordering stable between loads.
+		  select p.yr, p.artist_id, p.n,
+		         p.n - coalesce(prev.n, 0) as change,
+		         row_number() over (partition by p.yr order by p.n desc, p.artist_id) as rk
+		    from per_year p
+		    -- The previous CALENDAR year, not the artist's previous appearance: a
+		    -- lag() would compare 2024 against 2019 for anyone who sat out between.
+		    left join per_year prev
+		      on prev.artist_id = p.artist_id and prev.yr = p.yr - 1
 		)
 		select r.yr as period, r.artist_id as key, a.name as label,
-		       r.rk::int as rank, r.total as value, r.added::int as delta
+		       r.rk::int as rank, r.n as value, r.change::int as delta
 		  from ranked r
 		  join artists a on a.id = r.artist_id
 		 where r.rk <= ${topN}
+		   and r.yr >= extract(year from ${r.from}::timestamptz at time zone ${r.tz})::int
 		 order by r.yr, r.rk
 	`);
 	return rows;

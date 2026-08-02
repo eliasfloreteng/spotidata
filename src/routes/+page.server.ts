@@ -30,9 +30,9 @@ export const load: PageServerLoad = async ({ url, locals, setHeaders }) => {
 		q.totals(range),
 		q.additionsByDay(range),
 		q.growth(range),
-		// 8 places, because the union across years is what becomes lines: the
-		// palette runs a solid pass and a dashed one, so 8 keeps it inside 16.
-		q.topArtistsByYear(range, 8),
+		// Ten places per year. The union across years is what becomes lines and it
+		// runs well past the palette, so the chart cycles hues across dash passes.
+		q.topArtistsByYear(range, 10),
 		q.topArtists(range, 15),
 		q.albumCompletion(range, { limit: 12, orderBy: 'pct' }),
 		q.albumCompletion(range, { limit: 12, orderBy: 'saved', minTracks: 1 }),
