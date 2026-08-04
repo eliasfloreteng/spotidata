@@ -213,7 +213,7 @@
 					<th class="r">Read</th>
 					<th class="r">New</th>
 					<th class="r">Already had</th>
-					<th>Covers</th>
+					<th class="pad">Period covered</th>
 					<th>When</th>
 					<th></th>
 				</tr>
@@ -232,7 +232,7 @@
 						<td class="r num">{num(i.rowsRead)}</td>
 						<td class="r num">{num(i.playsInserted)}</td>
 						<td class="r num faint">{num(i.duplicates)}</td>
-						<td class="faint small nowrap">
+						<td class="faint small nowrap pad">
 							{#if i.firstPlayedAt}{i.firstPlayedAt} → {i.lastPlayedAt}{:else}—{/if}
 						</td>
 						<td class="faint small nowrap">{relativeTime(i.createdAt)}</td>
@@ -470,6 +470,11 @@
 	th.r,
 	td.r {
 		text-align: right;
+	}
+	/* The right-aligned counts end flush against the next column; this is the
+	   gutter that keeps "Already had" from reading as part of the date span. */
+	.pad {
+		padding-left: 18px;
 	}
 	.pill {
 		display: inline-block;

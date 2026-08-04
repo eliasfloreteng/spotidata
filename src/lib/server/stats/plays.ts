@@ -120,14 +120,21 @@ export interface DayMinutes {
 	value: number;
 }
 
-/** Minutes listened per day — the calendar heatmap. */
+/**
+ * Minutes listened per day — the calendar heatmap.
+ *
+ * `sum(ms_played)` is NULL, not 0, for a day whose plays all came from the API
+ * — that source records no duration. Every aggregate over `ms_played` in this
+ * file coalesces for that reason: the untreated NULL does not read as an empty
+ * day, it sorts FIRST under `order by … desc` and quietly wins "biggest day".
+ */
 export async function minutesByDay(r: Range): Promise<DayMinutes[]> {
 	return query<DayMinutes>(sql`
 		select to_char((p.played_at at time zone ${r.tz})::date, 'YYYY-MM-DD') as day,
-		       round(sum(p.ms_played) / 60000.0)::int as value
+		       round(coalesce(sum(p.ms_played), 0) / 60000.0)::int as value
 		  from plays p
 		 where ${win(r)}
-		 group by 1 having sum(p.ms_played) > 0 order by 1
+		 group by 1 having coalesce(sum(p.ms_played), 0) > 0 order by 1
 	`);
 }
 
@@ -152,10 +159,10 @@ export async function listeningByMonth(r: Range): Promise<MonthPoint[]> {
 		    interval '1 month') as m
 		), played as (
 		  select date_trunc('month', p.played_at at time zone ${r.tz}) as m,
-		         round(sum(p.ms_played) / 60000.0)::int as minutes,
+		         round(coalesce(sum(p.ms_played), 0) / 60000.0)::int as minutes,
 		         count(*)::int as plays,
-		         round(sum(p.ms_played) filter (
-		           where lc.canonical_track_id is not null) / 60000.0)::int as library_minutes
+		         round(coalesce(sum(p.ms_played) filter (
+		           where lc.canonical_track_id is not null), 0) / 60000.0)::int as library_minutes
 		    from plays p
 		    left join spotify_tracks st on st.id = p.track_id
 		    left join library_canonical lc on lc.canonical_track_id = st.canonical_track_id
@@ -182,7 +189,7 @@ export async function listeningClock(r: Range): Promise<ClockCell[]> {
 	return query<ClockCell>(sql`
 		select extract(isodow from p.played_at at time zone ${r.tz})::int as weekday,
 		       extract(hour   from p.played_at at time zone ${r.tz})::int as hour,
-		       round(sum(p.ms_played) / 60000.0)::int as count
+		       round(coalesce(sum(p.ms_played), 0) / 60000.0)::int as count
 		  from plays p
 		 where ${win(r)}
 		 group by 1, 2 order by 1, 2
@@ -198,10 +205,10 @@ export interface ShareRow {
 export async function deviceShare(r: Range): Promise<ShareRow[]> {
 	return query<ShareRow>(sql`
 		select ${DEVICE} as label,
-		       round(sum(p.ms_played) / 60000.0)::int as value
+		       round(coalesce(sum(p.ms_played), 0) / 60000.0)::int as value
 		  from plays p
 		 where ${win(r)}
-		 group by 1 having sum(p.ms_played) > 0 order by value desc
+		 group by 1 having coalesce(sum(p.ms_played), 0) > 0 order by value desc
 	`);
 }
 
@@ -209,10 +216,10 @@ export async function deviceShare(r: Range): Promise<ShareRow[]> {
 export async function countryShare(r: Range, limit = 8): Promise<ShareRow[]> {
 	return query<ShareRow>(sql`
 		select coalesce(nullif(p.conn_country, 'ZZ'), 'Unknown') as label,
-		       round(sum(p.ms_played) / 60000.0)::int as value
+		       round(coalesce(sum(p.ms_played), 0) / 60000.0)::int as value
 		  from plays p
 		 where ${win(r)}
-		 group by 1 having sum(p.ms_played) > 0 order by value desc
+		 group by 1 having coalesce(sum(p.ms_played), 0) > 0 order by value desc
 		 limit ${limit}
 	`);
 }
@@ -392,7 +399,7 @@ export async function topArtistsByYearPlayed(r: Range, topN = 10): Promise<BumpR
 		  -- predecessor to compare against; it drops out after ranking.
 		  select extract(year from p.played_at at time zone ${r.tz})::int as yr,
 		         cta.artist_id,
-		         round(sum(p.ms_played) / 3600000.0)::int as hours
+		         round(coalesce(sum(p.ms_played), 0) / 3600000.0)::int as hours
 		    from plays p
 		    join spotify_tracks st on st.id = p.track_id
 		    join canonical_track_artists cta
@@ -473,7 +480,7 @@ export async function listeningStreaks(r: Range): Promise<ListeningStreaks> {
 	const rows = await query<ListeningStreaks>(sql`
 		with days as (
 		  select (p.played_at at time zone ${r.tz})::date as d,
-		         round(sum(p.ms_played) / 60000.0)::int as minutes
+		         round(coalesce(sum(p.ms_played), 0) / 60000.0)::int as minutes
 		    from plays p where ${win(r)} group by 1
 		), grouped as (
 		  -- Consecutive dates share (date - row_number): gaps and islands.
@@ -623,10 +630,4 @@ export async function coverage(): Promise<HistoryCoverage> {
 			savedNeverPlayed: 0
 		}
 	);
-}
-
-/** True when there is any history at all — the app hides its listening UI otherwise. */
-export async function hasHistory(): Promise<boolean> {
-	const rows = await query<{ any: boolean }>(sql`select exists (select 1 from plays) as any`);
-	return rows[0]?.any ?? false;
 }

@@ -327,6 +327,8 @@
 				title="Where in the world"
 				subtitle="Minutes by the country the client connected from"
 				unit="minutes"
+				centerValue={String(data.countries.length)}
+				centerLabel={data.countries.length === 1 ? 'country' : 'countries'}
 			/>
 		</section>
 	</div>

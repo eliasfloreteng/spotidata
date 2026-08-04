@@ -63,7 +63,7 @@ export async function trackPlaysByMonth(
 		), played as (
 		  select date_trunc('month', p.played_at at time zone ${tz}) as m,
 		         count(*)::int as plays,
-		         round(sum(p.ms_played) / 60000.0)::int as minutes
+		         round(coalesce(sum(p.ms_played), 0) / 60000.0)::int as minutes
 		    from plays p
 		    join spotify_tracks st on st.id = p.track_id
 		   where st.canonical_track_id = ${canonicalTrackId}
@@ -212,20 +212,4 @@ export async function playlistPlaySummary(playlistId: string): Promise<PlaySumma
 		 )
 	`);
 	return rows[0] ?? EMPTY;
-}
-
-/** Per-recording play counts for a set of recordings — the list-page column. */
-export async function playCountsFor(
-	canonicalTrackIds: string[]
-): Promise<Map<string, { plays: number; msPlayed: number }>> {
-	if (canonicalTrackIds.length === 0) return new Map();
-	const rows = await query<{ id: string; plays: number; msPlayed: number }>(sql`
-		select canonical_track_id as id, plays, ms_played as "msPlayed"
-		  from canonical_play_stats
-		 where canonical_track_id = any(
-		   ARRAY(select value from jsonb_array_elements_text(
-		     ${JSON.stringify(canonicalTrackIds)}::jsonb) as t(value))
-		 )
-	`);
-	return new Map(rows.map((r) => [r.id, { plays: r.plays, msPlayed: r.msPlayed }]));
 }
