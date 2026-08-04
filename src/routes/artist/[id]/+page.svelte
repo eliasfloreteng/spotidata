@@ -5,7 +5,7 @@
 	import SpotifyLink from '$lib/components/SpotifyLink.svelte';
 	import StatTile from '$lib/components/StatTile.svelte';
 	import { CATEGORICAL } from '$lib/charts/index.ts';
-	import { num, shortDate, trackTime, longDuration } from '$lib/utils/format.ts';
+	import { num, relativeTime, shortDate, trackTime, longDuration } from '$lib/utils/format.ts';
 	import { trackHref } from '$lib/utils/qs.ts';
 	import type { ArtistAlbum } from '$lib/server/entities/artist.ts';
 
@@ -14,6 +14,9 @@
 	const artist = $derived(data.pending ? null : data.artist);
 	const stats = $derived(data.pending ? null : data.stats);
 	const albums = $derived<ArtistAlbum[]>(data.pending ? [] : data.albums);
+	const unsavedTop = $derived(
+		data.pending ? 0 : data.topPlayed.filter((t) => !t.inLibrary).length
+	);
 
 	const ORDER = ['album', 'single', 'compilation', 'other'];
 	const LABELS: Record<string, string> = {
@@ -67,7 +70,9 @@
 
 	<section class="tiles">
 		<StatTile label="Recordings" value={num(stats.libraryRecordings)} sub="{num(stats.libraryCopies)} track ids" accent={CATEGORICAL[0]} />
-		<StatTile label="Listen time" value={longDuration(stats.durationMs)} sub="one pass through" accent={CATEGORICAL[1]} />
+		<!-- "Runtime", not "Listen time": the tile beside it now reports actual
+		     listening, and two tiles both called listening would be a trap. -->
+		<StatTile label="Runtime" value={longDuration(stats.durationMs)} sub="one pass through" accent={CATEGORICAL[1]} />
 		<StatTile label="Liked" value={num(stats.likedRecordings)} sub="{num(stats.albumsInLibrary)} albums represented" accent={CATEGORICAL[2]} />
 		<StatTile
 			label="First added"
@@ -75,7 +80,62 @@
 			sub={stats.latestAddedAt ? `latest ${shortDate(stats.latestAddedAt)}` : 'not in your library'}
 			accent={CATEGORICAL[3]}
 		/>
+		<StatTile
+			label="You have played"
+			value={data.plays.plays > 0 ? longDuration(data.plays.msPlayed) : '—'}
+			sub={data.plays.plays > 0
+				? `${num(data.plays.plays)} plays · last ${relativeTime(data.plays.lastPlayedAt)}`
+				: 'not in your listening history'}
+			accent={CATEGORICAL[4]}
+			muted={data.plays.plays === 0}
+		/>
 	</section>
+
+	{#if data.topPlayed.length > 0}
+		<section class="card">
+			<header class="cardhead">
+				<div>
+					<h2>Most listened</h2>
+					<p class="faint sub">
+						By hours played, across everything credited to them — saved or not{#if unsavedTop > 0}, and
+							{unsavedTop} of these you never saved{/if}.
+					</p>
+				</div>
+				<a class="more" href="/history">All listening →</a>
+			</header>
+			<div class="scroll-x">
+				<table>
+					<thead>
+						<tr>
+							<th class="idx">#</th><th>Track</th>
+							<th class="r">Plays</th><th class="r">Listened</th><th class="r">Last</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each data.topPlayed as t, i (t.canonicalTrackId)}
+							<tr>
+								<td class="idx num faint">{i + 1}</td>
+								<td>
+									<div class="cell">
+										<Cover src={t.cover} alt="{t.title} cover" size={32} />
+										<div>
+											<a href={trackHref(t.canonicalTrackId)}>{t.title}</a>
+											{#if !t.inLibrary}
+												<span class="faint xs" title="Played, but never saved"> · not saved</span>
+											{/if}
+										</div>
+									</div>
+								</td>
+								<td class="r num">{num(t.plays)}</td>
+								<td class="r num muted small">{longDuration(t.msPlayed)}</td>
+								<td class="r muted small nowrap">{relativeTime(t.lastPlayedAt)}</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		</section>
+	{/if}
 
 	<section class="card">
 		<h2>Top tracks in your library</h2>
@@ -222,6 +282,21 @@
 	.sub {
 		font-size: 0.8rem;
 		margin: 0 0 12px;
+	}
+	.cardhead {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 16px;
+	}
+	.more {
+		flex: none;
+		font-size: 0.78rem;
+		color: var(--text-muted);
+		white-space: nowrap;
+	}
+	.more:hover {
+		color: var(--text);
 	}
 	table {
 		width: 100%;

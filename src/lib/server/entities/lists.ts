@@ -45,12 +45,22 @@ function havingAll(parts: (SQL | null)[]): SQL {
 
 // ------------------------------------------------------------------ liked
 
+/**
+ * Play counts on the list pages read `canonical_play_stats`, not `plays`.
+ *
+ * The rollup is the whole reason that table exists: sorting 8.8k recordings by
+ * play count would otherwise group 167k events on every page load, and a list
+ * page has no time range to justify it — the range picker lives on /history.
+ * A recording with no plays has no row there, hence the coalesce everywhere.
+ */
 export const LIKED_SORTS = {
 	added: 'sv.added_at',
 	name: 'st.name',
 	artist: 'pa.name',
 	popularity: 'st.popularity',
-	duration: 'st.duration_ms'
+	duration: 'st.duration_ms',
+	plays: 'coalesce(cps.plays, 0)',
+	listened: 'coalesce(cps.ms_played, 0)'
 } as const;
 export type LikedSort = keyof typeof LIKED_SORTS;
 
@@ -68,6 +78,8 @@ export interface LikedRow {
 	albumName: string | null;
 	cover: string | null;
 	artists: ArtistRef[];
+	plays: number;
+	msPlayed: number;
 }
 
 /** `copies` counts the recording across the whole library, so a liked track with no
@@ -109,10 +121,13 @@ export async function likedTracks(opts: {
 		       al.id                 as "albumId",
 		       al.name               as "albumName",
 		       ${thumb('album_images', 'album_id', 'al.id')} as cover,
-		       ${trackArtistsJson('st.id')} as artists
+		       ${trackArtistsJson('st.id')} as artists,
+		       coalesce(cps.plays, 0)     as plays,
+		       coalesce(cps.ms_played, 0)::bigint as "msPlayed"
 		  from saved_tracks sv
 		  join spotify_tracks st on st.id = sv.track_id
 		  left join canonical_tracks ct on ct.id = st.canonical_track_id
+		  left join canonical_play_stats cps on cps.canonical_track_id = st.canonical_track_id
 		  left join albums al on al.id = st.album_id
 		  left join lateral (
 		    select ar.name from track_artists ta join artists ar on ar.id = ta.artist_id
@@ -132,7 +147,10 @@ export const LIBRARY_SORTS = {
 	artist: 'pa.name',
 	popularity: 'ct.max_popularity',
 	duration: 'ct.duration_ms',
-	copies: 'ct.copy_count'
+	copies: 'ct.copy_count',
+	plays: 'coalesce(cps.plays, 0)',
+	listened: 'coalesce(cps.ms_played, 0)',
+	lastPlayed: 'cps.last_played_at'
 } as const;
 export type LibrarySort = keyof typeof LIBRARY_SORTS;
 
@@ -154,6 +172,9 @@ export interface LibraryRow {
 	albumName: string | null;
 	cover: string | null;
 	artists: ArtistRef[];
+	plays: number;
+	msPlayed: number;
+	lastPlayedAt: string | null;
 }
 
 const LIBRARY_SOURCE_CLAUSES = {
@@ -161,6 +182,12 @@ const LIBRARY_SOURCE_CLAUSES = {
 	playlist: sql`lc.owned_playlist_count > 0`,
 	'liked-only': sql`lc.liked and lc.owned_playlist_count = 0`,
 	'playlist-only': sql`lc.owned_playlist_count > 0 and not lc.liked`
+};
+
+/** Saved and never listened to is a category the library tables cannot express. */
+const PLAYED_CLAUSES = {
+	played: sql`coalesce(cps.plays, 0) > 0`,
+	never: sql`cps.canonical_track_id is null`
 };
 
 export async function libraryRecordings(opts: {
@@ -176,7 +203,8 @@ export async function libraryRecordings(opts: {
 	const where = andAll([
 		clauseFor(opts.filters.source, LIBRARY_SOURCE_CLAUSES),
 		clauseFor(opts.filters.copies, COPIES_CLAUSES(sql`ct.copy_count`)),
-		clauseFor(opts.filters.explicit, EXPLICIT_CLAUSES(sql`ct.explicit`))
+		clauseFor(opts.filters.explicit, EXPLICIT_CLAUSES(sql`ct.explicit`)),
+		clauseFor(opts.filters.played, PLAYED_CLAUSES)
 	]);
 	return query<LibraryRow>(sql`
 		select ${total},
@@ -201,9 +229,13 @@ export async function libraryRecordings(opts: {
 		           from canonical_track_artists cta
 		           join artists ar on ar.id = cta.artist_id
 		          where cta.canonical_track_id = ct.id and cta.on_representative
-		       ), '[]'::jsonb)       as artists
+		       ), '[]'::jsonb)       as artists,
+		       coalesce(cps.plays, 0) as plays,
+		       coalesce(cps.ms_played, 0)::bigint as "msPlayed",
+		       ${iso('cps.last_played_at')} as "lastPlayedAt"
 		  from library_canonical lc
 		  join canonical_tracks ct on ct.id = lc.canonical_track_id
+		  left join canonical_play_stats cps on cps.canonical_track_id = lc.canonical_track_id
 		  left join albums al on al.id = ct.primary_album_id
 		  left join artists pa on pa.id = ct.primary_artist_id
 		 where true${filter}${where}
@@ -220,7 +252,11 @@ export const ARTIST_SORTS = {
 	albums: 'count(distinct lc.primary_album_id)',
 	duration: 'sum(lc.duration_ms)',
 	popularity: 'a.popularity',
-	followers: 'a.followers_total'
+	followers: 'a.followers_total',
+	// max() over a value that is constant within the group: the lateral produces
+	// one row per artist, but an aggregate query cannot say so without it.
+	plays: 'max(ps.plays)',
+	listened: 'max(ps.ms)'
 } as const;
 export type ArtistSort = keyof typeof ARTIST_SORTS;
 
@@ -241,6 +277,8 @@ export interface ArtistIndexRow {
 	durationMs: number;
 	genre: string | null;
 	followed: boolean;
+	plays: number;
+	msPlayed: number;
 }
 
 export async function artistIndex(opts: {
@@ -271,11 +309,23 @@ export async function artistIndex(opts: {
 		       coalesce(sum(lc.duration_ms), 0)::bigint   as "durationMs",
 		       (select g.genre from artist_genres g where g.artist_id = a.id order by g.genre limit 1)
 		                         as genre,
-		       bool_or(fa.artist_id is not null) as followed
+		       bool_or(fa.artist_id is not null) as followed,
+		       max(ps.plays)::int as plays,
+		       max(ps.ms)::bigint as "msPlayed"
 		  from artists a
 		  join canonical_track_artists cta on cta.artist_id = a.id
 		  join library_canonical lc on lc.canonical_track_id = cta.canonical_track_id
 		  left join followed_artists fa on fa.artist_id = a.id and fa.removed_at is null
+		  -- Counted over EVERY recording credited to the artist, not just the ones
+		  -- in the library: half of what you play by an artist you never saved,
+		  -- and a column that quietly excluded it would contradict /history.
+		  left join lateral (
+		    select coalesce(sum(c.plays), 0) as plays, coalesce(sum(c.ms_played), 0) as ms
+		      from canonical_play_stats c
+		      join canonical_track_artists x
+		        on x.canonical_track_id = c.canonical_track_id and x.on_representative
+		     where x.artist_id = a.id
+		  ) ps on true
 		 where true${filter}${genre}
 		 group by a.id, a.name, a.popularity, a.followers_total
 		 ${having}
@@ -313,7 +363,9 @@ export const ALBUM_SORTS = {
 	artist: 'max(pa.name)',
 	released: 'al.release_date_start',
 	total: 'al.total_tracks',
-	popularity: 'al.popularity'
+	popularity: 'al.popularity',
+	plays: 'max(ps.plays)',
+	listened: 'max(ps.ms)'
 } as const;
 export type AlbumSort = keyof typeof ALBUM_SORTS;
 
@@ -347,6 +399,8 @@ export interface AlbumIndexRow {
 	saved: boolean;
 	artist: string | null;
 	artistId: string | null;
+	plays: number;
+	msPlayed: number;
 }
 
 export async function albumIndex(opts: {
@@ -374,7 +428,9 @@ export async function albumIndex(opts: {
 		       count(distinct st.canonical_track_id)::int as tracks,
 		       bool_or(sa.album_id is not null) as saved,
 		       max(pa.name) as artist,
-		       max(pa.id)   as "artistId"
+		       max(pa.id)   as "artistId",
+		       max(ps.plays)::int as plays,
+		       max(ps.ms)::bigint as "msPlayed"
 		  from albums al
 		  join spotify_tracks st on st.album_id = al.id
 		  join library_tracks lt on lt.track_id = st.id
@@ -383,6 +439,17 @@ export async function albumIndex(opts: {
 		    select ar.id, ar.name from album_artists aa join artists ar on ar.id = aa.artist_id
 		     where aa.album_id = al.id order by aa.position limit 1
 		  ) pa on true
+		  -- Over every recording the album carries, whether or not the copy you
+		  -- played was the one on this edition — the same "do I play this record?"
+		  -- reading the coverage column uses.
+		  left join lateral (
+		    select coalesce(sum(c.plays), 0) as plays, coalesce(sum(c.ms_played), 0) as ms
+		      from canonical_play_stats c
+		     where c.canonical_track_id in (
+		       select t.canonical_track_id from spotify_tracks t
+		        where t.album_id = al.id and t.canonical_track_id is not null
+		     )
+		  ) ps on true
 		 where true${filter}${where}
 		 group by al.id, al.name, al.album_type, al.release_date, al.release_date_start,
 		          al.total_tracks, al.popularity
@@ -398,7 +465,9 @@ export const PLAYLIST_SORTS = {
 	library: 's.in_library',
 	duration: 's.duration_ms',
 	added: 's.last_added',
-	owner: 'coalesce(u.display_name, p.owner_id)'
+	owner: 'coalesce(u.display_name, p.owner_id)',
+	plays: 'pl.plays',
+	listened: 'pl.ms_played'
 } as const;
 export type PlaylistSort = keyof typeof PLAYLIST_SORTS;
 
@@ -428,6 +497,8 @@ export interface PlaylistIndexRow {
 	libraryTracks: number;
 	durationMs: number;
 	lastAddedAt: string | null;
+	plays: number;
+	msPlayed: number;
 }
 
 export async function playlistIndex(opts: {
@@ -458,7 +529,9 @@ export async function playlistIndex(opts: {
 		       s.stored        as tracks,
 		       s.in_library    as "libraryTracks",
 		       s.duration_ms   as "durationMs",
-		       ${iso('s.last_added')} as "lastAddedAt"
+		       ${iso('s.last_added')} as "lastAddedAt",
+		       coalesce(pl.plays, 0)    as plays,
+		       coalesce(pl.ms_played, 0)::bigint as "msPlayed"
 		  from playlists p
 		  left join spotify_users u on u.id = p.owner_id
 		  left join lateral (
@@ -471,6 +544,20 @@ export async function playlistIndex(opts: {
 		      left join library_tracks lt on lt.track_id = pt.track_id
 		     where pt.playlist_id = p.id
 		  ) s on true
+		  -- Summed over DISTINCT recordings rather than over the item rows: a
+		  -- playlist that lists the same song twice would otherwise double its
+		  -- own plays, and a playlist is a set of songs for this purpose.
+		  left join lateral (
+		    select coalesce(sum(c.plays), 0)::int as plays,
+		           coalesce(sum(c.ms_played), 0)::bigint as ms_played
+		      from canonical_play_stats c
+		     where c.canonical_track_id in (
+		       select distinct st2.canonical_track_id
+		         from playlist_tracks pt2
+		         join spotify_tracks st2 on st2.id = pt2.track_id
+		        where pt2.playlist_id = p.id and st2.canonical_track_id is not null
+		     )
+		  ) pl on true
 		 where p.removed_at is null${filter}${where}
 		 order by ${opts.order}, p.name
 		 limit ${opts.limit} offset ${opts.offset}

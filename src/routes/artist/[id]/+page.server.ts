@@ -5,6 +5,7 @@ import {
 	getArtistStats,
 	getArtistTopTracks
 } from '$lib/server/entities/artist.ts';
+import { artistPlaySummary, artistTopPlayed } from '$lib/server/entities/play-stats.ts';
 import { ensureEntity } from '$lib/server/ingest/ensure.ts';
 import type { PageServerLoad } from './$types';
 
@@ -19,11 +20,23 @@ export const load: PageServerLoad = async ({ params }) => {
 		return { pending: true as const, id };
 	}
 
-	const [stats, albums, topTracks] = await Promise.all([
+	const [stats, albums, topTracks, plays, topPlayed] = await Promise.all([
 		getArtistStats(id),
 		getArtistAlbums(id),
-		getArtistTopTracks(id, 20)
+		getArtistTopTracks(id, 20),
+		artistPlaySummary(id),
+		artistTopPlayed(id, 12)
 	]);
 
-	return { pending: false as const, id, artist, stats, albums, topTracks, refreshing: state.pending };
+	return {
+		pending: false as const,
+		id,
+		artist,
+		stats,
+		albums,
+		topTracks,
+		plays,
+		topPlayed,
+		refreshing: state.pending
+	};
 };

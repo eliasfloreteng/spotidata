@@ -16,7 +16,9 @@
 		{ key: 'albums', label: 'Albums' },
 		{ key: 'duration', label: 'Time' },
 		{ key: 'popularity', label: 'Popularity' },
-		{ key: 'followers', label: 'Followers' }
+		{ key: 'followers', label: 'Followers' },
+		{ key: 'listened', label: 'Listened' },
+		{ key: 'plays', label: 'Plays' }
 	];
 
 	/** The bar is scaled to the current page, so it stays readable however the list is sorted. */
@@ -57,6 +59,13 @@
 						<span class="name">{a.name}</span>
 						<span class="faint xs">
 							{a.genre ?? 'no genre'} · {num(a.albums)} albums · {longDuration(a.durationMs)}
+							{#if a.plays > 0}
+								· <span
+										class="played"
+										title="{num(a.plays)} plays, over every recording credited to them — saved or not"
+									>{longDuration(a.msPlayed)} played</span
+								>
+							{/if}
 							{#if a.followed}· <span class="follow">followed</span>{/if}
 						</span>
 					</span>
@@ -135,6 +144,9 @@
 	}
 	.follow {
 		color: var(--good);
+	}
+	.played {
+		color: var(--text-muted);
 	}
 	.bar {
 		flex: 1 1 120px;

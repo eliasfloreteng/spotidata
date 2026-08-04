@@ -71,6 +71,15 @@
 			sub={p.firstAddedAt ? `started ${shortDate(p.firstAddedAt)}` : 'no timestamps'}
 			accent={CATEGORICAL[3]}
 		/>
+		<StatTile
+			label="You have played"
+			value={data.plays.plays > 0 ? longDuration(data.plays.msPlayed) : '—'}
+			sub={data.plays.plays > 0
+				? `${num(data.plays.plays)} plays of these recordings`
+				: 'not in your listening history'}
+			accent={CATEGORICAL[4]}
+			muted={data.plays.plays === 0}
+		/>
 	</section>
 
 	<p class="snap faint small">

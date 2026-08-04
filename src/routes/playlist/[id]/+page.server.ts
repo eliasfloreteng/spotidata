@@ -1,5 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { getPlaylist, getPlaylistItems } from '$lib/server/entities/playlist.ts';
+import { playlistPlaySummary } from '$lib/server/entities/play-stats.ts';
 import { ensureEntity } from '$lib/server/ingest/ensure.ts';
 import type { PageServerLoad } from './$types';
 
@@ -14,6 +15,6 @@ export const load: PageServerLoad = async ({ params }) => {
 		return { pending: true as const, id };
 	}
 
-	const items = await getPlaylistItems(id);
-	return { pending: false as const, id, playlist, items, refreshing: state.pending };
+	const [items, plays] = await Promise.all([getPlaylistItems(id), playlistPlaySummary(id)]);
+	return { pending: false as const, id, playlist, items, plays, refreshing: state.pending };
 };

@@ -1,5 +1,6 @@
 import { resolveRange, dataVersion, zonedDay } from '$lib/server/stats/range.ts';
 import * as q from '$lib/server/stats/queries.ts';
+import * as p from '$lib/server/stats/plays.ts';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url, locals, setHeaders }) => {
@@ -25,7 +26,9 @@ export const load: PageServerLoad = async ({ url, locals, setHeaders }) => {
 		split,
 		duplicates,
 		streaks,
-		popularity
+		popularity,
+		listening,
+		played
 	] = await Promise.all([
 		q.totals(range),
 		q.additionsByDay(range),
@@ -46,7 +49,16 @@ export const load: PageServerLoad = async ({ url, locals, setHeaders }) => {
 		q.newVsDeepening(range),
 		q.duplicates(range, 10),
 		q.streaks(range),
-		q.popularityDistribution(range)
+		q.popularityDistribution(range),
+		// The range picker here works in "when it was added", and listening is
+		// keyed on when it was played — so these two deliberately answer the
+		// whole-history question and link out rather than pretending to share a
+		// window. /history is where listening gets a range of its own.
+		p.listeningTotals({ ...range, from: new Date(0), to: new Date(8.64e15), isAllTime: true }),
+		p.topPlayedTracks(
+			{ ...range, from: new Date(0), to: new Date(8.64e15), isAllTime: true },
+			{ limit: 10 }
+		)
 	]);
 
 	// Data only changes when a sync commits, so a matching ETag turns a
@@ -84,7 +96,9 @@ export const load: PageServerLoad = async ({ url, locals, setHeaders }) => {
 		duplicates,
 		streaks,
 		// Guarded per the probe finding: popularity reads 0 without a user token.
-		popularity: popularity.some((p) => p.bucket > 0) ? popularity : [],
+		popularity: popularity.some((b) => b.bucket > 0) ? popularity : [],
+		listening,
+		played,
 		weekStart: locals.settings['ui.weekStart']
 	};
 };

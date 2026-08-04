@@ -76,6 +76,9 @@ export interface AlbumTrack {
 	/** The recording is in the library, but through a copy on another album. */
 	viaOtherCopy: boolean;
 	liked: boolean;
+	/** Plays of the RECORDING, so a play off any release counts here. */
+	plays: number;
+	msPlayed: number;
 }
 
 export interface AlbumEdition {
@@ -125,10 +128,13 @@ export async function getAlbumTracks(albumId: string): Promise<AlbumTrack[]> {
 		       ${trackArtistsJson('st.id')} as artists,
 		       (lt.track_id is not null)    as "inLibrary",
 		       (lt.track_id is null and lc.canonical_track_id is not null) as "viaOtherCopy",
-		       (sv.track_id is not null)    as liked
+		       (sv.track_id is not null)    as liked,
+		       coalesce(cps.plays, 0)       as plays,
+		       coalesce(cps.ms_played, 0)::bigint as "msPlayed"
 		  from spotify_tracks st
 		  left join library_tracks lt on lt.track_id = st.id
 		  left join library_canonical lc on lc.canonical_track_id = st.canonical_track_id
+		  left join canonical_play_stats cps on cps.canonical_track_id = st.canonical_track_id
 		  left join saved_tracks sv on sv.track_id = st.id and sv.removed_at is null
 		 where st.album_id = ${albumId}
 		 order by st.disc_number, st.track_number, st.name

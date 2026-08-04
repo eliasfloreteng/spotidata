@@ -137,6 +137,34 @@
 					</em>
 				</span>
 			</label>
+			<label class="check">
+				<input
+					type="checkbox"
+					name="pollRecent"
+					checked={data.settings['history.pollRecentlyPlayed']}
+				/>
+				<span>
+					Poll recently-played
+					<em class="faint small">
+						One request every 20 minutes. The endpoint only ever returns the last 50
+						plays, so a longer gap than that loses its middle for good.
+					</em>
+				</span>
+			</label>
+			<label class="check">
+				<input
+					type="checkbox"
+					name="resolvePlayed"
+					checked={data.settings['history.resolvePlayedTracks']}
+				/>
+				<span>
+					Look up tracks you played but never saved
+					<em class="faint small">
+						A few hundred requests after a first import. Without it those plays stay as
+						bare names and count toward no artist, album or recording.
+					</em>
+				</span>
+			</label>
 		</div>
 		{#if data.limiter}
 			<p class="faint small">

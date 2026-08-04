@@ -80,6 +80,12 @@
 					+{num(viaCopy)} more you own as a different release of the same recording
 				</div>
 			{/if}
+			{#if data.plays.plays > 0}
+				<div class="listened xs">
+					<span class="num">{longDuration(data.plays.msPlayed)}</span> played ·
+					{num(data.plays.plays)} streams
+				</div>
+			{/if}
 		</div>
 	</header>
 
@@ -105,13 +111,14 @@
 						<th>Artists</th>
 						<th class="r">Length</th>
 						<th class="r">Pop.</th>
+						<th class="r">Plays</th>
 						<th class="r"><span class="sr">Spotify</span></th>
 					</tr>
 				</thead>
 				<tbody>
 					{#each discs as [disc, list] (disc)}
 						{#if discs.length > 1}
-							<tr class="discrow"><td colspan="7" class="faint xs">Disc {disc}</td></tr>
+							<tr class="discrow"><td colspan="8" class="faint xs">Disc {disc}</td></tr>
 						{/if}
 						{#each list as t (t.id)}
 							<tr class:mine={t.inLibrary}>
@@ -138,6 +145,15 @@
 								</td>
 								<td class="r num muted">{trackTime(t.durationMs)}</td>
 								<td class="r num">{t.popularity ?? '—'}</td>
+								<td
+									class="r num"
+									class:faint={t.plays === 0}
+									title={t.plays > 0
+										? `${longDuration(t.msPlayed)} listened, counting every release of this recording`
+										: 'Not in your listening history'}
+								>
+									{t.plays || '—'}
+								</td>
 								<td class="r"><SpotifyLink kind="track" id={t.id} compact label="Open {t.name} in Spotify" /></td>
 							</tr>
 						{/each}
@@ -275,6 +291,12 @@
 	.held {
 		font-size: 0.9rem;
 		margin-top: 2px;
+	}
+	.listened {
+		margin-top: 8px;
+		padding-top: 8px;
+		border-top: 1px solid var(--hairline);
+		color: var(--text-muted);
 	}
 	.meter {
 		height: 6px;

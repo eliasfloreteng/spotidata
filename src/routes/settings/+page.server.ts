@@ -66,6 +66,8 @@ export const actions: Actions = {
 		}
 
 		await setSetting('sync.storeRawPayloads', form.get('storeRaw') === 'on');
+		await setSetting('history.pollRecentlyPlayed', form.get('pollRecent') === 'on');
+		await setSetting('history.resolvePlayedTracks', form.get('resolvePlayed') === 'on');
 
 		// The hooks cache is 5s; drop it so the change is visible immediately.
 		invalidateSettingsCache();

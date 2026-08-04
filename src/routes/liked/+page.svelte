@@ -8,7 +8,7 @@
 	import SortTh from '$lib/components/SortTh.svelte';
 	import SpotifyLink from '$lib/components/SpotifyLink.svelte';
 	import { LIKED_FILTERS } from '$lib/filters.ts';
-	import { num, shortDate, trackTime } from '$lib/utils/format.ts';
+	import { longDuration, num, shortDate, trackTime } from '$lib/utils/format.ts';
 	import { trackHref } from '$lib/utils/qs.ts';
 
 	let { data } = $props();
@@ -40,6 +40,7 @@
 					<th>Album</th>
 					<SortTh key="duration" label="Length" active={data.sort} dir={data.dir} right />
 					<SortTh key="popularity" label="Pop." active={data.sort} dir={data.dir} right />
+					<SortTh key="plays" label="Plays" active={data.sort} dir={data.dir} right />
 					<SortTh key="added" label="Added" active={data.sort} dir={data.dir} right />
 					<th class="r"><span class="sr">Spotify</span></th>
 				</tr>
@@ -76,11 +77,18 @@
 						</td>
 						<td class="r num muted">{trackTime(t.durationMs)}</td>
 						<td class="r num">{t.popularity ?? '—'}</td>
+						<td
+							class="r num"
+							class:faint={t.plays === 0}
+							title={t.plays > 0 ? `${longDuration(t.msPlayed)} listened` : 'Never played'}
+						>
+							{t.plays || '—'}
+						</td>
 						<td class="r muted small nowrap" title={t.addedAt}>{shortDate(t.addedAt)}</td>
 						<td class="r"><SpotifyLink kind="track" id={t.id} compact label="Open {t.name} in Spotify" /></td>
 					</tr>
 				{:else}
-					<tr><td colspan="8" class="empty faint">No liked songs match that search.</td></tr>
+					<tr><td colspan="9" class="empty faint">No liked songs match that search.</td></tr>
 				{/each}
 			</tbody>
 		</table>

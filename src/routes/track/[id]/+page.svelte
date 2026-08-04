@@ -4,12 +4,23 @@
 	import Cover from '$lib/components/Cover.svelte';
 	import SpotifyLink from '$lib/components/SpotifyLink.svelte';
 	import StatTile from '$lib/components/StatTile.svelte';
-	import { CATEGORICAL } from '$lib/charts/index.ts';
-	import { num, shortDate, trackTime, relativeTime } from '$lib/utils/format.ts';
+	import { AreaChart, CATEGORICAL } from '$lib/charts/index.ts';
+	import { longDuration, num, shortDate, trackTime, relativeTime } from '$lib/utils/format.ts';
 
 	let { data } = $props();
 
 	const t = $derived(data.track);
+	const p = $derived(data.plays);
+	const playSeries = $derived([
+		{
+			key: 'plays',
+			label: 'Plays',
+			points: data.playsByMonth.map((m) => ({ date: `${m.period}-01`, value: m.plays })),
+			render: 'bar' as const
+		}
+	]);
+	/** The tile's sparkline: the last two years of the same series. */
+	const playTrend = $derived(data.playsByMonth.slice(-24).map((m) => m.plays));
 	const copies = $derived(data.copies);
 	const distinctNames = $derived(new Set(copies.map((c) => c.name)).size);
 	const distinctAlbums = $derived(new Set(copies.map((c) => c.albumId)).size);
@@ -70,7 +81,49 @@
 	<StatTile label="Peak popularity" value={t.maxPopularity == null ? '—' : String(t.maxPopularity)} sub="best of all copies" accent={CATEGORICAL[1]} />
 	<StatTile label="In your library" value={t.copyCountInLibrary > 0 ? `${num(t.copyCountInLibrary)} ${plural(t.copyCountInLibrary, 'copy', 'copies')}` : 'No'} sub={t.firstAddedAt ? `first added ${shortDate(t.firstAddedAt)}` : 'not saved'} accent={CATEGORICAL[2]} />
 	<StatTile label="Playlists" value={num(data.playlists.length)} sub="{num(t.ownedPlaylistCount)} of them yours" accent={CATEGORICAL[3]} />
+	<StatTile
+		label="Times played"
+		value={p.plays > 0 ? num(p.plays) : '—'}
+		sub={p.plays > 0
+			? `${longDuration(p.msPlayed)} listened`
+			: 'not in your listening history'}
+		accent={CATEGORICAL[4]}
+		trend={playTrend}
+		muted={p.plays === 0}
+	/>
 </section>
+
+{#if p.plays > 0}
+	<section class="card">
+		<header class="cardhead">
+			<div>
+				<h2>Listening</h2>
+				<p class="faint sub">
+					First played {shortDate(p.firstPlayedAt)}, most recently {relativeTime(p.lastPlayedAt)}.
+					{num(p.completed)} of {num(p.plays)} streams ran past 30 seconds.
+				</p>
+			</div>
+			<a class="more" href="/history">All listening →</a>
+		</header>
+
+		<div class="playgrid">
+			<div class="chartwrap">
+				<AreaChart series={playSeries} title="Plays per month" unit="plays" height={230} />
+			</div>
+			<ul class="log">
+				{#each data.recentPlays as r (r.id)}
+					<li>
+						<span class="when muted small" title={r.playedAt}>{relativeTime(r.playedAt)}</span>
+						<span class="dur num small">{r.msPlayed == null ? '—' : trackTime(r.msPlayed)}</span>
+						<span class="how faint xs">
+							{r.platform ?? r.source}{#if r.reasonEnd} · {r.reasonEnd}{/if}
+						</span>
+					</li>
+				{/each}
+			</ul>
+		</div>
+	</section>
+{/if}
 
 <section class="card">
 	<h2>Every Spotify copy</h2>
@@ -266,6 +319,52 @@
 	.sub {
 		font-size: 0.8rem;
 		margin: 0 0 12px;
+	}
+	.cardhead {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 16px;
+	}
+	.more {
+		flex: none;
+		font-size: 0.78rem;
+		color: var(--text-muted);
+		white-space: nowrap;
+	}
+	.more:hover {
+		color: var(--text);
+	}
+	/* The chart takes the width it needs and the recent plays sit beside it;
+	   below 820px they stack, because a 10-row log squeezed into a third of a
+	   phone is unreadable in either place. */
+	.playgrid {
+		display: grid;
+		grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+		gap: var(--gap);
+		align-items: start;
+	}
+	@media (max-width: 820px) {
+		.playgrid {
+			grid-template-columns: 1fr;
+		}
+	}
+	.log {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+	}
+	.log li {
+		display: grid;
+		grid-template-columns: 1fr auto;
+		gap: 0 10px;
+		padding: 6px 0;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+	}
+	.log .how {
+		grid-column: 1 / -1;
 	}
 	table {
 		width: 100%;

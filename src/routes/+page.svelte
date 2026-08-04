@@ -97,6 +97,17 @@
 		}))
 	);
 	const labelBars = $derived(data.labels.map((l) => ({ label: l.label, value: l.tracks })));
+	const playedBars = $derived(
+		data.played.map((r) => ({
+			label: r.title || '(untitled)',
+			value: Math.round((r.msPlayed / 3600000) * 10) / 10,
+			sublabel: `${r.artists.map((a) => a.name).join(', ') || '—'} · ${num(r.plays)} plays${
+				r.inLibrary ? '' : ' · not saved'
+			}`,
+			href: `/track/${r.canonicalTrackId}`,
+			image: r.cover
+		}))
+	);
 
 	const lagSeries = $derived([
 		{
@@ -155,8 +166,18 @@
 		sub={shortDate(data.streaks.busiestDay)}
 		accent={CATEGORICAL[5]}
 	/>
-	<!-- Reserved: needs streaming history, which is deliberately out of scope. -->
-	<StatTile label="Total listen time" value="—" sub="needs streaming history" muted />
+	<!-- Listening is keyed on when a track was PLAYED, not when it was added, so
+	     this tile deliberately ignores the range picker and states the whole
+	     history instead of silently mixing two different windows. -->
+	<StatTile
+		label="Total listen time"
+		value={data.listening.plays > 0 ? longDuration(data.listening.msPlayed) : '—'}
+		sub={data.listening.plays > 0
+			? `${num(data.listening.plays)} streams, all time`
+			: 'import your streaming history'}
+		accent={CATEGORICAL[6]}
+		muted={data.listening.plays === 0}
+	/>
 </section>
 
 <section class="card wide">
@@ -198,6 +219,22 @@
 		{/each}
 	</ul>
 </section>
+
+{#if data.played.length > 0}
+	<section class="card">
+		<BarList
+			data={playedBars}
+			title="Most played, all time"
+			subtitle="Hours listened — the one measure the library tables cannot give you, and the only panel here that ignores the range picker"
+			unit="hours"
+			limit={10}
+			color={CATEGORICAL[6]}
+			valueFormat={(n: number) => `${n.toFixed(1)}h`}
+		>
+			{#snippet actions()}<a class="more" href="/history">Listening →</a>{/snippet}
+		</BarList>
+	</section>
+{/if}
 
 <div class="grid two">
 	<section class="card">

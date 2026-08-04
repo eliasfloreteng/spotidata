@@ -56,6 +56,22 @@ const COPIES: FilterGroup = {
 	]
 };
 
+/**
+ * "Saved but never listened to" is a question neither table can answer alone,
+ * which makes it the most useful thing the listening history adds to a list
+ * page. It reads the play rollup, so it is only meaningful once a history has
+ * been imported — the option is harmless before then, it just matches
+ * everything.
+ */
+const PLAYED: FilterGroup = {
+	param: 'played',
+	label: 'Listening',
+	options: [
+		{ value: 'played', label: 'Played' },
+		{ value: 'never', label: 'Never played', title: 'Saved, but absent from your listening history' }
+	]
+};
+
 export const LIBRARY_FILTERS: FilterGroup[] = [
 	{
 		param: 'source',
@@ -67,6 +83,7 @@ export const LIBRARY_FILTERS: FilterGroup[] = [
 			{ value: 'playlist-only', label: 'In a playlist, not liked' }
 		]
 	},
+	PLAYED,
 	COPIES,
 	EXPLICIT
 ];

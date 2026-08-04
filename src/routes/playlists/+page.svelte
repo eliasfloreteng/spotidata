@@ -16,7 +16,8 @@
 		{ key: 'library', label: 'In library' },
 		{ key: 'duration', label: 'Time' },
 		{ key: 'added', label: 'Last add' },
-		{ key: 'owner', label: 'Owner', initial: 'asc' as const }
+		{ key: 'owner', label: 'Owner', initial: 'asc' as const },
+		{ key: 'listened', label: 'Listened' }
 	];
 
 	const owned = $derived(data.rows.filter((p) => p.isOwned).length);
@@ -63,6 +64,12 @@
 							<span class="num">{num(p.tracks)}</span> tracks ·
 							<span class="num">{longDuration(p.durationMs)}</span> ·
 							<span class="num">{num(p.libraryTracks)}</span> in library ·
+							{#if p.plays > 0}
+								<span
+									class="num"
+									title="Listening to the recordings this playlist holds, wherever you played them from"
+								>{longDuration(p.msPlayed)}</span> played ·
+							{/if}
 							{p.ownerName ?? p.ownerId ?? 'unknown owner'}
 							{#if p.lastAddedAt}· last add {shortDate(p.lastAddedAt)}{/if}
 						</span>

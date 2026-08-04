@@ -7,7 +7,7 @@
 	import SortTh from '$lib/components/SortTh.svelte';
 	import SpotifyLink from '$lib/components/SpotifyLink.svelte';
 	import { ALBUM_FILTERS } from '$lib/filters.ts';
-	import { num } from '$lib/utils/format.ts';
+	import { longDuration, num } from '$lib/utils/format.ts';
 
 	let { data } = $props();
 </script>
@@ -40,6 +40,7 @@
 					<SortTh key="tracks" label="Yours" active={data.sort} dir={data.dir} right />
 					<SortTh key="coverage" label="Coverage" active={data.sort} dir={data.dir} />
 					<SortTh key="popularity" label="Pop." active={data.sort} dir={data.dir} right />
+					<SortTh key="listened" label="Listened" active={data.sort} dir={data.dir} right />
 					<th class="r"><span class="sr">Spotify</span></th>
 				</tr>
 			</thead>
@@ -72,10 +73,17 @@
 							</span>
 						</td>
 						<td class="r num">{a.popularity ?? '—'}</td>
+						<td
+							class="r num small nowrap"
+							class:faint={a.plays === 0}
+							title={a.plays > 0 ? `${num(a.plays)} plays` : 'Never played'}
+						>
+							{a.plays > 0 ? longDuration(a.msPlayed) : '—'}
+						</td>
 						<td class="r"><SpotifyLink kind="album" id={a.id} compact label="Open {a.name} in Spotify" /></td>
 					</tr>
 				{:else}
-					<tr><td colspan="9" class="empty faint">No albums match that search.</td></tr>
+					<tr><td colspan="10" class="empty faint">No albums match that search.</td></tr>
 				{/each}
 			</tbody>
 		</table>
