@@ -11,15 +11,23 @@ import type { Executor } from '../ingest/_bulk.ts';
  * objects carrying ISRC, so the *library* is correctly canonicalized after
  * `canonicalize` — every chart works at that point. `hydrate` only sharpens
  * album-completion percentages across editions, so it runs last and cheap.
+ *
+ * The two listening phases sit either side of the catalog work for a reason.
+ * `plays` is a single 50-item poll and gates nothing, so it runs early and
+ * alongside everything else. `plays_resolve` fetches the tracks the log names
+ * but the library never saved, and has to be finished before `canonicalize`,
+ * or those recordings would go a whole run without an ISRC group to belong to.
  */
 export const PHASES = [
 	{ key: 'profile', label: 'Profile, follows & saved albums' },
 	{ key: 'liked', label: 'Liked songs' },
 	{ key: 'playlists', label: 'Playlists' },
 	{ key: 'playlist_items', label: 'Playlist tracks' },
+	{ key: 'plays', label: 'Recently played' },
 	{ key: 'albums', label: 'Albums' },
 	{ key: 'album_tracks', label: 'Album track overflow' },
 	{ key: 'artists', label: 'Artists' },
+	{ key: 'plays_resolve', label: 'Tracks you played' },
 	{ key: 'canonicalize', label: 'Group by ISRC' },
 	{ key: 'derive', label: 'Build library' },
 	{ key: 'hydrate', label: 'Enrich album tracks' },

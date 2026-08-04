@@ -14,6 +14,14 @@ export interface Settings {
 	'ratelimit.targetRpm': number;
 	'sync.storeRawPayloads': boolean;
 	'sync.hydrateAlbumTracks': boolean;
+	/**
+	 * Fetch the tracks the listening history names but the catalog has never
+	 * seen. On a first import that is a few hundred requests; without it, plays
+	 * of never-saved music stay as bare names.
+	 */
+	'history.resolvePlayedTracks': boolean;
+	/** Poll /me/player/recently-played on a cron between syncs. */
+	'history.pollRecentlyPlayed': boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -22,7 +30,9 @@ export const DEFAULT_SETTINGS: Settings = {
 	'ui.weekStart': 'monday',
 	'ratelimit.targetRpm': 150,
 	'sync.storeRawPayloads': true,
-	'sync.hydrateAlbumTracks': true
+	'sync.hydrateAlbumTracks': true,
+	'history.resolvePlayedTracks': true,
+	'history.pollRecentlyPlayed': true
 };
 
 export async function loadSettings(): Promise<Settings> {

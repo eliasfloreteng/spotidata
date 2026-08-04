@@ -72,7 +72,11 @@ export const config = {
 			'playlist-read-collaborative',
 			'user-follow-read',
 			'user-read-private',
-			'user-read-email'
+			'user-read-email',
+			// Listening history. Added after the first release, so an existing
+			// grant does not carry it — /settings compares this list against the
+			// stored scope and asks for a re-authorization when they diverge.
+			'user-read-recently-played'
 		] as const
 	},
 

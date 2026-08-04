@@ -81,7 +81,8 @@ export const relations = defineRelations(schema, (r) => ({
 		playlistEntries: r.many.playlistTracks({
 			from: r.spotifyTracks.id,
 			to: r.playlistTracks.trackId
-		})
+		}),
+		plays: r.many.plays({ from: r.spotifyTracks.id, to: r.plays.trackId })
 	},
 
 	canonicalTracks: {
@@ -108,6 +109,10 @@ export const relations = defineRelations(schema, (r) => ({
 		library: r.one.libraryCanonical({
 			from: r.canonicalTracks.id,
 			to: r.libraryCanonical.canonicalTrackId
+		}),
+		playStats: r.one.canonicalPlayStats({
+			from: r.canonicalTracks.id,
+			to: r.canonicalPlayStats.canonicalTrackId
 		})
 	},
 
@@ -126,6 +131,14 @@ export const relations = defineRelations(schema, (r) => ({
 	playlistTracks: {
 		playlist: r.one.playlists({ from: r.playlistTracks.playlistId, to: r.playlists.id }),
 		track: r.one.spotifyTracks({ from: r.playlistTracks.trackId, to: r.spotifyTracks.id })
+	},
+
+	plays: {
+		track: r.one.spotifyTracks({ from: r.plays.trackId, to: r.spotifyTracks.id }),
+		import: r.one.playImports({ from: r.plays.importId, to: r.playImports.id })
+	},
+	playImports: {
+		plays: r.many.plays({ from: r.playImports.id, to: r.plays.importId })
 	},
 
 	syncRuns: {

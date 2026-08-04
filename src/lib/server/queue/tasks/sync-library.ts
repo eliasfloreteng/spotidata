@@ -120,6 +120,12 @@ export const syncProfile: Task = async (payload, helpers) => {
 
 	await helpers.addJob('sync:seed-liked', { runId, mode: (payload as RunPayload).mode }, { jobKey: `sync:${runId}:seed:liked` });
 	await helpers.addJob('sync:seed-playlists', { runId }, { jobKey: `sync:${runId}:seed:playlists` });
+	// One request, gating nothing — the poll rides along rather than sitting in
+	// the dependency chain, so a rate-limited history never stalls the library.
+	await helpers.addJob('sync:recent-plays', { runId }, {
+		jobKey: `sync:${runId}:plays`,
+		...spotifyJob
+	});
 };
 
 // ------------------------------------------------------------- liked songs

@@ -59,6 +59,10 @@ export async function startWorker(): Promise<void> {
 				// Full reconciliation weekly — catches unsaves, which the
 				// added_at watermark early-stop cannot see.
 				'30 5 * * 0 sync:start ?id=sync-full&jobKey=cron-full {"mode":"full","trigger":"cron"}',
+				// The recently-played window is 50 items deep and nothing can
+				// recover a gap that overruns it, so this polls far more often
+				// than a sync runs — one request each time.
+				'*/20 * * * * history:poll-recent ?jobKey=poll-recent',
 				// AIMD ramp back toward the target request rate.
 				'* * * * * maintenance:rate-recover ?jobKey=rate-recover',
 				'*/5 * * * * maintenance:watchdog ?jobKey=watchdog',

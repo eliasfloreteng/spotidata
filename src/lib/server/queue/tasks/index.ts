@@ -30,6 +30,13 @@ import {
 	pruneEvents,
 	cancelRun
 } from './sync-control.ts';
+import {
+	importHistory,
+	pollRecent,
+	syncRecentPlays,
+	seedPlaysResolve,
+	playsResolveBatch
+} from './history.ts';
 import { ondemandEntity } from './ondemand.ts';
 
 /**
@@ -96,6 +103,13 @@ export const taskList: TaskList = {
 	'sync:artists-batch': artistsBatch,
 	'sync:seed-hydrate': seedHydrate,
 	'sync:tracks-hydrate': tracksHydrate,
+
+	// Listening history
+	'sync:recent-plays': syncRecentPlays,
+	'sync:seed-plays-resolve': seedPlaysResolve,
+	'sync:plays-resolve-batch': playsResolveBatch,
+	'history:import': importHistory,
+	'history:poll-recent': pollRecent,
 
 	// Derived
 	'sync:canonicalize': canonicalize,

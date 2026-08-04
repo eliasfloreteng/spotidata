@@ -128,6 +128,20 @@ export interface SavedAlbum {
 	album: FullAlbum;
 }
 
+/**
+ * An item of `/me/player/recently-played`.
+ *
+ * `played_at` is when the stream ENDED, in milliseconds — the same instant the
+ * extended export writes to the second, which is what lets the two sources
+ * share a dedupe key. The endpoint says nothing about how long the stream ran
+ * or why it stopped; only the export knows that.
+ */
+export interface PlayHistoryItem {
+	track: FullTrack;
+	played_at: string;
+	context: { uri: string; type: string } | null;
+}
+
 export interface PublicUser {
 	id: string;
 	display_name: string | null;

@@ -28,7 +28,11 @@ const NEXT: Partial<Record<PhaseKey, string>> = {
 	liked: 'sync:seed-albums',
 	albums: 'sync:seed-album-tracks',
 	album_tracks: 'sync:seed-artists',
-	artists: 'sync:canonicalize',
+	// Played-but-never-saved tracks have to exist before the ISRC grouping runs,
+	// or a whole run goes by with the listening history unable to name a
+	// recording — hence the detour between artists and canonicalize.
+	artists: 'sync:seed-plays-resolve',
+	plays_resolve: 'sync:canonicalize',
 	canonicalize: 'sync:derive',
 	derive: 'sync:seed-hydrate',
 	hydrate: 'sync:canonicalize-final'
@@ -137,6 +141,10 @@ export const derive: Task = async (payload, helpers) => {
 	const { rows } = await db.execute<{ tracks: number; canonical: number }>(
 		sql`select * from spotidata.refresh_library()`
 	);
+	// The resolve phase has just added the tracks the log was missing, so this
+	// is where a play stops being a bare URI and starts belonging to a recording.
+	await db.execute(sql`select spotidata.link_plays()`);
+	await db.execute(sql`select spotidata.refresh_play_stats()`);
 	await db.execute(sql`select spotidata.refresh_album_completeness()`);
 	// Album grouping reads tracks_complete, so it has to follow the line above.
 	const { rows: groupRows } = await db.execute<{ groups: number; albums: number }>(
@@ -172,6 +180,8 @@ export const canonicalizeFinal: Task = async (payload, helpers) => {
 	const { runId } = payload as { runId: number };
 	await db.execute(sql`select spotidata.refresh_canonical_tracks()`);
 	await db.execute(sql`select spotidata.refresh_library()`);
+	await db.execute(sql`select spotidata.link_plays()`);
+	await db.execute(sql`select spotidata.refresh_play_stats()`);
 	await db.execute(sql`select spotidata.refresh_album_completeness()`);
 	await db.execute(sql`select spotidata.refresh_album_groups()`);
 	await db.execute(sql`analyze`);
@@ -191,7 +201,8 @@ export const finalize: Task = async (payload) => {
 		       (select count(*)::int from albums)             as albums,
 		       (select count(*)::int from artists)            as artists,
 		       (select count(*)::int from playlists where removed_at is null) as playlists,
-		       (select count(*)::int from saved_tracks where removed_at is null) as liked
+		       (select count(*)::int from saved_tracks where removed_at is null) as liked,
+		       (select count(*)::int from plays)                              as plays
 	`);
 	const stats = rows[0] ?? {};
 

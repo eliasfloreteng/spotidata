@@ -5,6 +5,7 @@ import type {
 	FullArtist,
 	FullTrack,
 	Paging,
+	PlayHistoryItem,
 	PlaylistTrackItem,
 	PrivateUser,
 	SavedAlbum,
@@ -44,6 +45,20 @@ export const getSavedAlbums = (offset: number, limit = PAGE.savedAlbums) =>
 export const getFollowedArtists = (after?: string, limit = PAGE.following) =>
 	spotifyGet<{ artists: CursorPaging<FullArtist> }>('/me/following', {
 		query: { type: 'artist', limit, after }
+	});
+
+/**
+ * The last 50 plays, newest first.
+ *
+ * `after` is a Unix millisecond timestamp, exclusive, and pages FORWARD from
+ * it — but the endpoint never serves more than the most recent 50 items no
+ * matter what you ask, so a gap longer than 50 plays is unrecoverable from
+ * here. That is the whole reason the extended-history import exists; this
+ * endpoint's job is only to keep the log current between exports.
+ */
+export const getRecentlyPlayed = (after?: number, limit = 50) =>
+	spotifyGet<CursorPaging<PlayHistoryItem>>('/me/player/recently-played', {
+		query: { limit, after }
 	});
 
 export const getMyPlaylists = (offset: number, limit = PAGE.playlists) =>

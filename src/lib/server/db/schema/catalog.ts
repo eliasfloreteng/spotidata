@@ -272,6 +272,12 @@ export const spotifyTracks = table(
 		check('spotify_tracks_detail_level', sql`${t.detailLevel} in ('simplified','full')`),
 		index('tracks_album_order_ix').on(t.albumId, t.discNumber, t.trackNumber),
 		index('tracks_isrc_ix').on(t.isrc).where(sql`${t.isrc} is not null`),
+		// Track relinking is the only way to attach a play whose logged id has
+		// since been superseded, and without this the lookup is a sequential scan
+		// per URI — which is 26k scans of 96k rows on a first history import.
+		index('tracks_linked_from_ix')
+			.on(t.linkedFromId)
+			.where(sql`${t.linkedFromId} is not null`),
 		index('tracks_canonical_ix').on(t.canonicalTrackId),
 		index('tracks_needs_hydrate_ix')
 			.on(t.id)
