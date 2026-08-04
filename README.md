@@ -29,7 +29,10 @@ bun run db:migrate            # extensions → drizzle migrations → SQL functi
 bun run dev                   # http://127.0.0.1:5173
 ```
 
-Then open `/auth/login` and approve. Trigger the first sync from `/sync`.
+Then open `/auth/login` and approve. Trigger the first sync from `/sync`, and
+drop a Spotify export on `/history/import` for the listening history — an
+existing grant made before `user-read-recently-played` was added needs
+re-authorizing, which that page says so.
 
 **Redirect URIs** must be registered on the Spotify app exactly as:
 
@@ -74,6 +77,35 @@ fused into a single that happens to match its subset.
 
 **The library** is liked songs ∪ tracks in playlists you own. Other playlists
 are ingested in full but excluded from library statistics.
+
+**Listening is a separate fact from saving**, and the two disagree constantly:
+17% of this account's plays are of recordings it never saved, and 801 saved
+recordings have never been played at all. `plays` is one row per stream event,
+keyed on `spotify_tracks.id` — never on the canonical id, so a regrouping
+cannot orphan one — and `/history` reads it in hours rather than saves.
+
+Two sources feed it, and they describe the same play differently. The extended
+streaming history export is the whole record back to the first play, with how
+long each stream ran and why it stopped; `/me/player/recently-played` is a
+50-item window polled every 20 minutes, which knows neither. **Re-importing the
+same archive is free**: the unique key is `(played_at, item_uri, ms_played)`
+with `NULLS NOT DISTINCT`. Duration is in the key because the export genuinely
+repeats rows — 565 (uri, second) pairs in 167k plays, half of them Spotify's log
+emitting one stream twice and half two real streams ending in the same second
+while skipping through a queue. `NULLS NOT DISTINCT` is what stops the API
+source, whose `ms_played` is always null, inserting afresh on every poll.
+
+**The zip reader is hand-written** (`src/lib/server/import/zip.ts`). The whole
+requirement is "list the entries, hand me one"; Node ships the inflater, and the
+container is the missing 150 lines. Entries are read from their offsets rather
+than by streaming the archive front to back, so a 470 MB export costs one file
+handle and one 13 MB file at a time — the full import runs in six seconds.
+
+**Only the extended export is accepted.** The much faster "Account data"
+download carries `StreamingHistory_music_N.json` instead: one year, timestamps
+to the minute, no track URIs. It is a strict subset of what the extended export
+says with no reliable way to match the overlap, so the importer names the file
+it found and explains what to request instead.
 
 ![The liked songs table, sortable and searchable](docs/screenshots/liked-page.png)
 
@@ -154,6 +186,15 @@ Each of these failed silently rather than loudly, so they have guards:
   generated column. `refresh_expires_at` pins both conversions to UTC.
 - **Worker task code does not hot-reload.** Graphile Worker captures `taskList`
   at startup; restart the dev server after editing anything under `queue/tasks`.
+- **A per-row lookup on an unindexed column is invisible until the row count
+  is.** Resolving each play's URI through `linked_from_id` was a sequential scan
+  of 96k tracks, 167k times: the first import ran for ten minutes without
+  inserting a row. It is now a primary-key join, with relinking handled once per
+  *distinct* URI by `spotidata.link_plays()` and an index behind it.
+- **adapter-node caps a request body at 512 KB** and rejects it before the
+  handler runs. `BODY_SIZE_LIMIT` is set in the Dockerfile so a ~500 MB history
+  upload survives; the route enforces its own ceiling against the bytes that
+  actually arrive, since Content-Length is a claim.
 - **node-postgres reads a zoneless `date`/`timestamp` in the server's local
   offset.** Serialising that back out as an instant shifts it: an MCP client
   asking for `date_trunc('year', … at time zone 'Europe/Stockholm')::date` got
@@ -166,10 +207,10 @@ Each of these failed silently rather than loudly, so they have guards:
 db/migrations/     committed drizzle output
 db/sql/pre/        extensions + parse_release_date (migrations depend on them)
 db/sql/post/       fallback_key, rate limiter, refresh_canonical, refresh_library,
-                   refresh_album_groups, mcp_role
-src/lib/server/    db/ spotify/ ingest/ queue/ stats/ entities/ mcp/
+                   refresh_album_groups, refresh_plays, mcp_role
+src/lib/server/    db/ spotify/ ingest/ import/ queue/ stats/ entities/ mcp/
 src/lib/charts/    d3 computes, Svelte renders — no d3-selection
-src/routes/        dashboard, entity pages, /sync, /settings, /api
+src/routes/        dashboard, entity pages, /history, /sync, /settings, /api
 scripts/           probe-api, apply-sql, check-migration, check-sql-conventions,
                    backup, restore-auth, spike-worker
 ```
@@ -180,7 +221,4 @@ modules run under Bun (SvelteKit) and plain Node (`bun run worker`), so
 
 ## Not built yet
 
-Listening history ingestion and the extended-streaming-history import;
 MusicBrainz/Beatport enrichment; Telegram re-auth alerts.
-The schema reserves space for all of them — `plays` and friends key on
-`spotify_tracks.id`, never the canonical id.

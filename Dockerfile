@@ -22,6 +22,10 @@ RUN DATABASE_URL=postgres://build:build@127.0.0.1:5432/build \
 
 ENV NODE_ENV=production
 ENV PORT=3000
+# adapter-node caps a request body at 512 KB, which rejects a ~500 MB streaming
+# history upload before the handler runs. The route enforces its own ceiling
+# (HISTORY_MAX_UPLOAD_MB) against the bytes that actually arrive.
+ENV BODY_SIZE_LIMIT=Infinity
 EXPOSE 3000
 
 # Every migration step is idempotent (CREATE OR REPLACE / IF NOT EXISTS, and
