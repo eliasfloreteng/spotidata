@@ -7,6 +7,7 @@
  */
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 /**
@@ -83,6 +84,17 @@ export const config = {
 	worker: {
 		mode: (process.env.WORKER_MODE ?? 'embedded') as WorkerMode,
 		concurrency: int('WORKER_CONCURRENCY', 8)
+	},
+
+	history: {
+		/**
+		 * Where an uploaded export lands while the importer reads it. A Spotify
+		 * archive runs to ~500 MB, so it goes to disk rather than through memory,
+		 * and the importer deletes it once the last file is in.
+		 */
+		uploadDir: process.env.HISTORY_UPLOAD_DIR ?? path.join(os.tmpdir(), 'spotidata-uploads'),
+		/** Refuse anything larger, rather than filling the disk to find out. */
+		maxUploadBytes: int('HISTORY_MAX_UPLOAD_MB', 2048) * 1024 * 1024
 	},
 
 	mcp: {

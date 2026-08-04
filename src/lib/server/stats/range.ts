@@ -19,25 +19,38 @@ export const PRESETS = [
 	{ key: 'ytd', label: 'This year' }
 ] as const;
 
-/** Earliest library addition; cached because it only moves on a sync. */
-let earliest: { value: Date; at: number } | null = null;
+/**
+ * What "all time" means depends on what is being counted: the library began
+ * with its first save, the listening log with its first play — and an import
+ * routinely pushes the latter years earlier than the former.
+ */
+export type RangeScope = 'library' | 'history';
 
-export async function libraryStart(): Promise<Date> {
-	if (earliest && Date.now() - earliest.at < 60_000) return earliest.value;
+/** Earliest datum per scope; cached because it only moves on a sync or import. */
+const earliest = new Map<RangeScope, { value: Date; at: number }>();
+
+const SCOPE_QUERY: Record<RangeScope, ReturnType<typeof sql>> = {
+	library: sql`select min(first_added_at)::text as first from library_canonical`,
+	history: sql`select min(played_at)::text as first from plays`
+};
+
+export async function scopeStart(scope: RangeScope = 'library'): Promise<Date> {
+	const cached = earliest.get(scope);
+	if (cached && Date.now() - cached.at < 60_000) return cached.value;
 	// Drizzle sets node-postgres to hand back timestamps as strings and maps
 	// them itself in the query builder — raw `execute` skips that, so anything
 	// date-shaped coming out of raw SQL must be coerced here.
-	const { rows } = await db.execute<{ first: string | null }>(
-		sql`select min(first_added_at)::text as first from library_canonical`
-	);
+	const { rows } = await db.execute<{ first: string | null }>(SCOPE_QUERY[scope]);
 	const raw = rows[0]?.first;
 	const value = raw ? new Date(raw) : new Date('2008-01-01');
-	earliest = { value, at: Date.now() };
+	earliest.set(scope, { value, at: Date.now() });
 	return value;
 }
 
+export const libraryStart = (): Promise<Date> => scopeStart('library');
+
 export function invalidateRangeCache(): void {
-	earliest = null;
+	earliest.clear();
 }
 
 /** How far `tz` is ahead of UTC at a given instant, in milliseconds. */
@@ -105,13 +118,17 @@ function ordered(a: string | null, b: string | null, tz: string): [string | null
  * Explicit from/to always win, so a URL stays meaningful when shared; `preset`
  * is the shorthand the picker writes. Default is all-time per the brief.
  */
-export async function resolveRange(url: URL, tz: string): Promise<Range> {
+export async function resolveRange(
+	url: URL,
+	tz: string,
+	scope: RangeScope = 'library'
+): Promise<Range> {
 	const preset = url.searchParams.get('preset') ?? 'all';
 	const fromParam = url.searchParams.get('from');
 	const toParam = url.searchParams.get('to');
 
 	const now = new Date();
-	const start = await libraryStart();
+	const start = await scopeStart(scope);
 
 	if (fromParam || toParam) {
 		// A backwards span is a slip in the picker rather than a request for an
