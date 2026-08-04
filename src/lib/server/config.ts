@@ -50,6 +50,13 @@ function int(name: string, fallback: number): number {
 	return Number.isFinite(n) ? n : fallback;
 }
 
+function list(name: string): string[] {
+	return (process.env[name] ?? '')
+		.split(',')
+		.map((v) => v.trim())
+		.filter(Boolean);
+}
+
 export type WorkerMode = 'embedded' | 'external' | 'off';
 
 export const config = {
@@ -72,6 +79,20 @@ export const config = {
 	worker: {
 		mode: (process.env.WORKER_MODE ?? 'embedded') as WorkerMode,
 		concurrency: int('WORKER_CONCURRENCY', 8)
+	},
+
+	mcp: {
+		/** The role every MCP statement runs as; see db/sql/post/070_mcp_role.sql. */
+		role: process.env.MCP_DB_ROLE ?? 'spotidata_mcp',
+		statementTimeoutMs: int('MCP_STATEMENT_TIMEOUT_MS', 15_000),
+		/**
+		 * Browser origins allowed to reach /api/mcp. Empty by default, which is
+		 * what a non-browser MCP client needs — it sends no Origin at all. This is
+		 * not authentication (an OAuth proxy fronts the deployment); it is the
+		 * DNS-rebinding guard the MCP spec asks local servers for, so that a page
+		 * you happen to have open cannot read the database on 127.0.0.1.
+		 */
+		allowedOrigins: list('MCP_ALLOWED_ORIGINS')
 	},
 
 	isProduction: process.env.NODE_ENV === 'production'

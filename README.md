@@ -108,6 +108,29 @@ empty and single-point cases that are easy to get wrong.
 
 </details>
 
+**`/api/mcp` hands the database to an AI client** over the Model Context
+Protocol: one `query` tool running read-only SQL, plus `describe_schema` and
+`get_business_rules`. Read-only is enforced by Postgres — every statement runs
+in a `BEGIN READ ONLY` transaction under `SET LOCAL ROLE spotidata_mcp`, a role
+granted `SELECT` and nothing else, which also puts the OAuth tables out of
+reach. Statement-inspecting allowlists were not considered: they have to be
+right about every way of spelling a write, forever.
+
+The interesting half is the *metadata*. A model pointed at this schema will
+count `spotify_tracks` and overstate the library by 19%, bucket dates in UTC and
+move an evening save to the next day, and let a greatest-hits package outrank
+the albums the library is built from — confidently, every time. So the server
+instructions and the tool descriptions carry the domain rules (a track is an
+ISRC; the library is liked ∪ owned-playlist tracks; compilations are excluded;
+derived tables are rebuilt, never edited), and the schema is read live from
+`pg_catalog` — including the CHECK constraints, which are where the allowed
+values of every text column are actually written down. Row counts are exact,
+because `reltuples` was off by 73% on the table that matters most.
+
+```bash
+claude mcp add --transport http spotidata http://127.0.0.1:5173/api/mcp
+```
+
 ## Traps this codebase has already hit
 
 Each of these failed silently rather than loudly, so they have guards:
@@ -131,6 +154,11 @@ Each of these failed silently rather than loudly, so they have guards:
   generated column. `refresh_expires_at` pins both conversions to UTC.
 - **Worker task code does not hot-reload.** Graphile Worker captures `taskList`
   at startup; restart the dev server after editing anything under `queue/tasks`.
+- **node-postgres reads a zoneless `date`/`timestamp` in the server's local
+  offset.** Serialising that back out as an instant shifts it: an MCP client
+  asking for `date_trunc('year', … at time zone 'Europe/Stockholm')::date` got
+  "2025-12-31T23:00:00.000Z" for the 2026 bucket. `mcp/query.ts` returns those
+  four types as the text Postgres wrote; `timestamptz` stays an instant.
 
 ## Layout
 
@@ -138,8 +166,8 @@ Each of these failed silently rather than loudly, so they have guards:
 db/migrations/     committed drizzle output
 db/sql/pre/        extensions + parse_release_date (migrations depend on them)
 db/sql/post/       fallback_key, rate limiter, refresh_canonical, refresh_library,
-                   refresh_album_groups
-src/lib/server/    db/ spotify/ ingest/ queue/ stats/ entities/
+                   refresh_album_groups, mcp_role
+src/lib/server/    db/ spotify/ ingest/ queue/ stats/ entities/ mcp/
 src/lib/charts/    d3 computes, Svelte renders — no d3-selection
 src/routes/        dashboard, entity pages, /sync, /settings, /api
 scripts/           probe-api, apply-sql, check-migration, check-sql-conventions,
@@ -153,6 +181,6 @@ modules run under Bun (SvelteKit) and plain Node (`bun run worker`), so
 ## Not built yet
 
 Listening history ingestion and the extended-streaming-history import;
-MusicBrainz/Beatport enrichment; an MCP SQL endpoint; Telegram re-auth alerts.
+MusicBrainz/Beatport enrichment; Telegram re-auth alerts.
 The schema reserves space for all of them — `plays` and friends key on
 `spotify_tracks.id`, never the canonical id.
