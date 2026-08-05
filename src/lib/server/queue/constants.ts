@@ -20,3 +20,9 @@ export const PRIORITY_ONDEMAND = -1000;
 export const PRIORITY_ONDEMAND_FOLLOWUP = -500;
 /** Hydration is the least urgent phase; every chart is correct without it. */
 export const PRIORITY_HYDRATE = 100;
+/**
+ * Enrichment is a background crawl measured in hours and must never delay a
+ * sync — it is paced by its own limiter and talks to a different API entirely,
+ * so the only thing it competes for is a worker slot.
+ */
+export const PRIORITY_ENRICH = 500;

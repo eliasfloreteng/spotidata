@@ -56,6 +56,7 @@
 			<a href="/sync" class="chip" class:live={data.activeSync}>
 				{#if data.activeSync}<span class="dot" aria-hidden="true"></span>Syncing{:else}Sync{/if}
 			</a>
+			<a href="/enrich" class="chip">Enrich</a>
 			<a href="/settings" class="chip">Settings</a>
 		</div>
 	</nav>

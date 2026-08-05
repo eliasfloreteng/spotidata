@@ -1,6 +1,7 @@
 import { DEFAULT_LIMIT, MAX_LIMIT, runReadOnly, SqlError } from './query.ts';
 import { businessRules, KEY_RULES, serverInstructions } from './rules.ts';
 import { describeSchema } from './schema.ts';
+import { APP_VERSION } from '../../version.ts';
 
 /**
  * A Model Context Protocol server over Streamable HTTP, hand-rolled.
@@ -18,7 +19,7 @@ const PREFERRED_PROTOCOL = PROTOCOL_VERSIONS[0];
 const SERVER_INFO = {
 	name: 'spotidata',
 	title: 'Spotidata — Spotify library',
-	version: '0.1.0'
+	version: APP_VERSION
 };
 
 export interface JsonRpcMessage {

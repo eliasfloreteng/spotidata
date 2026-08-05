@@ -69,6 +69,11 @@ export const actions: Actions = {
 		await setSetting('history.pollRecentlyPlayed', form.get('pollRecent') === 'on');
 		await setSetting('history.resolvePlayedTracks', form.get('resolvePlayed') === 'on');
 
+		await setSetting('enrich.enabled', form.get('enrichEnabled') === 'on');
+		await setSetting('enrich.audioFeatures', form.get('enrichAudio') === 'on');
+		await setSetting('enrich.artists', form.get('enrichArtists') === 'on');
+		await setSetting('enrich.albums', form.get('enrichAlbums') === 'on');
+
 		// The hooks cache is 5s; drop it so the change is visible immediately.
 		invalidateSettingsCache();
 		return { saved: true };

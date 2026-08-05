@@ -22,6 +22,21 @@ export interface Settings {
 	'history.resolvePlayedTracks': boolean;
 	/** Poll /me/player/recently-played on a cron between syncs. */
 	'history.pollRecentlyPlayed': boolean;
+
+	/**
+	 * Crawl MusicBrainz for what Spotify never returns — genres, origins,
+	 * labels — and AcousticBrainz for BPM and key.
+	 *
+	 * MusicBrainz allows one request per second and has no batch lookup, so a
+	 * first pass over this library is measured in hours. It runs at the lowest
+	 * priority, against a different API, and can be switched off per stage: the
+	 * recordings stage is the cheap one that unlocks the rest, while artists
+	 * and albums each cost roughly a request per entity.
+	 */
+	'enrich.enabled': boolean;
+	'enrich.audioFeatures': boolean;
+	'enrich.artists': boolean;
+	'enrich.albums': boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -32,7 +47,11 @@ export const DEFAULT_SETTINGS: Settings = {
 	'sync.storeRawPayloads': true,
 	'sync.hydrateAlbumTracks': true,
 	'history.resolvePlayedTracks': true,
-	'history.pollRecentlyPlayed': true
+	'history.pollRecentlyPlayed': true,
+	'enrich.enabled': true,
+	'enrich.audioFeatures': true,
+	'enrich.artists': true,
+	'enrich.albums': true
 };
 
 export async function loadSettings(): Promise<Settings> {

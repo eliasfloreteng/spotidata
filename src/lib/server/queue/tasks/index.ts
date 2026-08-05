@@ -38,6 +38,7 @@ import {
 	playsResolveBatch
 } from './history.ts';
 import { ondemandEntity } from './ondemand.ts';
+import { enrichTick, enrichRetryMisses } from './enrich.ts';
 
 /**
  * Album-track overflow is seeded implicitly: `sync:albums-batch` enqueues a
@@ -119,6 +120,10 @@ export const taskList: TaskList = {
 
 	// On-demand page fetches; run at priority -1000 so they preempt a sync.
 	'ondemand:entity': ondemandEntity,
+
+	// MusicBrainz / AcousticBrainz. One self-chaining job, paced at 1 req/s.
+	'enrich:tick': enrichTick,
+	'enrich:retry-misses': enrichRetryMisses,
 
 	// Maintenance
 	'maintenance:rate-recover': rateRecover,

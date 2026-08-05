@@ -44,6 +44,9 @@ http://127.0.0.1:4173/auth/callback     (preview)
 Spotify rejects `localhost`; the loopback IP literal is the only non-HTTPS
 exception.
 
+Set `MUSICBRAINZ_CONTACT` too — a URL or email. MusicBrainz blocks clients that
+do not identify themselves, and it is the only thing enrichment needs.
+
 ## Scripts
 
 | Command | Purpose |
@@ -137,6 +140,28 @@ must survive that. A 429 halves the rate; `maintenance:rate-recover` ramps it
 back (AIMD). While the breaker is open, Graphile Worker's `forbiddenFlags`
 skips every Spotify job wholesale instead of burning retries.
 
+**MusicBrainz fills in what Spotify deleted.** `/audio-features` is gone, and
+Spotify never had genres per track or an artist's country of origin. MusicBrainz
+has all of it, and AcousticBrainz still serves the BPM and musical key it
+collected before submissions closed in 2022. The seam between the two catalogs
+is the **ISRC** — the only identifier they genuinely share — so
+`isrc_recordings` maps it to a recording MBID and every enrichment hangs off
+that, never off the derived `canonical_tracks.id` that a regrouping would
+invalidate.
+
+The shape is dictated by the rate limit: one request per second per IP, no
+batch lookup, no way to buy more. So it is one self-chaining job that does a
+bounded slice and re-enqueues itself, ordered by play count so the music you
+actually listen to gets its genres in the first hour rather than the twentieth.
+Two things keep it affordable — every ISRC lookup returns the recording's full
+artist credit, so `match_artists_by_credit()` links thousands of artists in one
+SQL statement and no requests at all; and every miss is *recorded*, so a
+recording MusicBrainz has never heard of costs one request ever, not one per
+pass. Progress, per-stage coverage and the controls live at `/enrich`.
+
+OAuth is supported and unnecessary: the web service is open, and a grant does
+not raise the rate limit. It is there for a future write path.
+
 **Analytics are raw SQL, no materialized views.** Every chart is a `GROUP BY`
 over `library_canonical` (8.8k rows, resident in shared buffers) — all sixteen
 dashboard queries run in ~130 ms total. MVs also cannot be parameterized by an
@@ -220,10 +245,12 @@ Each of these failed silently rather than loudly, so they have guards:
 db/migrations/     committed drizzle output
 db/sql/pre/        extensions + parse_release_date (migrations depend on them)
 db/sql/post/       fallback_key, rate limiter, refresh_canonical, refresh_library,
-                   refresh_album_groups, refresh_plays, mcp_role
-src/lib/server/    db/ spotify/ ingest/ import/ queue/ stats/ entities/ mcp/
+                   refresh_album_groups, refresh_plays, mcp_role,
+                   external_limiter, enrichment
+src/lib/server/    db/ spotify/ musicbrainz/ ingest/ import/ queue/ stats/
+                   entities/ mcp/
 src/lib/charts/    d3 computes, Svelte renders — no d3-selection
-src/routes/        dashboard, entity pages, /history, /sync, /settings, /api
+src/routes/        dashboard, entity pages, /history, /sync, /enrich, /settings, /api
 scripts/           probe-api, apply-sql, check-migration, check-sql-conventions,
                    backup, restore-auth, spike-worker
 ```
@@ -234,4 +261,4 @@ modules run under Bun (SvelteKit) and plain Node (`bun run worker`), so
 
 ## Not built yet
 
-MusicBrainz/Beatport enrichment; Telegram re-auth alerts.
+Beatport enrichment; Telegram re-auth alerts.

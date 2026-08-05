@@ -63,6 +63,11 @@ export async function startWorker(): Promise<void> {
 				// recover a gap that overruns it, so this polls far more often
 				// than a sync runs — one request each time.
 				'*/20 * * * * history:poll-recent ?jobKey=poll-recent',
+				// Restarts the MusicBrainz crawl if its chain ever stops — after a
+				// deploy, after a rate-limit block, or simply because a sync added
+				// music it has not seen. The chain keeps itself going while there
+				// is work, so this mostly fires into a no-op.
+				'*/15 * * * * enrich:tick ?jobKey=enrich-tick',
 				// AIMD ramp back toward the target request rate.
 				'* * * * * maintenance:rate-recover ?jobKey=rate-recover',
 				'*/5 * * * * maintenance:watchdog ?jobKey=watchdog',

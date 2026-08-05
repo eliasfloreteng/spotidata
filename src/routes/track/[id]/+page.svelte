@@ -5,9 +5,16 @@
 	import SpotifyLink from '$lib/components/SpotifyLink.svelte';
 	import StatTile from '$lib/components/StatTile.svelte';
 	import { AreaChart, CATEGORICAL } from '$lib/charts/index.ts';
-	import { longDuration, num, shortDate, trackTime, streamTime, relativeTime } from '$lib/utils/format.ts';
+	import { longDuration, num, pct, shortDate, trackTime, streamTime, relativeTime } from '$lib/utils/format.ts';
+	import { camelot, musicalKey, tempoLabel, traits } from '$lib/utils/music.ts';
 
 	let { data } = $props();
+
+	const e = $derived(data.enrichment);
+	const key = $derived(e ? musicalKey(e.keyKey, e.keyScale) : null);
+	const wheel = $derived(e ? camelot(e.keyKey, e.keyScale) : null);
+	const tempo = $derived(e ? tempoLabel(e.bpm) : null);
+	const traitList = $derived(e ? traits(e as unknown as Record<string, number | null>) : []);
 
 	const t = $derived(data.track);
 	const p = $derived(data.plays);
@@ -92,6 +99,88 @@
 		muted={p.plays === 0}
 	/>
 </section>
+
+{#if e}
+	<section class="card">
+		<header class="cardhead">
+			<div>
+				<h2>The recording itself</h2>
+				<p class="faint sub">
+					From MusicBrainz, matched on this recording's ISRC — and, where someone has
+					submitted an analysis of the audio, from AcousticBrainz.
+				</p>
+			</div>
+			<a class="more" href="https://musicbrainz.org/recording/{e.recordingMbid}" rel="noreferrer">
+				MusicBrainz →
+			</a>
+		</header>
+
+		<div class="mbgrid">
+			{#if e.bpm != null || e.keyKey}
+				<div class="analysis">
+					{#if e.bpm != null}
+						<div class="big">
+							<span class="num">{Math.round(e.bpm)}</span><span class="unit">BPM</span>
+							{#if tempo}<em class="faint">{tempo}</em>{/if}
+						</div>
+					{/if}
+					{#if key}
+						<div class="big">
+							<span class="num">{key}</span>
+							{#if wheel}
+								<span class="unit" title="Camelot wheel code — adjacent codes mix">{wheel}</span>
+							{/if}
+							{#if e.keyStrength != null}
+								<em class="faint" title="How confident the key estimate is">
+									{pct(e.keyStrength)} confident
+								</em>
+							{/if}
+						</div>
+					{/if}
+				</div>
+			{/if}
+
+			<dl>
+				{#if e.genres?.length}
+					<dt>Genres</dt>
+					<dd class="chips">
+						{#each e.genres.slice(0, 8) as g (g)}<Chip tone="accent">{g}</Chip>{/each}
+					</dd>
+				{/if}
+				{#if e.mbFirstReleaseDate}
+					<dt>First released</dt>
+					<dd>
+						{shortDate(e.mbFirstReleaseDate)}
+						{#if t.earliestReleaseDate && t.earliestReleaseDate.slice(0, 10) !== e.mbFirstReleaseDate}
+							<span class="faint small">
+								· Spotify's earliest edition says {shortDate(t.earliestReleaseDate)}
+							</span>
+						{/if}
+					</dd>
+				{/if}
+				{#if e.mbTitle && e.mbTitle !== t.title}
+					<dt>Titled</dt>
+					<dd>{e.mbTitle}{#if e.mbDisambiguation}<span class="faint"> ({e.mbDisambiguation})</span>{/if}</dd>
+				{/if}
+				{#if traitList.length > 0}
+					<dt>Reads as</dt>
+					<dd class="chips">
+						{#each traitList as tr (tr.label)}
+							<Chip title="{pct(tr.value)} confidence">{tr.label}</Chip>
+						{/each}
+					</dd>
+				{/if}
+				{#if e.genreRosamerica}
+					<dt>Classifier</dt>
+					<dd class="faint">
+						sounds like <strong>{e.genreRosamerica}</strong>
+						{#if e.moodMirex}· mood cluster {e.moodMirex.replace('Cluster', '')}{/if}
+					</dd>
+				{/if}
+			</dl>
+		</div>
+	</section>
+{/if}
 
 {#if p.plays > 0}
 	<section class="card">
@@ -230,6 +319,77 @@
 </section>
 
 <style>
+	/* The analysis reads as a pair of readouts beside the facts, so the two
+	   numbers people came for are legible before anything is read. */
+	.mbgrid {
+		display: grid;
+		grid-template-columns: auto 1fr;
+		gap: 20px 32px;
+		align-items: start;
+	}
+	@media (max-width: 700px) {
+		.mbgrid {
+			grid-template-columns: 1fr;
+			gap: 16px;
+		}
+	}
+	.analysis {
+		display: grid;
+		gap: 12px;
+		min-width: 150px;
+	}
+	.big {
+		display: flex;
+		align-items: baseline;
+		gap: 7px;
+		flex-wrap: wrap;
+	}
+	.big .num {
+		font-size: 1.9rem;
+		font-weight: 600;
+		line-height: 1;
+	}
+	.big .unit {
+		font-size: 0.78rem;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--text-muted);
+	}
+	.big em {
+		font-style: normal;
+		font-size: 0.78rem;
+		flex-basis: 100%;
+	}
+	.mbgrid dl {
+		display: grid;
+		grid-template-columns: 130px 1fr;
+		gap: 9px 16px;
+		margin: 0;
+	}
+	.mbgrid dt {
+		color: var(--text-muted);
+		font-size: 0.84rem;
+	}
+	.mbgrid dd {
+		margin: 0;
+		min-width: 0;
+		font-size: 0.9rem;
+		overflow-wrap: anywhere;
+	}
+	.mbgrid dd.chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 5px;
+	}
+	@media (max-width: 640px) {
+		.mbgrid dl {
+			grid-template-columns: 1fr;
+			gap: 3px;
+		}
+		.mbgrid dd + dt {
+			margin-top: 9px;
+		}
+	}
 	.hero {
 		display: flex;
 		gap: 24px;

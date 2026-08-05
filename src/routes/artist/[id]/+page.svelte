@@ -11,6 +11,30 @@
 
 	let { data } = $props();
 
+	const e = $derived(data.pending ? null : data.enrichment);
+	/**
+	 * MusicBrainz genres come off the artist's own entry and Spotify's come off
+	 * an opaque model, so they disagree usefully. Showing only what Spotify does
+	 * not already say keeps the row short and every chip informative.
+	 */
+	const extraGenres = $derived.by(() => {
+		if (!e?.genres || data.pending) return [];
+		const known = new Set(data.artist.genres.map((g) => g.toLowerCase()));
+		return e.genres.filter((g) => !known.has(g.toLowerCase())).slice(0, 8);
+	});
+	const origin = $derived(e ? (e.beginAreaName ?? e.areaName ?? e.country) : null);
+	const matchNote = $derived(
+		e?.matchSource === 'url'
+			? 'through the Spotify link MusicBrainz stores for them'
+			: 'through a recording they are credited on'
+	);
+	const life = $derived.by(() => {
+		if (!e?.beginDate) return null;
+		const from = e.beginDate.slice(0, 4);
+		if (e.endDate) return `${from} – ${e.endDate.slice(0, 4)}`;
+		return e.ended ? `${from} – ?` : `since ${from}`;
+	});
+
 	const artist = $derived(data.pending ? null : data.artist);
 	const stats = $derived(data.pending ? null : data.stats);
 	const albums = $derived<ArtistAlbum[]>(data.pending ? [] : data.albums);
@@ -90,6 +114,57 @@
 			muted={data.plays.plays === 0}
 		/>
 	</section>
+
+	<!-- A stub match carries an MBID and nothing else; the card waits until the
+	     artist's own lookup has filled something in worth showing. -->
+	{#if e && (e.type || origin || life || e.ratingValue != null || extraGenres.length > 0)}
+		<section class="card mb">
+			<header class="cardhead">
+				<div>
+					<h2>On MusicBrainz</h2>
+					<p class="faint sub">
+						Matched {matchNote}. Spotify knows an artist as a name and a set of
+						genre guesses; MusicBrainz knows where they are from and when they existed.
+					</p>
+				</div>
+				<a class="more" href="https://musicbrainz.org/artist/{e.mbid}" rel="noreferrer">
+					MusicBrainz →
+				</a>
+			</header>
+			<dl>
+				{#if e.type}
+					<dt>Type</dt>
+					<dd>
+						{e.type}{#if e.gender}<span class="faint"> · {e.gender}</span>{/if}
+						{#if e.disambiguation}<span class="faint"> · {e.disambiguation}</span>{/if}
+					</dd>
+				{/if}
+				{#if origin}
+					<dt>From</dt>
+					<dd>
+						{origin}
+						{#if e.areaName && e.beginAreaName && e.areaName !== e.beginAreaName}
+							<span class="faint">· based in {e.areaName}</span>
+						{/if}
+					</dd>
+				{/if}
+				{#if life}
+					<dt>{e.type === 'Person' ? 'Born' : 'Active'}</dt>
+					<dd>{life}</dd>
+				{/if}
+				{#if extraGenres.length > 0}
+					<dt>Also tagged</dt>
+					<dd class="chips">
+						{#each extraGenres as g (g)}<Chip>{g}</Chip>{/each}
+					</dd>
+				{/if}
+				{#if e.ratingValue != null}
+					<dt>Rating</dt>
+					<dd>{e.ratingValue.toFixed(1)} / 5 <span class="faint">({num(e.ratingVotes)} votes)</span></dd>
+				{/if}
+			</dl>
+		</section>
+	{/if}
 
 	{#if data.topPlayed.length > 0}
 		<section class="card">
@@ -202,6 +277,36 @@
 {/if}
 
 <style>
+	.mb dl {
+		display: grid;
+		grid-template-columns: 130px 1fr;
+		gap: 9px 16px;
+		margin: 0;
+	}
+	.mb dt {
+		color: var(--text-muted);
+		font-size: 0.84rem;
+	}
+	.mb dd {
+		margin: 0;
+		min-width: 0;
+		font-size: 0.9rem;
+		overflow-wrap: anywhere;
+	}
+	.mb dd.chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 5px;
+	}
+	@media (max-width: 640px) {
+		.mb dl {
+			grid-template-columns: 1fr;
+			gap: 3px;
+		}
+		.mb dd + dt {
+			margin-top: 9px;
+		}
+	}
 	.hero {
 		display: flex;
 		gap: 24px;

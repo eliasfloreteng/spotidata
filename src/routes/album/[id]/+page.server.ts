@@ -2,6 +2,7 @@ import { error } from '@sveltejs/kit';
 import { getAlbum, getAlbumEditions, getAlbumTracks } from '$lib/server/entities/album.ts';
 import { albumPlaySummary } from '$lib/server/entities/play-stats.ts';
 import { ensureEntity } from '$lib/server/ingest/ensure.ts';
+import { getAlbumEnrichment } from '$lib/server/entities/enrichment.ts';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -18,10 +19,20 @@ export const load: PageServerLoad = async ({ params }) => {
 		return { pending: true as const, id };
 	}
 
-	const [tracks, editions, plays] = await Promise.all([
+	const [tracks, editions, plays, enrichment] = await Promise.all([
 		getAlbumTracks(id),
 		getAlbumEditions(id),
-		albumPlaySummary(id)
+		albumPlaySummary(id),
+		getAlbumEnrichment(id)
 	]);
-	return { pending: false as const, id, album, tracks, editions, plays, refreshing: state.pending };
+	return {
+		pending: false as const,
+		id,
+		album,
+		tracks,
+		editions,
+		plays,
+		enrichment,
+		refreshing: state.pending
+	};
 };

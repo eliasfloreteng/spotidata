@@ -11,6 +11,11 @@
 	let { data } = $props();
 
 	const album = $derived(data.pending ? null : data.album);
+	const mb = $derived(data.pending ? null : data.enrichment);
+	/** "Album + Live + Remix" reads better than four separate chips. */
+	const releaseKind = $derived(
+		mb ? [mb.primaryType, ...(mb.secondaryTypes ?? [])].filter(Boolean).join(' · ') : null
+	);
 	const tracks = $derived<AlbumTrack[]>(data.pending ? [] : data.tracks);
 	const editions = $derived<AlbumEdition[]>(data.pending ? [] : data.editions);
 
@@ -163,6 +168,62 @@
 		</div>
 	</section>
 
+	{#if mb}
+		<section class="card mb">
+			<header class="cardhead">
+				<div>
+					<h2>The release</h2>
+					<p class="faint sub">
+						MusicBrainz catalogues the physical and digital editions Spotify flattens into
+						one: who issued this pressing, under what number, and in which countries.
+					</p>
+				</div>
+				<a class="more" href="https://musicbrainz.org/release/{mb.releaseMbid}" rel="noreferrer">
+					MusicBrainz →
+				</a>
+			</header>
+			<dl>
+				{#if mb.labelName}
+					<dt>Label</dt>
+					<dd>
+						{mb.labelName}
+						{#if mb.catalogNumber}<span class="faint">· cat. {mb.catalogNumber}</span>{/if}
+						{#if album.label && album.label !== mb.labelName}
+							<span class="faint">· Spotify credits {album.label}</span>
+						{/if}
+					</dd>
+				{/if}
+				{#if releaseKind}
+					<dt>Type</dt>
+					<dd>{releaseKind}{#if mb.releaseStatus && mb.releaseStatus !== 'Official'}<span class="faint"> · {mb.releaseStatus}</span>{/if}</dd>
+				{/if}
+				{#if mb.groupFirstReleaseDate}
+					<dt>First released</dt>
+					<dd>
+						{mb.groupFirstReleaseDate}
+						{#if mb.releaseDate && mb.releaseDate !== mb.groupFirstReleaseDate}
+							<span class="faint">· this edition {mb.releaseDate}</span>
+						{/if}
+					</dd>
+				{/if}
+				{#if mb.genres?.length}
+					<dt>Genres</dt>
+					<dd class="chips">
+						{#each mb.genres.slice(0, 8) as g (g)}<Chip tone="accent">{g}</Chip>{/each}
+					</dd>
+				{/if}
+				{#if mb.barcode || mb.country || mb.packaging}
+					<dt>Issued</dt>
+					<dd class="faint">
+						{#if mb.country}{mb.country}{/if}
+						{#if mb.packaging}· {mb.packaging}{/if}
+						{#if mb.barcode}· barcode {mb.barcode}{/if}
+					</dd>
+				{/if}
+			</dl>
+		</section>
+	{/if}
+
 	{#if editions.length > 0}
 		<section class="card">
 			<h2>Other editions</h2>
@@ -207,6 +268,51 @@
 {/if}
 
 <style>
+	.cardhead {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 16px;
+	}
+	.more {
+		flex: none;
+		font-size: 0.78rem;
+		color: var(--text-muted);
+		white-space: nowrap;
+	}
+	.more:hover {
+		color: var(--text);
+	}
+	.mb dl {
+		display: grid;
+		grid-template-columns: 130px 1fr;
+		gap: 9px 16px;
+		margin: 0;
+	}
+	.mb dt {
+		color: var(--text-muted);
+		font-size: 0.84rem;
+	}
+	.mb dd {
+		margin: 0;
+		min-width: 0;
+		font-size: 0.9rem;
+		overflow-wrap: anywhere;
+	}
+	.mb dd.chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 5px;
+	}
+	@media (max-width: 640px) {
+		.mb dl {
+			grid-template-columns: 1fr;
+			gap: 3px;
+		}
+		.mb dd + dt {
+			margin-top: 9px;
+		}
+	}
 	.hero {
 		display: flex;
 		gap: 24px;

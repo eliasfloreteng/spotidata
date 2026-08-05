@@ -175,6 +175,59 @@
 		{/if}
 	</section>
 
+	<section class="card">
+		<h2>Enrichment</h2>
+		<p class="faint small">
+			Genres, artist origins, labels and barcodes from MusicBrainz; BPM and musical key from
+			AcousticBrainz. Both are open — no account, no key. MusicBrainz allows one request per
+			second and has no batch lookup, so a first pass over this library takes hours; it runs at
+			the lowest priority and never delays a Spotify sync.
+			<a href="/enrich">Progress and controls →</a>
+		</p>
+		<div class="fields">
+			<label class="check">
+				<input type="checkbox" name="enrichEnabled" checked={data.settings['enrich.enabled']} />
+				<span>
+					Enrich from MusicBrainz
+					<em class="faint small">
+						The master switch. Off means nothing is fetched; everything already gathered
+						stays.
+					</em>
+				</span>
+			</label>
+			<label class="check">
+				<input type="checkbox" name="enrichAudio" checked={data.settings['enrich.audioFeatures']} />
+				<span>
+					BPM and musical key
+					<em class="faint small">
+						AcousticBrainz, 25 recordings per request — the cheapest stage by far. Coverage
+						is fixed at whatever was submitted before it closed in 2022.
+					</em>
+				</span>
+			</label>
+			<label class="check">
+				<input type="checkbox" name="enrichArtists" checked={data.settings['enrich.artists']} />
+				<span>
+					Artist origins, life-spans and genres
+					<em class="faint small">
+						Most artists are identified for free from the recordings already fetched; the
+						detail costs one request each.
+					</em>
+				</span>
+			</label>
+			<label class="check">
+				<input type="checkbox" name="enrichAlbums" checked={data.settings['enrich.albums']} />
+				<span>
+					Album labels, barcodes and editions
+					<em class="faint small">
+						Two requests per album and the largest set — the slowest stage, and the one to
+						turn off first if the crawl is in the way.
+					</em>
+				</span>
+			</label>
+		</div>
+	</section>
+
 	<button class="btn btn-primary" type="submit">Save settings</button>
 </form>
 

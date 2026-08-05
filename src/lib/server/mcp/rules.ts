@@ -23,9 +23,17 @@ export const KEY_RULES = `Rules that decide whether an answer is right:
 - Bucket dates AT TIME ZONE the user's timezone, never in UTC.
 - Filter removed_at is null on saved_tracks, saved_albums, followed_artists
   and playlists unless the question is about removals.
+- Genres, BPM and musical key are MusicBrainz/AcousticBrainz enrichment, read
+  through spotidata.track_enrichment / artist_enrichment / album_enrichment.
+  Coverage is partial by nature — a NULL means "not known", never zero.
 Call describe_schema for columns; call get_business_rules for the full version.`;
 
-function coreRules(timezone: string, plays: boolean, playStats: boolean): string {
+function coreRules(
+	timezone: string,
+	plays: boolean,
+	playStats: boolean,
+	enrichment: boolean
+): string {
 	return `# Spotidata
 
 A single-user archive of one Spotify account in Postgres: the catalog, the
@@ -140,7 +148,11 @@ page complete. For exactly one artist per track, filter
 \`library_canonical.primary_artist_id\`.
 
 Genres belong to artists (\`artist_genres\`), not to tracks; Spotify no longer
-returns track-level genres.
+returns track-level genres.${
+		enrichment
+			? ' MusicBrainz does — see rule 10, which is the better source for both.'
+			: ''
+	}
 
 ## 9. Incomplete rows are normal
 
@@ -149,7 +161,41 @@ inside another response and lacks \`isrc\`, \`popularity\` and genres. It is not
 error and not a data-quality problem worth reporting; exclude those rows when a
 query depends on those columns.
 
-## 10. Text search
+## 10. MusicBrainz & AcousticBrainz${enrichment ? '' : ' (not populated)'}
+
+${
+	enrichment
+		? `Genres, BPM, musical key, artist origins and release labels come from
+MusicBrainz, joined to this catalog by **ISRC** — the one identifier the two
+share. Read them through the views, which own the join path:
+
+- \`spotidata.track_enrichment\` — keyed \`canonical_track_id\`. \`genres\` (a
+  \`text[]\`, MusicBrainz tags filtered to its curated genre list), \`bpm\`,
+  \`key_key\`/\`key_scale\`, and the 0–1 classifier probabilities
+  (\`danceable\`, \`happy\`, \`sad\`, \`party\`, \`relaxed\`, \`aggressive\`,
+  \`acoustic\`, \`electronic\`, \`instrumental\`).
+- \`spotidata.artist_enrichment\` — keyed \`artist_id\` (the Spotify id).
+  \`country\`, \`area_name\`, \`begin_area_name\` (where they are *from*),
+  \`begin_date\`/\`end_date\`, \`type\` ('Person' | 'Group' | …), \`genres\`.
+- \`spotidata.album_enrichment\` — keyed \`album_id\`. \`label_name\`,
+  \`barcode\`, \`primary_type\`/\`secondary_types\`, \`genres\`.
+
+**Coverage is partial and that is normal.** The crawl runs at one request per
+second for hours, and AcousticBrainz stopped accepting submissions in 2022, so
+roughly half of any library has no BPM at all. Treat a NULL as "not looked up
+or not known", never as zero, and say what fraction an answer is based on when
+it matters — \`spotidata.enrichment_coverage\` gives the per-stage totals.
+
+The mood and genre classifiers are two-class models run over the audio, so a
+track can score high on both \`happy\` and \`sad\`. They are evidence, not
+verdicts; do not sum them into a profile.`
+		: `The tables exist (\`isrc_recordings\`, \`mb_recordings\`, \`audio_features\`,
+\`mb_tags\`, …) but nothing has been crawled yet, so there are no genres, no
+BPM and no keys to query. Say so rather than returning empty results as if
+they were an answer.`
+}
+
+## 11. Text search
 
 pg_trgm is installed, with GIN trigram indexes on \`artists.name\`,
 \`albums.name\`, \`spotify_tracks.name\` and \`canonical_tracks.title\`. Use
@@ -171,8 +217,8 @@ rule 7 — and a value you read back is not in the user's day.`;
 
 /** The `instructions` field of the initialize result. */
 export async function serverInstructions(timezone: string): Promise<string> {
-	const { plays, playStats } = await features();
-	const rules = coreRules(timezone, plays, playStats);
+	const { plays, playStats, enrichment } = await features();
+	const rules = coreRules(timezone, plays, playStats, enrichment);
 
 	try {
 		return `${rules}\n\n## Tables\n\n${await tableInventory()}\n\nCall describe_schema for columns, types and constraints.`;
@@ -184,6 +230,6 @@ export async function serverInstructions(timezone: string): Promise<string> {
 
 /** Same text, as a tool — clients that ignore `instructions` can still ask. */
 export async function businessRules(timezone: string): Promise<string> {
-	const { plays, playStats } = await features();
-	return coreRules(timezone, plays, playStats);
+	const { plays, playStats, enrichment } = await features();
+	return coreRules(timezone, plays, playStats, enrichment);
 }
