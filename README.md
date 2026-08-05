@@ -30,9 +30,12 @@ bun run dev                   # http://127.0.0.1:5173
 ```
 
 Then open `/auth/login` and approve. Trigger the first sync from `/sync`, and
-drop a Spotify export on `/history/import` for the listening history — an
-existing grant made before `user-read-recently-played` was added needs
-re-authorizing, which that page says so.
+drop a Spotify export on `/history/import` for the listening history. Scopes
+are only ever granted once, so a grant made before a feature existed does not
+carry its scope — `user-read-recently-played` for the history, and
+`playlist-modify-private`/`-public` for the playlists `/genres` writes. Both
+pages check the stored scope and link to a re-authorization when it is missing;
+re-authorizing keeps every row you have already ingested.
 
 **Redirect URIs** must be registered on the Spotify app exactly as:
 
@@ -162,23 +165,43 @@ pass. Progress, per-stage coverage and the controls live at `/enrich`.
 OAuth is supported and unnecessary: the web service is open, and a grant does
 not raise the rate limit. It is there for a future write path.
 
-**A genre is two opinions, so `/genres` keeps both.** MusicBrainz tags the
-*recording*, which is what a playlist is made of, but only reaches 42% of this
-library; Spotify tags the *artist*, so every song by a band inherits one
-career-long label — and that reaches 72%. They do not share a vocabulary
-either: MusicBrainz says "synth-pop" where Spotify says "swedish pop". So
-`spotidata.track_genres` unions them with a `source` column and the page makes
-that a filter rather than trying to reconcile it.
+**A genre belongs to a recording, and only MusicBrainz says so.** Spotify tags
+the *artist*, so every song by a band inherits one career-long label — a
+drum-and-bass remix filed under "swedish pop". `spotidata.track_genres` reads
+MusicBrainz's recording tags alone, filtered to its curated genre vocabulary so
+"seen live" and "80s" stay out. The price is coverage: 42% of this library has
+a genre today, and it rises as `/enrich` crawls.
 
-The page exists to build a playlist Spotify itself cannot: pick any number of
-genres (any of them, or all of them at once), work down the tracks striking off
-what does not belong, and copy `open.spotify.com/track/…` links to paste
-straight into a playlist. The links come from `/genres/links`, which serves the
-same selection in the same order as plain text — so the copy is exactly the
-list you were reading, and opening that URL is the whole feature with
-JavaScript switched off. Removals are keyed on the track id, which is what lets
-them survive paging through 1,200 results, and the paste goes out in batches of
-100 because that is what the client swallows in one go.
+**`/genres` builds playlists Spotify cannot.** A *collection* is a saved set of
+genres plus a match mode — any of them, or all of them at once — and Spotidata
+keeps a real Spotify playlist holding exactly what it resolves to. The write
+path is the app's only one, and the two `playlist-modify-*` scopes are the only
+write access it asks for; a grant made before this feature does not carry them,
+so the page checks the stored scope and asks for a re-authorization rather than
+failing with a 403 that explains nothing.
+
+A collection stores **genres, never tracks**. The track list is recomputed on
+every read and every push, so a recording that MusicBrainz tags tomorrow joins
+the playlist tomorrow with nobody editing anything — and it is also why the
+selection lives in Postgres rather than the query string, which ran out of room
+at around forty genres.
+
+The push is a **rewrite, not a diff**: `PUT /playlists/{id}/tracks` replaces the
+first 100, `POST` appends the rest. No reconciliation, no way for a crash
+halfway to leave duplicates, and removals fall out for free — at the cost that
+anything added to the playlist by hand is gone at the next sync, which is what
+`autoSync` off is for. A rewrite that would produce the same list is skipped on
+an md5 of the id order, unless Spotify's `snapshot_id` moved underneath it,
+which means somebody edited the playlist and the fingerprint alone would
+wrongly conclude there was nothing to do.
+
+Syncing runs from two places and shares one function: the button on the
+collection page runs it inline so a failure is visible while you are looking at
+it, and `playlist:sync` runs it from the queue — carrying `SPOTIFY_FLAG` like
+every other API job, so an open rate-limit breaker skips it wholesale. A
+completed sync fans out to every auto-syncing collection, and an hourly cron
+catches the other input the sync knows nothing about: the enrichment crawl
+giving a recording its first genre.
 
 **Analytics are raw SQL, no materialized views.** Every chart is a `GROUP BY`
 over `library_canonical` (8.8k rows, resident in shared buffers) — all sixteen

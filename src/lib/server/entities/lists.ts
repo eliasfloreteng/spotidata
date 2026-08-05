@@ -1,20 +1,31 @@
 import { sql, type SQL } from 'drizzle-orm';
 import type { ActiveFilters } from '../../filters.ts';
 import { query } from '../db/index.ts';
-import {
-	andAll,
-	clauseFor,
-	cover,
-	EXPLICIT_CLAUSES,
-	havingAll,
-	iso,
-	like,
-	PLAYED_CLAUSES,
-	thumb,
-	total,
-	trackArtistsJson,
-	type ArtistRef
-} from './shared.ts';
+import { cover, iso, like, thumb, total, trackArtistsJson, type ArtistRef } from './shared.ts';
+
+/**
+ * Looks a filter value up in a per-query table of SQL fragments.
+ *
+ * The value has already been checked against the group's vocabulary by
+ * `filterParams`, but this lookup is what actually keeps it out of the SQL:
+ * the fragments are literals written here, and an unrecognised value simply
+ * finds nothing.
+ */
+function clauseFor(value: string, table: Record<string, SQL>): SQL | null {
+	return (value && table[value]) || null;
+}
+
+/** ANDs the active fragments onto a WHERE that already ends in a condition. */
+function andAll(parts: (SQL | null)[]): SQL {
+	const active = parts.filter((p): p is SQL => p !== null);
+	return active.length ? sql` and ${sql.join(active, sql` and `)}` : sql``;
+}
+
+/** Same, as a HAVING clause — for predicates over aggregates. */
+function havingAll(parts: (SQL | null)[]): SQL {
+	const active = parts.filter((p): p is SQL => p !== null);
+	return active.length ? sql`having ${sql.join(active, sql` and `)}` : sql``;
+}
 
 // ------------------------------------------------------------------ liked
 
@@ -60,6 +71,11 @@ export interface LikedRow {
 const COPIES_CLAUSES = (expr: SQL) => ({
 	dupes: sql`${expr} > 1`,
 	unique: sql`${expr} = 1`
+});
+
+const EXPLICIT_CLAUSES = (expr: SQL) => ({
+	yes: sql`${expr}`,
+	no: sql`not ${expr}`
 });
 
 export async function likedTracks(opts: {
@@ -150,6 +166,12 @@ const LIBRARY_SOURCE_CLAUSES = {
 	playlist: sql`lc.owned_playlist_count > 0`,
 	'liked-only': sql`lc.liked and lc.owned_playlist_count = 0`,
 	'playlist-only': sql`lc.owned_playlist_count > 0 and not lc.liked`
+};
+
+/** Saved and never listened to is a category the library tables cannot express. */
+const PLAYED_CLAUSES = {
+	played: sql`coalesce(cps.plays, 0) > 0`,
+	never: sql`cps.canonical_track_id is null`
 };
 
 export async function libraryRecordings(opts: {

@@ -154,12 +154,13 @@ returns track-level genres.${
 			: ''
 	}
 
-\`spotidata.track_genres\` puts both on the track: one row per
-\`(canonical_track_id, genre, source)\`, where \`source\` is 'recording' (a
-MusicBrainz tag, precise) or 'artist' (Spotify's genres for a credited artist,
-broader). Use it for "tracks in genre X" — but filter or group by \`source\`,
-because the two vocabularies are not the same one ("synth-pop" against
-"swedish pop") and a track counted under both is still one track.
+For a genre *of a track*, read \`spotidata.track_genres\`: one row per
+\`(canonical_track_id, genre)\` from MusicBrainz's recording tags, which is
+what "tracks in genre X" means here and what the /genres collections are built
+from. Its coverage is the enrichment crawl's, not the library's — say what
+fraction an answer rests on. \`genre_collections\` and
+\`genre_collection_genres\` hold the saved sets; their track lists are
+recomputed from the genres, never stored.
 
 ## 9. Incomplete rows are normal
 

@@ -38,6 +38,7 @@ import {
 	playsResolveBatch
 } from './history.ts';
 import { ondemandEntity } from './ondemand.ts';
+import { syncAllPlaylists, syncPlaylist } from './playlists.ts';
 import { enrichTick, enrichRetryMisses } from './enrich.ts';
 
 /**
@@ -124,6 +125,10 @@ export const taskList: TaskList = {
 	// MusicBrainz / AcousticBrainz. One self-chaining job, paced at 1 req/s.
 	'enrich:tick': enrichTick,
 	'enrich:retry-misses': enrichRetryMisses,
+
+	// Generated playlists: push a genre collection into Spotify and keep it there.
+	'playlist:sync': syncPlaylist,
+	'playlist:sync-all': syncAllPlaylists,
 
 	// Maintenance
 	'maintenance:rate-recover': rateRecover,

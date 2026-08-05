@@ -43,6 +43,17 @@ export interface RequestOptions {
 	/** Treat 404 as `null` rather than throwing. */
 	allowNotFound?: boolean;
 	signal?: AbortSignal;
+	method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+	/**
+	 * JSON request body, for the playlist write path.
+	 *
+	 * A write costs a token from the same bucket as a read, which is the point
+	 * of routing it through here: a playlist push and a running sync throttle
+	 * each other rather than racing to the same 429. Retries stay safe because
+	 * every write this app makes is idempotent — PUT /playlists/{id}/tracks
+	 * replaces, and the POST that follows it appends a slice we recompute.
+	 */
+	body?: unknown;
 }
 
 /**
@@ -80,7 +91,13 @@ export async function spotifyFetch<T>(
 		const token = await getAccessToken();
 		const res = await semaphore.run(() =>
 			fetch(url, {
-				headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+				method: options.method ?? 'GET',
+				headers: {
+					Authorization: `Bearer ${token}`,
+					Accept: 'application/json',
+					...(options.body === undefined ? {} : { 'Content-Type': 'application/json' })
+				},
+				body: options.body === undefined ? undefined : JSON.stringify(options.body),
 				signal: options.signal
 			})
 		);

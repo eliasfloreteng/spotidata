@@ -18,8 +18,6 @@ export interface FilterOption {
 export interface FilterGroup {
 	param: string;
 	label: string;
-	/** What the reset chip says. "All" is right for a subset, wrong for a mode. */
-	anyLabel?: string;
 	options: FilterOption[];
 }
 
@@ -91,39 +89,6 @@ export const LIBRARY_FILTERS: FilterGroup[] = [
 ];
 
 export const LIKED_FILTERS: FilterGroup[] = [COPIES, EXPLICIT];
-
-/**
- * The genre browser's two mode switches, which are filters in shape only.
- *
- * `src` picks which catalog's opinion counts: MusicBrainz tags the recording,
- * Spotify tags the artist, and they neither agree on a vocabulary nor cover
- * the same half of the library — so the honest default is both at once.
- *
- * `match` is what several selected genres mean together. Widening ("any") is
- * how you fill a playlist; narrowing ("all") is how you find the disco house
- * rather than everything disco and everything house.
- */
-export const GENRE_FILTERS: FilterGroup[] = [
-	{
-		param: 'src',
-		label: 'Tagged by',
-		anyLabel: 'Both',
-		options: [
-			{ value: 'recording', label: 'Recording', title: 'MusicBrainz tags on the recording itself' },
-			{ value: 'artist', label: 'Artist', title: "Spotify's genres for the credited artist" }
-		]
-	},
-	{
-		param: 'match',
-		label: 'Match',
-		anyLabel: 'Any selected',
-		options: [
-			{ value: 'all', label: 'All selected', title: 'Only tracks carrying every genre you picked' }
-		]
-	},
-	PLAYED,
-	EXPLICIT
-];
 
 export const ARTIST_FILTERS: FilterGroup[] = [
 	{

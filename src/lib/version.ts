@@ -6,4 +6,4 @@
  * blocks generic ones, so this string is load-bearing rather than cosmetic.
  */
 export const APP_NAME = 'spotidata';
-export const APP_VERSION = '0.1.2';
+export const APP_VERSION = '0.1.3';

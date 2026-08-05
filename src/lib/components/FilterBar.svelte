@@ -44,9 +44,7 @@
 	{#each groups as group (group.param)}
 		<div class="group">
 			<span class="lbl">{group.label}</span>
-			<a class="chip" class:on={!active[group.param]} href={href(group.param, null)}>
-				{group.anyLabel ?? 'All'}
-			</a>
+			<a class="chip" class:on={!active[group.param]} href={href(group.param, null)}>All</a>
 			{#each group.options as option (option.value)}
 				<a
 					class="chip"

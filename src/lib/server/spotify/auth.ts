@@ -137,6 +137,28 @@ export async function readAuthState(): Promise<AuthState | null> {
 }
 
 /**
+ * Scopes this build asks for that the stored grant does not carry.
+ *
+ * Spotify mints the grant once and refreshing never widens it, so a scope
+ * added after the user authorized is simply absent until they authorize again
+ * — and the call that needs it fails with a 403 that says nothing useful.
+ * Every caller that writes checks this first so the page can say what is
+ * missing and link to the fix.
+ */
+export function missingScopes(granted: string | null | undefined): string[] {
+	const held = new Set((granted ?? '').split(/\s+/).filter(Boolean));
+	return config.spotify.scopes.filter((s) => !held.has(s));
+}
+
+export const PLAYLIST_WRITE_SCOPES = ['playlist-modify-private', 'playlist-modify-public'] as const;
+
+/** Can this grant write playlists? The genre collections' precondition. */
+export function canWritePlaylists(granted: string | null | undefined): boolean {
+	const held = new Set((granted ?? '').split(/\s+/).filter(Boolean));
+	return PLAYLIST_WRITE_SCOPES.every((s) => held.has(s));
+}
+
+/**
  * Single-flight refresh: concurrent callers within one process share one
  * in-flight request. Across processes the `FOR UPDATE` row lock in
  * `refreshAccessToken` serializes them, so at worst we do one redundant

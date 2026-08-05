@@ -76,9 +76,16 @@ export const config = {
 			'user-read-private',
 			'user-read-email',
 			// Listening history. Added after the first release, so an existing
-			// grant does not carry it — /settings compares this list against the
+			// grant does not carry it — the app compares this list against the
 			// stored scope and asks for a re-authorization when they diverge.
-			'user-read-recently-played'
+			'user-read-recently-played',
+			// The only write scopes here, and the only reason this app asks for
+			// write access at all: a genre collection pushes its tracks into a
+			// real playlist and rewrites it as the library changes. Both are
+			// needed because the playlist's visibility is the user's choice and
+			// Spotify scopes the two cases separately.
+			'playlist-modify-private',
+			'playlist-modify-public'
 		] as const
 	},
 

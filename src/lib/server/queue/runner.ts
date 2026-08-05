@@ -68,6 +68,11 @@ export async function startWorker(): Promise<void> {
 				// music it has not seen. The chain keeps itself going while there
 				// is work, so this mostly fires into a no-op.
 				'*/15 * * * * enrich:tick ?jobKey=enrich-tick',
+				// Generated playlists. A sync enqueues this itself when the library
+				// changes; the hourly pass is what catches the other input — the
+				// enrichment crawl giving a recording its first genre, which no
+				// sync run knows about.
+				'40 * * * * playlist:sync-all ?jobKey=playlist-sync-all',
 				// AIMD ramp back toward the target request rate.
 				'* * * * * maintenance:rate-recover ?jobKey=rate-recover',
 				'*/5 * * * * maintenance:watchdog ?jobKey=watchdog',

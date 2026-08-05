@@ -192,7 +192,7 @@ export const canonicalizeFinal: Task = async (payload, helpers) => {
 	await helpers.addJob('sync:finalize', { runId }, { jobKey: `sync:${runId}:finalize` });
 };
 
-export const finalize: Task = async (payload) => {
+export const finalize: Task = async (payload, helpers) => {
 	const { runId } = payload as { runId: number };
 	await startPhase(runId, 'finalize', 1);
 	await flushCallStats();
@@ -232,6 +232,14 @@ export const finalize: Task = async (payload) => {
 
 	await finishRun(runId, 'completed');
 	await logEvent(runId, 'info', 'Sync complete', stats);
+
+	// The library just moved, so anything generated from it is stale. Fanning
+	// out from here rather than waiting for the hourly cron is what makes a
+	// genre playlist reflect a track saved five minutes ago.
+	await helpers.addJob('playlist:sync-all', {}, {
+		jobKey: 'playlist-sync-all',
+		jobKeyMode: 'preserve_run_at'
+	});
 };
 
 // ------------------------------------------------------------- maintenance

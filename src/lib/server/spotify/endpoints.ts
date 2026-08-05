@@ -113,6 +113,49 @@ export const getArtistAlbums = (id: string, offset: number, limit = 50) =>
 export const getArtistTopTracks = (id: string) =>
 	spotifyFetch<{ tracks: FullTrack[] }>(`/artists/${id}/top-tracks`, { allowNotFound: true });
 
+// ------------------------------------------------------------ playlist writes
+//
+// The only endpoints in this file that change anything on Spotify. All three
+// need `playlist-modify-public`/`playlist-modify-private`, which a grant made
+// before genre collections existed does not carry — the app compares the
+// stored scope against the configured one and asks for a re-authorization.
+
+/** Both write endpoints take at most 100 uris per request. */
+export const PLAYLIST_ITEMS_PER_REQUEST = 100;
+
+export const createPlaylist = (
+	userId: string,
+	body: { name: string; description?: string; public?: boolean }
+) =>
+	spotifyGet<SimplifiedPlaylist>(`/users/${userId}/playlists`, {
+		method: 'POST',
+		body
+	});
+
+export const changePlaylistDetails = (
+	id: string,
+	body: { name?: string; description?: string; public?: boolean }
+) => spotifyFetch<null>(`/playlists/${id}`, { method: 'PUT', body });
+
+/**
+ * Replaces the playlist's contents with up to 100 uris — pass none to empty
+ * it. This is the only call that *removes* anything, so a rewrite is always
+ * "replace with the first 100, then append the rest": no diffing, no
+ * remove-by-position, and no way for a half-finished push to leave duplicates.
+ */
+export const replacePlaylistItems = (id: string, uris: string[]) =>
+	spotifyGet<{ snapshot_id: string }>(`/playlists/${id}/tracks`, {
+		method: 'PUT',
+		body: { uris }
+	});
+
+/** Appends up to 100 uris to the end. */
+export const addPlaylistItems = (id: string, uris: string[]) =>
+	spotifyGet<{ snapshot_id: string }>(`/playlists/${id}/tracks`, {
+		method: 'POST',
+		body: { uris }
+	});
+
 export const search = (q: string, types: string[], limit = 20) =>
 	spotifyGet<Record<string, Paging<unknown>>>('/search', {
 		query: { q, type: types.join(','), limit }
