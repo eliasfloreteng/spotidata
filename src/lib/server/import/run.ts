@@ -4,6 +4,7 @@ import { db, query } from '../db/index.ts';
 import { logEvent } from '../queue/phases.ts';
 import {
 	dropSupersededPolls,
+	estimatePollDurations,
 	insertPlays,
 	linkPlays,
 	refreshPlayStats
@@ -92,6 +93,10 @@ export async function runPlayImport(importId: number): Promise<void> {
 				: 0;
 
 		const linked = await linkPlays();
+		// The import has moved the ground under the surviving polled rows: one of
+		// its plays may now sit between a poll and the play it was measured
+		// against, and the estimate has to follow.
+		await estimatePollDurations();
 		const stats = await refreshPlayStats();
 
 		await db.execute(sql`

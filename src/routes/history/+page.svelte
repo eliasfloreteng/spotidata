@@ -10,7 +10,7 @@
 	import Cover from '$lib/components/Cover.svelte';
 	import StatTile from '$lib/components/StatTile.svelte';
 	import RangePicker from '$lib/components/RangePicker.svelte';
-	import { num, longDuration, pct, relativeTime, shortDate, trackTime } from '$lib/utils/format.ts';
+	import { num, longDuration, pct, relativeTime, shortDate, streamTime } from '$lib/utils/format.ts';
 
 	let { data } = $props();
 
@@ -369,7 +369,12 @@
 								{#if p.artistId}<a href="/artist/{p.artistId}">{p.artist}</a>{:else}{p.artist ??
 										'—'}{/if}
 							</td>
-							<td class="r num">{p.msPlayed == null ? '—' : trackTime(p.msPlayed)}</td>
+							<td
+								class="r num"
+								title={p.estimated ? 'Estimated from the gap to the previous play' : ''}
+							>
+								{streamTime(p.msPlayed, p.estimated)}
+							</td>
 							<td class="faint small">{END_LABELS[p.reasonEnd ?? ''] ?? p.reasonEnd ?? '—'}</td>
 						</tr>
 					{/each}

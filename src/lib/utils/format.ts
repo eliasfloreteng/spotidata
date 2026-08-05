@@ -34,6 +34,16 @@ export function trackTime(ms: number | null | undefined): string {
 	return `${m}:${String(total % 60).padStart(2, '0')}`;
 }
 
+/**
+ * A stream's length, marked `~` when it was inferred rather than reported.
+ *
+ * Everything polled from the API is inferred — Spotify gives the log no
+ * duration, so it comes from the distance back to the previous play. A number
+ * that is a deduction should look like one on the row it appears on.
+ */
+export const streamTime = (ms: number | null | undefined, estimated = false): string =>
+	ms == null ? '—' : `${estimated ? '~' : ''}${trackTime(ms)}`;
+
 export const pct = (v: number | null | undefined, digits = 0): string =>
 	v == null ? '—' : `${(v * 100).toFixed(digits)}%`;
 

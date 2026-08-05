@@ -1,0 +1,1 @@
+ALTER TABLE "plays" ADD COLUMN "estimated_ms" integer;

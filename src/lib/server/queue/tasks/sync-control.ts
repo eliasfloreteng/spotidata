@@ -144,6 +144,9 @@ export const derive: Task = async (payload, helpers) => {
 	// The resolve phase has just added the tracks the log was missing, so this
 	// is where a play stops being a bare URI and starts belonging to a recording.
 	await db.execute(sql`select spotidata.link_plays()`);
+	// A polled play's duration is capped at the track's, so a newly-linked row
+	// is one that can finally be estimated.
+	await db.execute(sql`select spotidata.estimate_poll_durations()`);
 	await db.execute(sql`select spotidata.refresh_play_stats()`);
 	await db.execute(sql`select spotidata.refresh_album_completeness()`);
 	// Album grouping reads tracks_complete, so it has to follow the line above.
@@ -181,6 +184,7 @@ export const canonicalizeFinal: Task = async (payload, helpers) => {
 	await db.execute(sql`select spotidata.refresh_canonical_tracks()`);
 	await db.execute(sql`select spotidata.refresh_library()`);
 	await db.execute(sql`select spotidata.link_plays()`);
+	await db.execute(sql`select spotidata.estimate_poll_durations()`);
 	await db.execute(sql`select spotidata.refresh_play_stats()`);
 	await db.execute(sql`select spotidata.refresh_album_completeness()`);
 	await db.execute(sql`select spotidata.refresh_album_groups()`);

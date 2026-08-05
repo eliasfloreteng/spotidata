@@ -3,7 +3,7 @@
 	import Pager from '$lib/components/Pager.svelte';
 	import RangePicker from '$lib/components/RangePicker.svelte';
 	import SearchBox from '$lib/components/SearchBox.svelte';
-	import { num, trackTime } from '$lib/utils/format.ts';
+	import { num, streamTime } from '$lib/utils/format.ts';
 
 	let { data } = $props();
 
@@ -81,7 +81,12 @@
 									'—'}{/if}
 						</td>
 						<td class="muted small ellipsis">{p.album ?? '—'}</td>
-						<td class="r num">{p.msPlayed == null ? '—' : trackTime(p.msPlayed)}</td>
+						<td
+							class="r num"
+							title={p.estimated ? 'Estimated from the gap to the previous play' : ''}
+						>
+							{streamTime(p.msPlayed, p.estimated)}
+						</td>
 						<td class="faint small">{END_LABELS[p.reasonEnd ?? ''] ?? p.reasonEnd ?? '—'}</td>
 						<td class="faint small ellipsis" title={p.platform ?? ''}>{p.platform ?? '—'}</td>
 					</tr>

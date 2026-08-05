@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { query } from '../db/index.ts';
-import { iso, thumb, type ArtistRef } from './shared.ts';
+import { iso, thumb, MS_LISTENED, type ArtistRef } from './shared.ts';
 
 /**
  * Per-entity listening figures, for the recording, artist, album and playlist
@@ -63,7 +63,7 @@ export async function trackPlaysByMonth(
 		), played as (
 		  select date_trunc('month', p.played_at at time zone ${tz}) as m,
 		         count(*)::int as plays,
-		         round(coalesce(sum(p.ms_played), 0) / 60000.0)::int as minutes
+		         round(coalesce(sum(${MS_LISTENED}), 0) / 60000.0)::int as minutes
 		    from plays p
 		    join spotify_tracks st on st.id = p.track_id
 		   where st.canonical_track_id = ${canonicalTrackId}
@@ -81,6 +81,8 @@ export interface RecentPlay {
 	id: number;
 	playedAt: string;
 	msPlayed: number | null;
+	/** True when `msPlayed` is inferred from the log's spacing, not reported. */
+	estimated: boolean;
 	platform: string | null;
 	reasonStart: string | null;
 	reasonEnd: string | null;
@@ -95,7 +97,8 @@ export async function recentPlaysFor(
 	return query<RecentPlay>(sql`
 		select p.id,
 		       ${iso('p.played_at')} as "playedAt",
-		       p.ms_played           as "msPlayed",
+		       ${MS_LISTENED}        as "msPlayed",
+		       (p.ms_played is null and p.estimated_ms is not null) as estimated,
 		       p.platform,
 		       p.reason_start        as "reasonStart",
 		       p.reason_end          as "reasonEnd",

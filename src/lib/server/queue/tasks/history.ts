@@ -7,6 +7,7 @@ import { SpotifyAuthExpired, SpotifyRateLimited } from '../../spotify/errors.ts'
 import { upsertFullTracks } from '../../ingest/upsert-tracks.ts';
 import { storeRaw } from '../../ingest/raw.ts';
 import {
+	estimatePollDurations,
 	insertPlays,
 	linkPlays,
 	markResolveAttempted,
@@ -70,9 +71,11 @@ export async function pollRecentPlays(): Promise<{ fetched: number; inserted: nu
 		at.setUTCMilliseconds(0);
 		return {
 			playedAt: at.toISOString(),
-			// Unknown, and deliberately not guessed at from the track duration:
-			// NULL is what tells the rollup to leave this row out of the
-			// completed/skipped split rather than to assume a full listen.
+			// Unreported, and deliberately not guessed at here: the column holds
+			// what Spotify said, and `estimate_poll_durations()` writes what the
+			// spacing of the log implies into `estimated_ms` once the rows are
+			// in. Keeping NULL here is also what makes the next poll's repeat of
+			// this same event collide on `plays_event_uq` instead of doubling it.
 			msPlayed: null,
 			itemKind: 'track',
 			itemUri: item.track.uri,
@@ -95,6 +98,7 @@ export async function pollRecentPlays(): Promise<{ fetched: number; inserted: nu
 	const { inserted } = await insertPlays(plays, { source: 'recent' });
 	if (inserted > 0) {
 		await linkPlays();
+		await estimatePollDurations();
 		await refreshPlayStats();
 	}
 	return { fetched: items.length, inserted };

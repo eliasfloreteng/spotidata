@@ -14,7 +14,8 @@ export type PlayItemKind = 'track' | 'episode' | 'audiobook' | 'unknown';
  * record back to the first play and carries how long each stream lasted and
  * why it started and ended; `/me/player/recently-played` is a 50-item window
  * polled on a cron, which keeps the log current between exports but knows
- * neither `ms_played` nor `reason_*`.
+ * neither `ms_played` nor `reason_*` — `estimated_ms` fills the first of those
+ * in from the spacing of the plays themselves.
  *
  * KEYS ON `spotify_tracks.id`, never on the canonical id — a regrouping must
  * never orphan a play. `trackId` is nullable and stays so until the resolve
@@ -35,6 +36,25 @@ export const plays = table(
 		playedAt: ts().notNull(),
 		/** NULL means unknown, which is every row that came from the API. */
 		msPlayed: integer(),
+		/**
+		 * How long the stream probably ran, for the rows that never said.
+		 *
+		 * DERIVED by `spotidata.estimate_poll_durations()`, and only ever set on
+		 * API rows: both sources timestamp the END of a stream, so the distance
+		 * back to the previous play is how long this one had to run in, and a
+		 * stream cannot outlast its own track. `least(duration_ms, gap)` measured
+		 * against this account's export lands within 5s of the truth on 69% of
+		 * plays and sums to 98.7% of the real total.
+		 *
+		 * NULL again whenever the previous play is too far back to be this one's
+		 * start — after a break there is nothing to measure against and the cap
+		 * alone would claim a full listen for a track that may have been skipped
+		 * (it reads 181% of true time on those rows, which is why they are left
+		 * alone). Kept out of `ms_played` so that what Spotify reported and what
+		 * we inferred stay tellable apart, and so `plays_event_uq` keeps seeing
+		 * the NULL that makes a re-poll collide instead of duplicate.
+		 */
+		estimatedMs: integer(),
 		itemKind: text().$type<PlayItemKind>().notNull().default('track'),
 		itemUri: text().notNull(),
 		trackId: text().references(() => spotifyTracks.id, { onDelete: 'set null' }),

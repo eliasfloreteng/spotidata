@@ -12,6 +12,22 @@ export const iso = (expr: string) =>
 	sql.raw(`to_char(${expr} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')`);
 
 /**
+ * How long a stream ran, whoever knows it — the only expression any aggregate
+ * over listening time should use.
+ *
+ * The export reports a duration; the API poller never does, and its rows carry
+ * an `estimated_ms` inferred from the spacing of the log instead (see
+ * `spotidata.estimate_poll_durations()`). Reading `ms_played` alone silently
+ * values everything polled since the last export at zero, which is most of what
+ * happened this week. Still NULL where neither source can say, so every SUM
+ * over it stays coalesced — an untreated NULL sorts FIRST under `order by …
+ * desc` and quietly wins "biggest day".
+ *
+ * Assumes the plays table is aliased `p`, which every caller does.
+ */
+export const MS_LISTENED = sql`coalesce(p.ms_played, p.estimated_ms)`;
+
+/**
  * Correlated subquery for an entity's largest image.
  *
  * Ordering is by width rather than by `position`: Spotify emits images

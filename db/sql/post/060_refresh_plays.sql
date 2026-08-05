@@ -52,6 +52,61 @@ BEGIN
 END $$;
 
 /*
+ * Fills `plays.estimated_ms` for the rows the API poller wrote.
+ *
+ * `/me/player/recently-played` says when a stream ended and nothing else, so
+ * the duration has to come from the shape of the log: both sources timestamp
+ * the END of a stream, which makes the distance back to the previous play the
+ * window this one had to run in, and no stream outlasts its own track. Hence
+ * least(duration_ms, gap).
+ *
+ * Only while the previous play is close enough to have been this one's start.
+ * Past that the gap says nothing — you were away — and the cap on its own would
+ * award a full listen to a track that may well have been skipped after ten
+ * seconds. Measured against this account's export, where the true ms_played is
+ * known: contiguous plays estimate to 98.7% of the real total and land within
+ * 5s on 69% of rows, while post-break plays come out at 181%. So the break rows
+ * keep their NULL, and the log undercounts rather than invents.
+ *
+ * Recomputes every polled row rather than only the new ones: an import or a
+ * backfilled poll can land a play in front of one already estimated, and the
+ * answer has to follow. Idempotent, and the UPDATE touches only rows whose
+ * estimate actually moved.
+ */
+CREATE OR REPLACE FUNCTION spotidata.estimate_poll_durations()
+RETURNS bigint LANGUAGE plpgsql AS $$
+DECLARE n bigint;
+BEGIN
+  WITH ordered AS (
+    SELECT p.id, p.source, p.ms_played, p.played_at, st.duration_ms,
+           -- Over every play, not just the polled ones: an export row is just
+           -- as good a predecessor, and after an import it usually is one.
+           lag(p.played_at) OVER (ORDER BY p.played_at, p.id) AS prev_at
+      FROM plays p
+      LEFT JOIN spotify_tracks st ON st.id = p.track_id
+  ), candidate AS (
+    SELECT id, duration_ms,
+           (EXTRACT(epoch FROM (played_at - prev_at)) * 1000)::bigint AS gap
+      FROM ordered
+     WHERE source = 'recent' AND ms_played IS NULL
+  ), estimated AS (
+    SELECT id,
+           CASE
+             -- A minute of slack for the handover between two streams; beyond
+             -- that the silence is a break, not part of the play.
+             WHEN gap > 0 AND gap <= duration_ms + 60000
+               THEN least(duration_ms::bigint, gap)::int
+           END AS est
+      FROM candidate
+  )
+  UPDATE plays p SET estimated_ms = e.est
+    FROM estimated e
+   WHERE p.id = e.id AND p.estimated_ms IS DISTINCT FROM e.est;
+  GET DIAGNOSTICS n = ROW_COUNT;
+  RETURN n;
+END $$;
+
+/*
  * Rebuilds canonical_play_stats.
  *
  * The rollup exists so a list page can order 8.8k recordings by play count
@@ -63,8 +118,10 @@ END $$;
  * `skips` counts streams that ended before the completion threshold, whatever
  * the export's own `skipped` flag says: that flag is only ever set by the
  * client's skip button, so a track abandoned by closing the app reads as a
- * full play. Rows with a NULL ms_played (the API source) count toward `plays`
- * and neither of the other two, because we genuinely do not know.
+ * full play. Duration is read as COALESCE(ms_played, estimated_ms) — measured
+ * where the export spoke, inferred from the spacing where only the API did.
+ * Rows with neither (a polled play after a break) count toward `plays` and
+ * neither of the other two, because we genuinely do not know.
  */
 CREATE OR REPLACE FUNCTION spotidata.refresh_play_stats()
 RETURNS TABLE (recordings bigint, events bigint) LANGUAGE plpgsql AS $$
@@ -76,10 +133,12 @@ BEGIN
   SELECT st.canonical_track_id                                   AS canonical_track_id,
          count(*)::int                                           AS plays,
          count(*) FILTER (
-           WHERE p.ms_played >= spotidata.play_completion_ms())::int AS completed_plays,
+           WHERE COALESCE(p.ms_played, p.estimated_ms)
+                 >= spotidata.play_completion_ms())::int         AS completed_plays,
          count(*) FILTER (
-           WHERE p.ms_played < spotidata.play_completion_ms())::int   AS skips,
-         COALESCE(sum(p.ms_played), 0)::bigint                   AS ms_played,
+           WHERE COALESCE(p.ms_played, p.estimated_ms)
+                 < spotidata.play_completion_ms())::int          AS skips,
+         COALESCE(sum(COALESCE(p.ms_played, p.estimated_ms)), 0)::bigint AS ms_played,
          min(p.played_at)                                        AS first_played_at,
          max(p.played_at)                                        AS last_played_at
     FROM plays p

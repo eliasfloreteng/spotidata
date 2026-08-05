@@ -95,6 +95,19 @@ emitting one stream twice and half two real streams ending in the same second
 while skipping through a queue. `NULLS NOT DISTINCT` is what stops the API
 source, whose `ms_played` is always null, inserting afresh on every poll.
 
+**A polled play still gets a listening time**, just not from Spotify. Both
+sources timestamp the *end* of a stream, so the distance back to the previous
+play is the window this one had to run in, and no stream outlasts its own track:
+`least(duration_ms, gap)`, written to `estimated_ms` by
+`spotidata.estimate_poll_durations()` and summed as
+`coalesce(ms_played, estimated_ms)` everywhere. Checked against the export,
+where the truth is recorded: it lands within 5 seconds on 69% of plays and sums
+to 98.7% of the real total. The first play after a break keeps a null — with
+nothing to measure against, the cap alone would award a full listen to a track
+that may have been skipped after ten seconds, and it reads 181% of true time on
+exactly those rows. So the log undercounts rather than invents, and the app
+marks an inferred duration `~3:12`.
+
 **The zip reader is hand-written** (`src/lib/server/import/zip.ts`). The whole
 requirement is "list the entries, hand me one"; Node ships the inflater, and the
 container is the missing 150 lines. Entries are read from their offsets rather

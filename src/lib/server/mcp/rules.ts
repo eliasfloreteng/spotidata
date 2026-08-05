@@ -95,8 +95,12 @@ ${
 from \`/me/player/recently-played\`. It keys on \`spotify_tracks.id\` (nullable —
 plenty of plays are of recordings never saved, and the id resolves later), so
 roll up through \`spotify_tracks.canonical_track_id\` to count a recording rather
-than a release. \`ms_played\` is NULL for everything the API poller wrote; a
-stream counts as really listened to past 30s (\`spotidata.play_completion_ms()\`).
+than a release. \`ms_played\` is NULL for everything the API poller wrote — that
+endpoint reports no duration — so **sum \`coalesce(ms_played, estimated_ms)\`**,
+never \`ms_played\` alone: \`estimated_ms\` is that row's duration inferred from
+the gap back to the previous play, and it is NULL only where a break makes even
+that impossible. A stream counts as really listened to past 30s
+(\`spotidata.play_completion_ms()\`).
 ${playStats ? '`canonical_play_stats` is the precomputed per-recording rollup — use it unless the question needs a time range.\n' : ''}
 What was *played* and what was *saved* are different questions. \`plays\` covers
 listening; \`library_canonical\` covers keeping.`

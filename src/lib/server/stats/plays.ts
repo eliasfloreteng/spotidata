@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { query } from '../db/index.ts';
-import { iso, thumb, type ArtistRef } from '../entities/shared.ts';
+import { iso, thumb, MS_LISTENED, type ArtistRef } from '../entities/shared.ts';
 import type { Range } from './range.ts';
 
 /**
@@ -17,12 +17,16 @@ import type { Range } from './range.ts';
  * has never seen drop out of every recording-level number and stay in the
  * event-level ones; `coverage()` is what makes that gap visible rather than
  * silent.
+ *
+ * Listening time always reads `MS_LISTENED`, never `p.ms_played`: the poller
+ * records no duration, so the bare column values everything since the last
+ * export at zero.
  */
 
 const win = (r: Range) => sql`p.played_at >= ${r.from} and p.played_at < ${r.to}`;
 
 /** Streams past this mark count as listened to; below it, as skipped. */
-const COMPLETE = sql`p.ms_played >= spotidata.play_completion_ms()`;
+const COMPLETE = sql`${MS_LISTENED} >= spotidata.play_completion_ms()`;
 
 /**
  * `platform` is free text and has drifted through eight years of clients:
@@ -68,9 +72,9 @@ export interface ListeningTotals {
 export async function listeningTotals(r: Range): Promise<ListeningTotals> {
 	const rows = await query<ListeningTotals>(sql`
 		select count(*)::int                                     as plays,
-		       coalesce(sum(p.ms_played), 0)::bigint             as "msPlayed",
+		       coalesce(sum(${MS_LISTENED}), 0)::bigint          as "msPlayed",
 		       count(*) filter (where ${COMPLETE})::int          as completed,
-		       count(*) filter (where p.ms_played < spotidata.play_completion_ms())::int
+		       count(*) filter (where ${MS_LISTENED} < spotidata.play_completion_ms())::int
 		                                                         as skipped,
 		       count(distinct st.canonical_track_id)::int        as recordings,
 		       count(distinct ct.primary_album_id)::int          as albums,
@@ -123,18 +127,18 @@ export interface DayMinutes {
 /**
  * Minutes listened per day — the calendar heatmap.
  *
- * `sum(ms_played)` is NULL, not 0, for a day whose plays all came from the API
- * — that source records no duration. Every aggregate over `ms_played` in this
- * file coalesces for that reason: the untreated NULL does not read as an empty
- * day, it sorts FIRST under `order by … desc` and quietly wins "biggest day".
+ * The sum is NULL, not 0, for a day nothing can put a duration on, and every
+ * aggregate in this file coalesces for that reason: the untreated NULL does not
+ * read as an empty day, it sorts FIRST under `order by … desc` and quietly wins
+ * "biggest day".
  */
 export async function minutesByDay(r: Range): Promise<DayMinutes[]> {
 	return query<DayMinutes>(sql`
 		select to_char((p.played_at at time zone ${r.tz})::date, 'YYYY-MM-DD') as day,
-		       round(coalesce(sum(p.ms_played), 0) / 60000.0)::int as value
+		       round(coalesce(sum(${MS_LISTENED}), 0) / 60000.0)::int as value
 		  from plays p
 		 where ${win(r)}
-		 group by 1 having coalesce(sum(p.ms_played), 0) > 0 order by 1
+		 group by 1 having coalesce(sum(${MS_LISTENED}), 0) > 0 order by 1
 	`);
 }
 
@@ -159,9 +163,9 @@ export async function listeningByMonth(r: Range): Promise<MonthPoint[]> {
 		    interval '1 month') as m
 		), played as (
 		  select date_trunc('month', p.played_at at time zone ${r.tz}) as m,
-		         round(coalesce(sum(p.ms_played), 0) / 60000.0)::int as minutes,
+		         round(coalesce(sum(${MS_LISTENED}), 0) / 60000.0)::int as minutes,
 		         count(*)::int as plays,
-		         round(coalesce(sum(p.ms_played) filter (
+		         round(coalesce(sum(${MS_LISTENED}) filter (
 		           where lc.canonical_track_id is not null), 0) / 60000.0)::int as library_minutes
 		    from plays p
 		    left join spotify_tracks st on st.id = p.track_id
@@ -189,7 +193,7 @@ export async function listeningClock(r: Range): Promise<ClockCell[]> {
 	return query<ClockCell>(sql`
 		select extract(isodow from p.played_at at time zone ${r.tz})::int as weekday,
 		       extract(hour   from p.played_at at time zone ${r.tz})::int as hour,
-		       round(coalesce(sum(p.ms_played), 0) / 60000.0)::int as count
+		       round(coalesce(sum(${MS_LISTENED}), 0) / 60000.0)::int as count
 		  from plays p
 		 where ${win(r)}
 		 group by 1, 2 order by 1, 2
@@ -205,10 +209,10 @@ export interface ShareRow {
 export async function deviceShare(r: Range): Promise<ShareRow[]> {
 	return query<ShareRow>(sql`
 		select ${DEVICE} as label,
-		       round(coalesce(sum(p.ms_played), 0) / 60000.0)::int as value
+		       round(coalesce(sum(${MS_LISTENED}), 0) / 60000.0)::int as value
 		  from plays p
 		 where ${win(r)}
-		 group by 1 having coalesce(sum(p.ms_played), 0) > 0 order by value desc
+		 group by 1 having coalesce(sum(${MS_LISTENED}), 0) > 0 order by value desc
 	`);
 }
 
@@ -216,10 +220,10 @@ export async function deviceShare(r: Range): Promise<ShareRow[]> {
 export async function countryShare(r: Range, limit = 8): Promise<ShareRow[]> {
 	return query<ShareRow>(sql`
 		select coalesce(nullif(p.conn_country, 'ZZ'), 'Unknown') as label,
-		       round(coalesce(sum(p.ms_played), 0) / 60000.0)::int as value
+		       round(coalesce(sum(${MS_LISTENED}), 0) / 60000.0)::int as value
 		  from plays p
 		 where ${win(r)}
-		 group by 1 having coalesce(sum(p.ms_played), 0) > 0 order by value desc
+		 group by 1 having coalesce(sum(${MS_LISTENED}), 0) > 0 order by value desc
 		 limit ${limit}
 	`);
 }
@@ -247,12 +251,12 @@ export interface Bucket {
 
 export async function completionBuckets(r: Range): Promise<Bucket[]> {
 	return query<Bucket>(sql`
-		select least(10, (p.ms_played * 10 / nullif(ct.duration_ms, 0)))::int * 10 as bucket,
+		select least(10, (${MS_LISTENED} * 10 / nullif(ct.duration_ms, 0)))::int * 10 as bucket,
 		       count(*)::int as count
 		  from plays p
 		  join spotify_tracks st on st.id = p.track_id
 		  join canonical_tracks ct on ct.id = st.canonical_track_id
-		 where ${win(r)} and p.ms_played is not null and ct.duration_ms > 0
+		 where ${win(r)} and ${MS_LISTENED} is not null and ct.duration_ms > 0
 		 group by 1 order by 1
 	`);
 }
@@ -292,7 +296,7 @@ export async function topPlayedTracks(
 		       ct.title,
 		       count(*)::int                    as plays,
 		       count(*) filter (where ${COMPLETE})::int as completed,
-		       coalesce(sum(p.ms_played), 0)::bigint    as "msPlayed",
+		       coalesce(sum(${MS_LISTENED}), 0)::bigint as "msPlayed",
 		       ${iso('max(p.played_at)')}       as "lastPlayedAt",
 		       bool_or(lc.canonical_track_id is not null) as "inLibrary",
 		       ${thumb('album_images', 'album_id', 'ct.primary_album_id')} as cover,
@@ -327,7 +331,7 @@ export async function topPlayedArtists(r: Range, limit = 20): Promise<PlayedArti
 	return query<PlayedArtist>(sql`
 		select a.id, a.name,
 		       count(*)::int                             as plays,
-		       coalesce(sum(p.ms_played), 0)::bigint     as "msPlayed",
+		       coalesce(sum(${MS_LISTENED}), 0)::bigint  as "msPlayed",
 		       count(distinct ct.id)::int                as recordings,
 		       ${thumb('artist_images', 'artist_id', 'a.id')} as "imageUrl"
 		  from plays p
@@ -360,9 +364,9 @@ export async function topPlayedAlbums(r: Range, limit = 15): Promise<PlayedAlbum
 		select al.id, al.name,
 		       (select ar.name from album_artists aa join artists ar on ar.id = aa.artist_id
 		         where aa.album_id = al.id order by aa.position limit 1) as artist,
-		       count(*)::int                          as plays,
-		       coalesce(sum(p.ms_played), 0)::bigint  as "msPlayed",
-		       count(distinct ct.id)::int             as recordings,
+		       count(*)::int                            as plays,
+		       coalesce(sum(${MS_LISTENED}), 0)::bigint as "msPlayed",
+		       count(distinct ct.id)::int               as recordings,
 		       ${thumb('album_images', 'album_id', 'al.id')} as "imageUrl"
 		  from plays p
 		  join spotify_tracks st on st.id = p.track_id
@@ -399,7 +403,7 @@ export async function topArtistsByYearPlayed(r: Range, topN = 10): Promise<BumpR
 		  -- predecessor to compare against; it drops out after ranking.
 		  select extract(year from p.played_at at time zone ${r.tz})::int as yr,
 		         cta.artist_id,
-		         round(coalesce(sum(p.ms_played), 0) / 3600000.0)::int as hours
+		         round(coalesce(sum(${MS_LISTENED}), 0) / 3600000.0)::int as hours
 		    from plays p
 		    join spotify_tracks st on st.id = p.track_id
 		    join canonical_track_artists cta
@@ -480,7 +484,7 @@ export async function listeningStreaks(r: Range): Promise<ListeningStreaks> {
 	const rows = await query<ListeningStreaks>(sql`
 		with days as (
 		  select (p.played_at at time zone ${r.tz})::date as d,
-		         round(coalesce(sum(p.ms_played), 0) / 60000.0)::int as minutes
+		         round(coalesce(sum(${MS_LISTENED}), 0) / 60000.0)::int as minutes
 		    from plays p where ${win(r)} group by 1
 		), grouped as (
 		  -- Consecutive dates share (date - row_number): gaps and islands.
@@ -516,6 +520,8 @@ export interface PlayRow {
 	id: number;
 	playedAt: string;
 	msPlayed: number | null;
+	/** True when `msPlayed` is inferred from the log's spacing, not reported. */
+	estimated: boolean;
 	itemKind: string;
 	canonicalTrackId: string | null;
 	title: string;
@@ -550,7 +556,8 @@ export async function playLog(
 		select (count(*) over ())::int          as total,
 		       p.id,
 		       ${iso('p.played_at')}            as "playedAt",
-		       p.ms_played                      as "msPlayed",
+		       ${MS_LISTENED}                   as "msPlayed",
+		       (p.ms_played is null and p.estimated_ms is not null) as estimated,
 		       p.item_kind                      as "itemKind",
 		       ct.id                            as "canonicalTrackId",
 		       coalesce(ct.title, p.track_name, p.episode_name, '(unknown)') as title,

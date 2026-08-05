@@ -273,9 +273,12 @@
 	</ol>
 	<p class="faint">
 		Between exports, <code>/me/player/recently-played</code> is polled every 20 minutes, which
-		keeps the log current so long as you do not play more than 50 tracks in that window. The two
-		sources describe the same play differently — the API knows no duration — so an import always
-		wins over a poll for the span it covers.
+		keeps the log current so long as you do not play more than 50 tracks in that window. The API
+		reports no duration, so a polled play's listening time is inferred from the gap back to the
+		previous one, capped at the track's length, and shown as <code>~3:12</code>; the first play
+		after a break has nothing to measure against and counts as a play with no time. An import
+		always wins over a poll for the span it covers, and replaces every estimate in it with what
+		Spotify actually recorded.
 	</p>
 </section>
 

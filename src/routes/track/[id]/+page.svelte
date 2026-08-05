@@ -5,7 +5,7 @@
 	import SpotifyLink from '$lib/components/SpotifyLink.svelte';
 	import StatTile from '$lib/components/StatTile.svelte';
 	import { AreaChart, CATEGORICAL } from '$lib/charts/index.ts';
-	import { longDuration, num, shortDate, trackTime, relativeTime } from '$lib/utils/format.ts';
+	import { longDuration, num, shortDate, trackTime, streamTime, relativeTime } from '$lib/utils/format.ts';
 
 	let { data } = $props();
 
@@ -114,7 +114,12 @@
 				{#each data.recentPlays as r (r.id)}
 					<li>
 						<span class="when muted small" title={r.playedAt}>{relativeTime(r.playedAt)}</span>
-						<span class="dur num small">{r.msPlayed == null ? '—' : trackTime(r.msPlayed)}</span>
+						<span
+							class="dur num small"
+							title={r.estimated ? 'Estimated from the gap to the previous play' : ''}
+						>
+							{streamTime(r.msPlayed, r.estimated)}
+						</span>
 						<span class="how faint xs">
 							{r.platform ?? r.source}{#if r.reasonEnd} · {r.reasonEnd}{/if}
 						</span>
