@@ -6,6 +6,7 @@ build
 backups
 docs
 # A deployment that bind-mounts the database next to the compose file must not
-# ship it into the build context.
+# ship it into the build context. Same for the OAuth proxy's state.
 pgdata
+auth-data
 *.tsbuildinfo
