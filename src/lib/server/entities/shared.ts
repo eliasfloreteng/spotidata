@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 
 export type { ArtistRef } from '../../types.ts';
 
@@ -51,6 +51,68 @@ export const trackArtistsJson = (ref: string) =>
 		  from track_artists ta join artists ar on ar.id = ta.artist_id
 		 where ta.track_id = ${ref}
 	), '[]'::jsonb)`);
+
+// ------------------------------------------------------- query fragments
+
+/**
+ * `count(*) over ()` rides along on the paged query instead of a second
+ * COUNT: the window is evaluated before LIMIT, so one round trip yields both
+ * the page and the total. Empty pages report zero, which is what the pager
+ * should show anyway.
+ *
+ * Window functions run after GROUP BY and HAVING, so this stays correct on the
+ * aggregate index queries even when a filter is applied in HAVING.
+ */
+export const total = sql`(count(*) over ())::int as total`;
+
+/** Matches a trigram-indexed name; `%` and `_` are escaped so they stay literal. */
+export function like(expr: SQL, q: string): SQL {
+	return sql`${expr} ilike ${'%' + q.replace(/[\\%_]/g, (c) => '\\' + c) + '%'}`;
+}
+
+/**
+ * Looks a filter value up in a per-query table of SQL fragments.
+ *
+ * The value has already been checked against the group's vocabulary by
+ * `filterParams`, but this lookup is what actually keeps it out of the SQL:
+ * the fragments are literals written here, and an unrecognised value simply
+ * finds nothing.
+ */
+export function clauseFor(value: string, table: Record<string, SQL>): SQL | null {
+	return (value && table[value]) || null;
+}
+
+/** ANDs the active fragments onto a WHERE that already ends in a condition. */
+export function andAll(parts: (SQL | null)[]): SQL {
+	const active = parts.filter((p): p is SQL => p !== null);
+	return active.length ? sql` and ${sql.join(active, sql` and `)}` : sql``;
+}
+
+/** Same, as a HAVING clause — for predicates over aggregates. */
+export function havingAll(parts: (SQL | null)[]): SQL {
+	const active = parts.filter((p): p is SQL => p !== null);
+	return active.length ? sql`having ${sql.join(active, sql` and `)}` : sql``;
+}
+
+/**
+ * The two filter vocabularies more than one list page applies, as SQL.
+ *
+ * `PLAYED_CLAUSES` assumes the play rollup is left-joined as `cps`, which is
+ * the alias every list query uses; "saved and never listened to" is a category
+ * neither the library tables nor `plays` can express alone, and it reads as
+ * the *absence* of a rollup row rather than a zero.
+ */
+export const PLAYED_CLAUSES = {
+	played: sql`coalesce(cps.plays, 0) > 0`,
+	never: sql`cps.canonical_track_id is null`
+};
+
+export const EXPLICIT_CLAUSES = (expr: SQL) => ({
+	yes: sql`${expr}`,
+	no: sql`not ${expr}`
+});
+
+// ------------------------------------------------------------ page params
 
 export const PAGE_SIZE = 100;
 export const INDEX_PAGE_SIZE = 60;

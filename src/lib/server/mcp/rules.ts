@@ -154,6 +154,13 @@ returns track-level genres.${
 			: ''
 	}
 
+\`spotidata.track_genres\` puts both on the track: one row per
+\`(canonical_track_id, genre, source)\`, where \`source\` is 'recording' (a
+MusicBrainz tag, precise) or 'artist' (Spotify's genres for a credited artist,
+broader). Use it for "tracks in genre X" — but filter or group by \`source\`,
+because the two vocabularies are not the same one ("synth-pop" against
+"swedish pop") and a track counted under both is still one track.
+
 ## 9. Incomplete rows are normal
 
 \`detail_level = 'simplified'\` means the row was built from an object nested

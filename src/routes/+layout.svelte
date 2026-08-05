@@ -9,6 +9,7 @@
 		{ href: '/history', label: 'Listening' },
 		{ href: '/library', label: 'Library' },
 		{ href: '/liked', label: 'Liked' },
+		{ href: '/genres', label: 'Genres' },
 		{ href: '/artists', label: 'Artists' },
 		{ href: '/albums', label: 'Albums' },
 		{ href: '/playlists', label: 'Playlists' }

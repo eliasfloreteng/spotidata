@@ -162,6 +162,24 @@ pass. Progress, per-stage coverage and the controls live at `/enrich`.
 OAuth is supported and unnecessary: the web service is open, and a grant does
 not raise the rate limit. It is there for a future write path.
 
+**A genre is two opinions, so `/genres` keeps both.** MusicBrainz tags the
+*recording*, which is what a playlist is made of, but only reaches 42% of this
+library; Spotify tags the *artist*, so every song by a band inherits one
+career-long label — and that reaches 72%. They do not share a vocabulary
+either: MusicBrainz says "synth-pop" where Spotify says "swedish pop". So
+`spotidata.track_genres` unions them with a `source` column and the page makes
+that a filter rather than trying to reconcile it.
+
+The page exists to build a playlist Spotify itself cannot: pick any number of
+genres (any of them, or all of them at once), work down the tracks striking off
+what does not belong, and copy `open.spotify.com/track/…` links to paste
+straight into a playlist. The links come from `/genres/links`, which serves the
+same selection in the same order as plain text — so the copy is exactly the
+list you were reading, and opening that URL is the whole feature with
+JavaScript switched off. Removals are keyed on the track id, which is what lets
+them survive paging through 1,200 results, and the paste goes out in batches of
+100 because that is what the client swallows in one go.
+
 **Analytics are raw SQL, no materialized views.** Every chart is a `GROUP BY`
 over `library_canonical` (8.8k rows, resident in shared buffers) — all sixteen
 dashboard queries run in ~130 ms total. MVs also cannot be parameterized by an
