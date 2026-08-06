@@ -8,7 +8,7 @@
 	import SearchBox from '$lib/components/SearchBox.svelte';
 	import SpotifyLink from '$lib/components/SpotifyLink.svelte';
 	import { longDuration, num, relativeTime, shortDate, trackTime } from '$lib/utils/format.ts';
-	import { trackHref } from '$lib/utils/qs.ts';
+	import { genreHref, trackHref } from '$lib/utils/qs.ts';
 
 	let { data, form } = $props();
 
@@ -250,7 +250,7 @@
 						<td class="muted small"><ArtistLinks artists={t.artists} /></td>
 						<td class="tags">
 							{#each t.genres.slice(0, 3) as g (g)}
-								<span class="tag" class:on={inCollection.has(g)}>{g}</span>
+								<a class="tag" class:on={inCollection.has(g)} href={genreHref(g)}>{g}</a>
 							{/each}
 							{#if t.genres.length > 3}
 								<span class="faint xs" title={t.genres.join(', ')}>+{t.genres.length - 3}</span>
@@ -569,6 +569,14 @@
 		color: #ddd6fe;
 		background: var(--accent-soft);
 		border-color: rgba(124, 58, 237, 0.4);
+	}
+	.tag:hover {
+		border-color: var(--hairline-strong);
+		color: var(--text-muted);
+	}
+	.tag.on:hover {
+		border-color: rgba(124, 58, 237, 0.9);
+		color: #ede9fe;
 	}
 	.heart {
 		color: var(--accent-2);

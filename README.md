@@ -182,9 +182,30 @@ failing with a 403 that explains nothing.
 
 A collection stores **genres, never tracks**. The track list is recomputed on
 every read and every push, so a recording that MusicBrainz tags tomorrow joins
-the playlist tomorrow with nobody editing anything — and it is also why the
-selection lives in Postgres rather than the query string, which ran out of room
-at around forty genres.
+the playlist tomorrow with nobody editing anything — and it is also why a
+collection's genres live in Postgres rather than the query string, which ran out
+of room at around forty genres.
+
+**The page is a builder, not a picker.** Staging a genre is an ordinary link
+that appends `?g=`, so the count, the artists, the runtime and the first twenty
+tracks of the set are answered by the same load function whether or not JS ran,
+the back button walks the selection, and a half-built set can be pasted to
+someone. "All four of these at once" is usually eleven tracks, and the whole
+point is finding that out *before* a collection exists rather than by creating
+one and looking at it. A staged set is capped at 24 genres — it is the thing
+being assembled, and the thing being kept is the collection.
+
+The chips are sized by the square root of whatever they are ranked by: `pop`
+holds fifty times what `italo disco` does, and a linear scale makes one
+unreadable to keep the other legible.
+
+**`/genre/<name>` is the genre itself** — recordings, listening time, the
+artists it means in this library, and the genres tagged on the same recordings.
+Related genres rank by Jaccard overlap rather than raw shared count, which is
+the difference between "club is what house *is*" and answering "pop" for
+everything. Its track list runs through `resolveTracks`, the same function a
+collection resolves through, so what the page shows and what a playlist built
+from that genre would hold cannot drift apart.
 
 The push is a **rewrite, not a diff**: `PUT /playlists/{id}/tracks` replaces the
 first 100, `POST` appends the rest. No reconciliation, no way for a crash

@@ -51,24 +51,41 @@ export interface GenreOption {
 	/** Recordings in the library carrying this genre. */
 	tracks: number;
 	plays: number;
+	msPlayed: number;
 }
+
+/**
+ * One row per (genre, recording) in the library.
+ *
+ * The DISTINCT is not decoration: an ISRC can resolve to more than one
+ * MusicBrainz recording, and then the same tag reaches the same canonical track
+ * twice. Counting tracks survives that, summing plays does not — so everything
+ * that aggregates over a genre starts here rather than from the view.
+ */
+const LIBRARY_GENRES = sql`
+	select distinct tg.genre, tg.canonical_track_id
+	  from spotidata.track_genres tg
+	  join library_canonical lc on lc.canonical_track_id = tg.canonical_track_id`;
 
 /**
  * Every genre that describes something in the library, most-used first.
  *
  * Not a top-N: a genre already in a collection but missing from the list would
- * be a filter the page can neither show nor remove.
+ * be a filter the page can neither show nor remove. It also carries plays and
+ * listening time, because "how much of this do I own" and "how much of it do I
+ * actually play" rank the same vocabulary very differently.
  */
 export async function genreVocabulary(): Promise<GenreOption[]> {
 	return query<GenreOption>(sql`
-		select tg.genre,
-		       count(distinct tg.canonical_track_id)::int as tracks,
-		       coalesce(sum(cps.plays), 0)::int           as plays
-		  from spotidata.track_genres tg
-		  join library_canonical lc on lc.canonical_track_id = tg.canonical_track_id
-		  left join canonical_play_stats cps on cps.canonical_track_id = tg.canonical_track_id
-		 group by tg.genre
-		 order by tracks desc, tg.genre
+		with lib as (${LIBRARY_GENRES})
+		select lib.genre,
+		       count(*)::int                            as tracks,
+		       coalesce(sum(cps.plays), 0)::int         as plays,
+		       coalesce(sum(cps.ms_played), 0)::bigint  as "msPlayed"
+		  from lib
+		  left join canonical_play_stats cps on cps.canonical_track_id = lib.canonical_track_id
+		 group by lib.genre
+		 order by tracks desc, lib.genre
 	`);
 }
 
@@ -81,6 +98,179 @@ export async function genreCoverage(): Promise<{ described: number; library: num
 		       (select count(*)::int from library_canonical) as library
 	`);
 	return rows[0] ?? { described: 0, library: 0 };
+}
+
+// ------------------------------------------------------------ a genre set
+
+/** What a set of genres is worth, before anyone commits it to a collection. */
+export interface SelectionStats {
+	tracks: number;
+	liked: number;
+	artists: number;
+	/** One pass through the set. */
+	durationMs: number;
+	plays: number;
+	/** Time actually spent on it. */
+	msPlayed: number;
+}
+
+const NO_TRACKS: SelectionStats = {
+	tracks: 0,
+	liked: 0,
+	artists: 0,
+	durationMs: 0,
+	plays: 0,
+	msPlayed: 0
+};
+
+/** The aggregate half of `resolveTracks`, over the same membership test. */
+const SELECTION_AGGREGATES = sql`
+	       count(*)::int                              as tracks,
+	       count(*) filter (where lc.liked)::int      as liked,
+	       count(distinct ct.primary_artist_id)::int  as artists,
+	       coalesce(sum(lc.duration_ms), 0)::bigint   as "durationMs",
+	       coalesce(sum(cps.plays), 0)::int           as plays,
+	       coalesce(sum(cps.ms_played), 0)::bigint    as "msPlayed"`;
+
+const SELECTION_FROM = sql`
+	  from library_canonical lc
+	  join canonical_tracks ct on ct.id = lc.canonical_track_id
+	  left join canonical_play_stats cps on cps.canonical_track_id = lc.canonical_track_id`;
+
+/**
+ * What the genres staged in the explorer currently resolve to.
+ *
+ * The whole point of the builder is that this is answered *before* a collection
+ * exists — "all four of these at once" is usually eleven tracks, and finding
+ * that out by creating a collection and looking at it is one step too many.
+ */
+export async function selectionStats(spec: {
+	genres: string[];
+	match: 'any' | 'all';
+}): Promise<SelectionStats> {
+	if (spec.genres.length === 0) return NO_TRACKS;
+	const rows = await query<SelectionStats>(sql`
+		select ${SELECTION_AGGREGATES}
+		       ${SELECTION_FROM}
+		 where ${matches(spec.genres, spec.match)}
+	`);
+	return rows[0] ?? NO_TRACKS;
+}
+
+export interface GenreSummary extends SelectionStats {
+	genre: string;
+	albums: number;
+	firstAddedAt: string | null;
+	lastPlayedAt: string | null;
+	/** Recordings carrying it anywhere in the ingested catalog, library or not. */
+	catalogTracks: number;
+	/** The best-voted use of this tag on MusicBrainz, as a confidence hint. */
+	topVotes: number;
+}
+
+/**
+ * One genre, as an entity rather than a filter token.
+ *
+ * Null only when the catalog has never seen the tag at all — a genre that
+ * describes something ingested but nothing owned still has a page, and it says
+ * so, which is a more useful answer than a 404 for anyone arriving from a track
+ * that is not in the library.
+ */
+export async function genreSummary(genre: string): Promise<GenreSummary | null> {
+	const rows = await query<GenreSummary>(sql`
+		select ${genre}::text as genre,
+		       ${SELECTION_AGGREGATES},
+		       count(distinct ct.primary_album_id)::int as albums,
+		       ${iso('min(lc.first_added_at)')}         as "firstAddedAt",
+		       ${iso('max(cps.last_played_at)')}        as "lastPlayedAt",
+		       (select count(distinct tg.canonical_track_id)::int
+		          from spotidata.track_genres tg where tg.genre = ${genre}) as "catalogTracks",
+		       (select coalesce(max(tg.votes), 0)::int
+		          from spotidata.track_genres tg where tg.genre = ${genre}) as "topVotes"
+		       ${SELECTION_FROM}
+		 where exists (select 1 from spotidata.track_genres tg
+		                where tg.canonical_track_id = ct.id and tg.genre = ${genre})
+	`);
+	const row = rows[0];
+	return row && (row.tracks > 0 || row.catalogTracks > 0) ? row : null;
+}
+
+export interface RelatedGenre {
+	genre: string;
+	/** Library recordings carrying both. */
+	shared: number;
+	tracks: number;
+	/** Jaccard overlap, 0–1. */
+	overlap: number;
+}
+
+/**
+ * The genres that describe the same recordings as this one.
+ *
+ * Ranked by Jaccard overlap rather than raw shared count, which is the
+ * difference between a useful answer and "pop, electronic, rock" on every
+ * genre in the library: the big three share tracks with everything, and only
+ * dividing by the size of both sets says that "club" is what house *is* while
+ * "pop" is merely large.
+ *
+ * The floor of three shared recordings drops coincidences, but never rises
+ * above the seed's own size — a genre with two tracks would otherwise be
+ * related to nothing at all.
+ */
+export async function relatedGenres(genre: string, limit = 14): Promise<RelatedGenre[]> {
+	return query<RelatedGenre>(sql`
+		with lib as (${LIBRARY_GENRES}),
+		     seed as (select canonical_track_id from lib where genre = ${genre}),
+		     totals as (select genre, count(*)::int as n from lib group by genre)
+		select l.genre,
+		       count(*)::int as shared,
+		       t.n           as tracks,
+		       count(*)::float8 / ((select count(*) from seed) + t.n - count(*)) as overlap
+		  from lib l
+		  join seed s on s.canonical_track_id = l.canonical_track_id
+		  join totals t on t.genre = l.genre
+		 where l.genre <> ${genre}
+		 group by l.genre, t.n
+		having count(*) >= least(3, (select count(*) from seed))
+		 order by overlap desc, shared desc, l.genre
+		 limit ${limit}
+	`);
+}
+
+export interface GenreArtist {
+	id: string;
+	name: string;
+	image: string | null;
+	tracks: number;
+	plays: number;
+	msPlayed: number;
+}
+
+/**
+ * Who this genre is, in your library.
+ *
+ * Credited on the primary artist only — a featured guest on one track is not
+ * what the question is asking, and `library_canonical.primary_artist_id` is the
+ * same attribution every other page counts by.
+ */
+export async function genreArtists(genre: string, limit = 8): Promise<GenreArtist[]> {
+	return query<GenreArtist>(sql`
+		select ar.id,
+		       ar.name,
+		       ${thumb('artist_images', 'artist_id', 'ar.id')} as image,
+		       count(*)::int                           as tracks,
+		       coalesce(sum(cps.plays), 0)::int        as plays,
+		       coalesce(sum(cps.ms_played), 0)::bigint as "msPlayed"
+		  from library_canonical lc
+		  join canonical_tracks ct on ct.id = lc.canonical_track_id
+		  join artists ar on ar.id = ct.primary_artist_id
+		  left join canonical_play_stats cps on cps.canonical_track_id = lc.canonical_track_id
+		 where exists (select 1 from spotidata.track_genres tg
+		                where tg.canonical_track_id = ct.id and tg.genre = ${genre})
+		 group by ar.id, ar.name
+		 order by tracks desc, plays desc, ar.name
+		 limit ${limit}
+	`);
 }
 
 // --------------------------------------------------------------- collections
