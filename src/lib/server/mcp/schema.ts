@@ -57,7 +57,16 @@ const SECTIONS: { title: string; tables: string[] }[] = [
 			'mb_release_groups'
 		]
 	},
-	{ title: 'Playlists', tables: ['playlists', 'playlist_tracks'] },
+	{
+		title: 'Playlists',
+		tables: [
+			'playlists',
+			'playlist_tracks',
+			'playlist_automations',
+			'automation_sources',
+			'automation_added_tracks'
+		]
+	},
 	{
 		title: 'Operational — sync bookkeeping, rarely the answer to a question',
 		tables: [

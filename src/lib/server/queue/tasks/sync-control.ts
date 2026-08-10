@@ -240,6 +240,12 @@ export const finalize: Task = async (payload, helpers) => {
 		jobKey: 'playlist-sync-all',
 		jobKeyMode: 'preserve_run_at'
 	});
+	// The sync has just re-read every playlist, so an automation running now
+	// finds its sources' snapshots already current and spends nothing on them.
+	await helpers.addJob('automation:run-all', {}, {
+		jobKey: 'automation-run-all',
+		jobKeyMode: 'preserve_run_at'
+	});
 };
 
 // ------------------------------------------------------------- maintenance

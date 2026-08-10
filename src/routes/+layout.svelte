@@ -12,7 +12,8 @@
 		{ href: '/genres', label: 'Genres' },
 		{ href: '/artists', label: 'Artists' },
 		{ href: '/albums', label: 'Albums' },
-		{ href: '/playlists', label: 'Playlists' }
+		{ href: '/playlists', label: 'Playlists' },
+		{ href: '/automations', label: 'Automations' }
 	];
 
 	const current = $derived(page.url.pathname);

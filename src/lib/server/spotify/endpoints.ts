@@ -72,6 +72,21 @@ export const getPlaylistItems = (id: string, offset: number, limit = PAGE.playli
 		query: { limit, offset, additional_types: 'track,episode' }
 	});
 
+/**
+ * The same items, projected down to what is already in the playlist.
+ *
+ * An automation appends rather than rewrites, so before it adds anything it has
+ * to know what the playlist holds *right now* — including whatever was dropped
+ * in by hand since the last run, which the local mirror cannot know. `fields`
+ * keeps that answer to a few hundred bytes a page instead of a full track
+ * object apiece.
+ */
+export const getPlaylistItemIds = (id: string, offset: number, limit = PAGE.playlistItems) =>
+	spotifyGet<Paging<{ is_local?: boolean; track: { id: string | null } | null }>>(
+		`/playlists/${id}/tracks`,
+		{ query: { limit, offset, fields: 'next,items(is_local,track(id))' } }
+	);
+
 /** Up to 50 ids. Null entries come back for ids Spotify no longer serves. */
 export const getTracks = (ids: string[]) =>
 	spotifyGet<{ tracks: Array<FullTrack | null> }>('/tracks', {

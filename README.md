@@ -33,9 +33,10 @@ Then open `/auth/login` and approve. Trigger the first sync from `/sync`, and
 drop a Spotify export on `/history/import` for the listening history. Scopes
 are only ever granted once, so a grant made before a feature existed does not
 carry its scope — `user-read-recently-played` for the history, and
-`playlist-modify-private`/`-public` for the playlists `/genres` writes. Both
-pages check the stored scope and link to a re-authorization when it is missing;
-re-authorizing keeps every row you have already ingested.
+`playlist-modify-private`/`-public` for the playlists `/genres` and
+`/automations` write. Every page that needs one checks the stored scope and
+links to a re-authorization when it is missing; re-authorizing keeps every row
+you have already ingested.
 
 **Redirect URIs** must be registered on the Spotify app exactly as:
 
@@ -224,6 +225,39 @@ completed sync fans out to every auto-syncing collection, and an hourly cron
 catches the other input the sync knows nothing about: the enrichment crawl
 giving a recording its first genre.
 
+**`/automations` fills a playlist instead of owning one.** An automation is a
+set of source playlists and one destination, and it only ever *appends*: it
+issues `POST /playlists/{id}/tracks` and nothing else — no `PUT`, no `DELETE`.
+So the destination stays an ordinary playlist. Add to it in Spotify, reorder
+it, delete from it, rename it, and the automation carries on around you. Its
+description is written once, when it creates the playlist, and never touched
+again; it can equally be pointed at a playlist you already keep by hand.
+
+Which leaves the question a rewrite answers for free: what has already been
+added? `automation_added_tracks` is the answer — every track the automation has
+contributed, kept forever. A track in the ledger is never offered again, so
+deleting a song from the destination makes it stay deleted: the run asks "have
+I added this", not "is this still there". The ledger carries the canonical id
+alongside the Spotify one, or a song added last week as a single would come
+back this week as the album cut. Anything found already in the playlist at run
+time is recorded rather than re-added, which is how a track you put there
+yourself stops being offered.
+
+**Spotify's API cannot see folders.** `GET /me/playlists` is flat and nothing
+exposes the tree the desktop app draws, so a folder here is the set of
+playlists you tick — which also means a source needs no folder at all. Any
+playlist can feed any automation, including one pasted as a link that this
+database has never ingested; it is fetched on demand, the same path `/track`
+and `/album` use for an entity a page asks for.
+
+Freshness costs one request per source per run: `GET /playlists/{id}` says
+whether the snapshot moved, and only the sources that moved have their item
+pages re-read. New sources are backfilled by default — the alternative, "only
+tracks added from now on", records what the source already holds as seen
+without pushing any of it, and applies at the moment each source is attached
+rather than when the automation was created. Runs happen hourly, after every
+completed sync, and inline when the button is pressed.
+
 **Analytics are raw SQL, no materialized views.** Every chart is a `GROUP BY`
 over `library_canonical` (8.8k rows, resident in shared buffers) — all sixteen
 dashboard queries run in ~130 ms total. MVs also cannot be parameterized by an
@@ -312,7 +346,8 @@ db/sql/post/       fallback_key, rate limiter, refresh_canonical, refresh_librar
 src/lib/server/    db/ spotify/ musicbrainz/ ingest/ import/ queue/ stats/
                    entities/ mcp/
 src/lib/charts/    d3 computes, Svelte renders — no d3-selection
-src/routes/        dashboard, entity pages, /history, /sync, /enrich, /settings, /api
+src/routes/        dashboard, entity pages, /history, /genres, /automations,
+                   /sync, /enrich, /settings, /api
 scripts/           probe-api, apply-sql, check-migration, check-sql-conventions,
                    backup, restore-auth, spike-worker
 ```

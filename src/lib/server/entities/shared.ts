@@ -1,4 +1,5 @@
 import { sql, type SQL } from 'drizzle-orm';
+import { query } from '../db/index.ts';
 
 export type { ArtistRef } from '../../types.ts';
 
@@ -51,6 +52,43 @@ export const trackArtistsJson = (ref: string) =>
 		  from track_artists ta join artists ar on ar.id = ta.artist_id
 		 where ta.track_id = ${ref}
 	), '[]'::jsonb)`);
+
+// -------------------------------------------------------------------- ids
+
+/** The tables whose rows are named by the user and keyed by a slug of that name. */
+type SluggedTable = 'genre_collections' | 'playlist_automations';
+
+/**
+ * A readable, stable id for a user-authored row.
+ *
+ * The slug comes from the name so a URL says what it points at, and a numeric
+ * suffix resolves a collision rather than a random tail nobody can read — but
+ * it is minted once and never follows a rename, because a link that breaks when
+ * something is renamed is worse than a slug that has gone slightly stale.
+ *
+ * The table is a compile-time literal, never user input, so `sql.raw` is safe.
+ */
+export async function mintSlug(
+	table: SluggedTable,
+	name: string,
+	fallback: string
+): Promise<string> {
+	const base =
+		name
+			.toLowerCase()
+			.normalize('NFKD')
+			.replace(/[^a-z0-9]+/g, '-')
+			.replace(/^-|-$/g, '')
+			.slice(0, 48) || fallback;
+
+	const taken = await query<{ id: string }>(sql`
+		select id from ${sql.raw(table)} where id = ${base} or id like ${base + '-%'}
+	`);
+	const ids = new Set(taken.map((r) => r.id));
+	let id = base;
+	for (let n = 2; ids.has(id); n++) id = `${base}-${n}`;
+	return id;
+}
 
 // ------------------------------------------------------- query fragments
 

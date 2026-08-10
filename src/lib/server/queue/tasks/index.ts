@@ -39,6 +39,7 @@ import {
 } from './history.ts';
 import { ondemandEntity } from './ondemand.ts';
 import { syncAllPlaylists, syncPlaylist } from './playlists.ts';
+import { runAllAutomations, runAutomationTask } from './automations.ts';
 import { enrichTick, enrichRetryMisses } from './enrich.ts';
 
 /**
@@ -129,6 +130,10 @@ export const taskList: TaskList = {
 	// Generated playlists: push a genre collection into Spotify and keep it there.
 	'playlist:sync': syncPlaylist,
 	'playlist:sync-all': syncAllPlaylists,
+
+	// Automations: append what the source playlists gained to a normal playlist.
+	'automation:run': runAutomationTask,
+	'automation:run-all': runAllAutomations,
 
 	// Maintenance
 	'maintenance:rate-recover': rateRecover,

@@ -73,6 +73,11 @@ export async function startWorker(): Promise<void> {
 				// enrichment crawl giving a recording its first genre, which no
 				// sync run knows about.
 				'40 * * * * playlist:sync-all ?jobKey=playlist-sync-all',
+				// Playlist automations. Offset from the line above so the two write
+				// paths do not compete for the same minute of rate-limit budget, and
+				// hourly because the input is somebody dropping a song into a folder
+				// — which no sync run is waiting to hear about either.
+				'10 * * * * automation:run-all ?jobKey=automation-run-all',
 				// AIMD ramp back toward the target request rate.
 				'* * * * * maintenance:rate-recover ?jobKey=rate-recover',
 				'*/5 * * * * maintenance:watchdog ?jobKey=watchdog',

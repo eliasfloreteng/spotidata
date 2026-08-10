@@ -1,7 +1,7 @@
 import { sql, type SQL } from 'drizzle-orm';
 import { anyOf } from '../db/arrays.ts';
 import { query } from '../db/index.ts';
-import { iso, like, thumb, total, type ArtistRef } from './shared.ts';
+import { iso, like, mintSlug, thumb, total, type ArtistRef } from './shared.ts';
 
 /**
  * Genres, and the collections built out of them.
@@ -355,27 +355,8 @@ export async function getCollection(id: string): Promise<Collection | null> {
 	return rows[0] ?? null;
 }
 
-/**
- * A readable, stable id. The slug comes from the name so a URL says what it
- * points at, and a numeric suffix resolves the collision rather than a random
- * tail nobody can read — but it is minted once and never follows a rename.
- */
 export async function createCollection(name: string, genres: string[] = []): Promise<string> {
-	const base =
-		name
-			.toLowerCase()
-			.normalize('NFKD')
-			.replace(/[^a-z0-9]+/g, '-')
-			.replace(/^-|-$/g, '')
-			.slice(0, 48) || 'collection';
-
-	const taken = await query<{ id: string }>(sql`
-		select id from genre_collections where id = ${base} or id like ${base + '-%'}
-	`);
-	const ids = new Set(taken.map((r) => r.id));
-	let id = base;
-	for (let n = 2; ids.has(id); n++) id = `${base}-${n}`;
-
+	const id = await mintSlug('genre_collections', name, 'collection');
 	await query(sql`insert into genre_collections (id, name) values (${id}, ${name})`);
 	if (genres.length) await addGenres(id, genres);
 	return id;

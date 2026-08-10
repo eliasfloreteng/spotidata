@@ -6,23 +6,15 @@ import {
 	getAlbum,
 	getArtist,
 	getArtists,
-	getPlaylist,
-	getPlaylistItems,
 	getTrack,
 	getTracks,
 	chunk,
-	BATCH,
-	PAGE
+	BATCH
 } from '../../spotify/endpoints.ts';
 import { upsertFullAlbums } from '../../ingest/upsert-albums.ts';
 import { upsertFullArtists } from '../../ingest/upsert-artists.ts';
 import { upsertFullTracks, upsertSimplifiedTracks } from '../../ingest/upsert-tracks.ts';
-import {
-	upsertPlaylists,
-	clearPlaylistItems,
-	replacePlaylistItems
-} from '../../ingest/upsert-playlists.ts';
-import { getMe } from '../../ingest/upsert-users.ts';
+import { ingestPlaylistById } from '../../ingest/playlist-fetch.ts';
 import { storeRaw } from '../../ingest/raw.ts';
 import { SpotifyNotFound, SpotifyRateLimited } from '../../spotify/errors.ts';
 import { rescheduleForRateLimit } from '../helpers.ts';
@@ -59,7 +51,8 @@ export const ondemandEntity: Task = async (payload, helpers) => {
 				await fetchArtist(id);
 				break;
 			case 'playlist':
-				await fetchPlaylist(id);
+				// The same ingest an automation runs against a source playlist.
+				await ingestPlaylistById(id);
 				break;
 		}
 	} catch (err) {
@@ -148,30 +141,6 @@ async function fetchArtist(id: string): Promise<void> {
 	});
 }
 
-async function fetchPlaylist(id: string): Promise<void> {
-	const playlist = await getPlaylist(id);
-	if (!playlist) throw new SpotifyNotFound(`/playlists/${id}`);
-
-	const me = await getMe();
-	await upsertPlaylists([playlist], me?.id ?? '');
-	await storeRaw('playlist', [{ id: playlist.id, payload: playlist }]);
-
-	await db.transaction(async (tx) => {
-		await clearPlaylistItems(playlist.id, tx);
-		for (let offset = 0; ; offset += PAGE.playlistItems) {
-			const page = await getPlaylistItems(playlist.id, offset);
-			if (page.items.length > 0) {
-				await replacePlaylistItems(playlist.id, page.items, offset, tx);
-			}
-			if (!page.next) break;
-		}
-		await tx.execute(sql`
-			update playlists
-			   set items_synced_snapshot_id = snapshot_id, items_synced_at = now()
-			 where id = ${playlist.id}
-		`);
-	});
-}
 
 /** Fills in genres/images for any artist we have only as a stub. */
 async function hydrateArtists(ids: string[]): Promise<void> {

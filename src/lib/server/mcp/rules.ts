@@ -162,6 +162,14 @@ fraction an answer rests on. \`genre_collections\` and
 \`genre_collection_genres\` hold the saved sets; their track lists are
 recomputed from the genres, never stored.
 
+The other user-authored tables are the playlist automations:
+\`playlist_automations\` (one destination playlist each),
+\`automation_sources\` (the playlists it collects from) and
+\`automation_added_tracks\` (every track it has contributed, \`origin = 'added'\`,
+plus \`'seeded'\` rows that were only ever recorded as seen). None of them
+describe the library — an automation's destination is an ordinary playlist and
+is already in \`playlists\`/\`playlist_tracks\` like any other.
+
 ## 9. Incomplete rows are normal
 
 \`detail_level = 'simplified'\` means the row was built from an object nested
