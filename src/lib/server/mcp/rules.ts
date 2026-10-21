@@ -28,6 +28,23 @@ export const KEY_RULES = `Rules that decide whether an answer is right:
   Coverage is partial by nature — a NULL means "not known", never zero.
 Call describe_schema for columns; call get_business_rules for the full version.`;
 
+/** Repeated on the `spotify_api` tool and in the server instructions. */
+export const SPOTIFY_API_RULES = `This acts on the user's real Spotify account. Reads need no confirmation, but
+**before anything destructive — removing or unsaving anything, unfollowing,
+rewriting or emptying a playlist (PUT on its tracks replaces them), deleting
+playlist items, changing a playlist's details or visibility — tell the user
+exactly what the call will do and get their explicit confirmation first.**
+Spotify has no undo for most of these. Creating or adding something is less
+dangerous, but still say what you are about to do unless the user asked for it
+in so many words.
+
+Prefer the \`query\` tool for anything the archive already holds (library,
+playlists, history): it is faster and costs nothing. Use this for what the
+archive cannot answer — the live state of the account, the catalog beyond it,
+or a change. Calls share the background sync's rate limit, so do not page
+through thousands of items here. The app's grant bounds what is reachable; a
+403 usually means a scope it was never given.`;
+
 function coreRules(
 	timezone: string,
 	plays: boolean,
@@ -235,12 +252,13 @@ rule 7 — and a value you read back is not in the user's day.`;
 export async function serverInstructions(timezone: string): Promise<string> {
 	const { plays, playStats, enrichment } = await features();
 	const rules = coreRules(timezone, plays, playStats, enrichment);
+	const liveApi = `# The live account: spotify_api\n\n${SPOTIFY_API_RULES}`;
 
 	try {
-		return `${rules}\n\n## Tables\n\n${await tableInventory()}\n\nCall describe_schema for columns, types and constraints.`;
+		return `${rules}\n\n## Tables\n\n${await tableInventory()}\n\nCall describe_schema for columns, types and constraints.\n\n${liveApi}`;
 	} catch {
 		// The rules are worth having even when the catalog read fails.
-		return rules;
+		return `${rules}\n\n${liveApi}`;
 	}
 }
 

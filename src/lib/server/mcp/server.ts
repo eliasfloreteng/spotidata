@@ -1,6 +1,7 @@
 import { DEFAULT_LIMIT, MAX_LIMIT, runReadOnly, SqlError } from './query.ts';
-import { businessRules, KEY_RULES, serverInstructions } from './rules.ts';
+import { businessRules, KEY_RULES, serverInstructions, SPOTIFY_API_RULES } from './rules.ts';
 import { describeSchema } from './schema.ts';
+import { callSpotify, SPOTIFY_METHODS } from './spotify.ts';
 import { APP_VERSION } from '../../version.ts';
 
 /**
@@ -98,6 +99,39 @@ ${KEY_RULES}`,
 				'How to read this data correctly: what counts as a track, what counts as the library, which tables are derived, how dates and soft deletes work. Same text as the server instructions — call it if those were not shown to you, or to re-read a rule before a query you are unsure about.',
 			annotations: { title: 'Domain rules for this database', ...readOnlyTool },
 			inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+		},
+		{
+			name: 'spotify_api',
+			title: 'Call the Spotify Web API',
+			description: `Send one request to the Spotify Web API (https://api.spotify.com/v1) as the user, with their stored token, and get the JSON response back.
+
+${SPOTIFY_API_RULES}`,
+			inputSchema: {
+				type: 'object',
+				properties: {
+					method: { type: 'string', enum: SPOTIFY_METHODS, default: 'GET' },
+					path: {
+						type: 'string',
+						description:
+							'Endpoint path after /v1, e.g. "/me/player/currently-playing" or "/playlists/{id}/tracks". A full https://api.spotify.com URL (such as a paging `next`) is accepted as is.'
+					},
+					query: {
+						type: 'object',
+						description: 'Query parameters, e.g. {"limit": 50, "market": "from_token"}.',
+						additionalProperties: { type: ['string', 'number'] }
+					},
+					body: { description: 'JSON request body, for POST and PUT.' }
+				},
+				required: ['path'],
+				additionalProperties: false
+			},
+			annotations: {
+				title: 'Call the Spotify Web API',
+				readOnlyHint: false,
+				destructiveHint: true,
+				idempotentHint: false,
+				openWorldHint: true
+			}
 		}
 	];
 }
@@ -127,6 +161,22 @@ async function callTool(name: string, args: Record<string, unknown>, timezone: s
 			return text(await describeSchema(typeof args.table === 'string' ? args.table : undefined));
 		case 'get_business_rules':
 			return text(await businessRules(timezone));
+		case 'spotify_api': {
+			const method = args.method ?? 'GET';
+			if (!(SPOTIFY_METHODS as readonly unknown[]).includes(method)) {
+				return text(`\`method\` must be one of ${SPOTIFY_METHODS.join(', ')}.`, true);
+			}
+			if (typeof args.path !== 'string' || args.path.trim() === '') {
+				return text('The `path` argument is required and must be a non-empty string.', true);
+			}
+			const { text: body, isError } = await callSpotify(
+				method as (typeof SPOTIFY_METHODS)[number],
+				args.path,
+				args.query as Record<string, string | number> | undefined,
+				args.body
+			);
+			return text(body, isError);
+		}
 		default:
 			return null;
 	}

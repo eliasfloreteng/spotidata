@@ -293,6 +293,14 @@ derived tables are rebuilt, never edited), and the schema is read live from
 values of every text column are actually written down. Row counts are exact,
 because `reltuples` was off by 73% on the table that matters most.
 
+The one exception to read-only is `spotify_api`, which passes an arbitrary Web
+API request through to the account with the stored token, for live state and
+changes the archive cannot answer. It goes through the same `spotifyFetch` as
+the sync, so it spends from the same rate-limit bucket, and it can do no more
+than the app's granted scopes allow. Its description and the server
+instructions tell the model to confirm with the user before anything
+destructive.
+
 ```bash
 claude mcp add --transport http spotidata http://127.0.0.1:5173/api/mcp
 ```

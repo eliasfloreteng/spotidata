@@ -54,6 +54,11 @@ export interface RequestOptions {
 	 * replaces, and the POST that follows it appends a slice we recompute.
 	 */
 	body?: unknown;
+	/**
+	 * Resend on a 5xx. On by default because every call above is safe to
+	 * replay; off for a caller that cannot vouch for that.
+	 */
+	retryServerErrors?: boolean;
 }
 
 /**
@@ -142,7 +147,11 @@ export async function spotifyFetch<T>(
 
 			default: {
 				recordCall('error');
-				if (res.status >= 500 && serverErrors < MAX_SERVER_ERROR_RETRIES) {
+				if (
+					res.status >= 500 &&
+					options.retryServerErrors !== false &&
+					serverErrors < MAX_SERVER_ERROR_RETRIES
+				) {
 					serverErrors++;
 					// Jittered backoff; 5xx are Spotify's problem, not our quota's.
 					await sleep(2 ** serverErrors * 250 + Math.random() * 250);
