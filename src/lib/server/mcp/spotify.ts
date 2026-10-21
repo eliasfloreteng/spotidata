@@ -6,7 +6,7 @@ import {
 	SpotifyNotFound,
 	SpotifyRateLimited
 } from '../spotify/errors.ts';
-import { config } from '../config.ts';
+import { missingScopes, readAuthState } from '../spotify/auth.ts';
 
 /**
  * Passes one arbitrary Web API call through to the user's account.
@@ -45,9 +45,14 @@ function toPath(input: string): string {
 	return path + url.search;
 }
 
-function describe(err: unknown): string | null {
+async function describe(err: unknown): Promise<string | null> {
 	if (err instanceof SpotifyForbidden) {
-		return `403 Forbidden: ${err.body || '(no body)'}\n\nEither the endpoint is closed to this app, the resource is not the user's to change, or the app's grant lacks the scope. Granted scopes: ${config.spotify.scopes.join(', ')}.`;
+		const granted = (await readAuthState())?.scope ?? '';
+		const missing = missingScopes(granted);
+		const reauth = missing.length
+			? ` Scopes the app asks for but the user has not granted yet (they must sign in to Spotidata again): ${missing.join(', ')}.`
+			: '';
+		return `403 Forbidden: ${err.body || '(no body)'}\n\nEither the endpoint is closed to this app, the resource is not the user's to change, or the grant lacks the scope. Granted scopes: ${granted.split(/\s+/).join(', ')}.${reauth}`;
 	}
 	if (err instanceof SpotifyNotFound) return `404 Not Found: ${err.path}`;
 	if (err instanceof SpotifyApiError) return `${err.status}: ${err.body || '(no body)'}`;
@@ -86,7 +91,7 @@ export async function callSpotify(
 	} catch (err) {
 		// A refused call is a tool result: the model is meant to read Spotify's
 		// message and correct the request.
-		const message = describe(err);
+		const message = await describe(err);
 		if (message === null) throw err;
 		return { text: message, isError: true };
 	}

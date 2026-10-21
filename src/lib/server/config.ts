@@ -79,13 +79,20 @@ export const config = {
 			// grant does not carry it — the app compares this list against the
 			// stored scope and asks for a re-authorization when they diverge.
 			'user-read-recently-played',
-			// The only write scopes here, and the only reason this app asks for
-			// write access at all: a genre collection pushes its tracks into a
+			// The only write scopes the app itself uses: a genre collection pushes its tracks into a
 			// real playlist and rewrites it as the library changes. Both are
 			// needed because the playlist's visibility is the user's choice and
 			// Spotify scopes the two cases separately.
 			'playlist-modify-private',
-			'playlist-modify-public'
+			'playlist-modify-public',
+			// Nothing in the app itself uses these. They exist for the MCP
+			// `spotify_api` tool, which passes arbitrary calls through and can
+			// reach no further than this grant: saving and unsaving, following,
+			// and reading and driving playback.
+			'user-library-modify',
+			'user-follow-modify',
+			'user-read-playback-state',
+			'user-modify-playback-state'
 		] as const
 	},
 
