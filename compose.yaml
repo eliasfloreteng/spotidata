@@ -2,6 +2,7 @@ services:
   db:
     image: postgres:18-trixie
     container_name: spotidata-pg
+    mem_limit: 640m
     restart: unless-stopped
     environment:
       POSTGRES_USER: spotidata
@@ -18,11 +19,13 @@ services:
       - pgdata:/var/lib/postgresql
     command:
       - postgres
-      # Single-user local workload: give the planner room and keep the whole DB hot.
+      # Single-user local workload. Sized for a 12 GB host with no swap and ~50 other
+      # containers: effective_cache_size must reflect cache this box can actually spare,
+      # or the planner favours index scans over data that is not really resident.
       - -c
-      - shared_buffers=512MB
+      - shared_buffers=256MB
       - -c
-      - effective_cache_size=2GB
+      - effective_cache_size=1GB
       - -c
       - work_mem=32MB
       - -c
