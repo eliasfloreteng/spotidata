@@ -13,6 +13,24 @@ RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
            '[^a-z0-9]+', ' ', 'g'))
 $$;
 
+-- One level looser than a recording: two ISRCs of the same *song* share it, so
+-- a playlist holding the 2011 remaster is not offered the original, nor the
+-- radio edit the extended mix. Strips featured-artist credits and the
+-- remaster / radio-edit / original-mix / extended-mix / mono / stereo /
+-- explicit qualifiers, bracketed or dashed; unlike norm_title it keeps every
+-- other bracket, because "(Kygo Remix)", "(Live)" and "(Acoustic)" name a
+-- different song to the person listening. Empty when nothing but qualifiers
+-- remain — callers fall back to the recording id rather than fuse those.
+CREATE OR REPLACE FUNCTION spotidata.song_title_key(p text)
+RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+  SELECT regexp_replace(btrim(
+           regexp_replace(regexp_replace(regexp_replace(lower(unaccent(coalesce(p, ''))),
+             '\s*[\(\[]\s*(feat\.?|ft\.?|featuring|with|remaster(ed)?|\d{4} remaster(ed)?|radio edit|single version|album version|original mix|extended (mix|version)|mono|stereo|explicit|clean)[^\)\]]*[\)\]]', ' ', 'g'),
+             '\s+-\s+(feat\.?|ft\.?|remaster(ed)?|\d{4} remaster(ed)?|\d{4} remastered version|radio edit|single version|album version|original mix|extended (mix|version)|mono|stereo)( .*)?$', ' '),
+             '\s+(feat\.?|ft\.?|featuring)\s.*$', ' ')),
+         '[^a-z0-9]+', '', 'g')
+$$;
+
 -- Duration is bucketed to 5 seconds so that differing masters of the same
 -- recording still match. Known imperfection: a pair straddling a bucket
 -- boundary splits into two groups. It can only affect the ISRC-less tail, and

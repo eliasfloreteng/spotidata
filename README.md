@@ -305,6 +305,18 @@ destructive.
 claude mcp add --transport http spotidata http://127.0.0.1:5173/api/mcp
 ```
 
+**`/api/sortify/library` feeds [Sortify](https://github.com/eliasfloreteng/sortify)**,
+the iOS app that sorts liked songs into playlists. Spotify's API cannot tell an
+app how often a song was played, when it was first heard, when it was
+*originally* released, or what genre the recording is, and those are exactly
+what decide whether a song deserves a playlist and which one. The endpoint
+hands over one row per library recording with all of it, plus a `song` key one
+level looser than the ISRC (`spotidata.song_title_key`: the same title by the
+same artist once remaster / radio-edit / feat. qualifiers are gone), so a
+playlist holding the 2011 remaster is not offered the original. Sortify keeps
+the live playlist state itself; this is only the feature store. Postgres builds
+the whole JSON document, and the route gzips it and answers `If-None-Match`.
+
 ## Traps this codebase has already hit
 
 Each of these failed silently rather than loudly, so they have guards:
