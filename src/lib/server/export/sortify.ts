@@ -40,11 +40,19 @@ export async function sortifyLibrary(): Promise<string> {
 		  select lc.canonical_track_id as id, ct.kind, ct.isrc, ct.title, ct.max_popularity,
 		         lc.primary_artist_id,
 		         least(ct.earliest_release_date, te.mb_first_release_date) as released,
-		         te.genres, te.bpm, te.danceable, te.happy, te.sad, te.relaxed, te.party,
+		         te.bpm, te.danceable, te.happy, te.sad, te.relaxed, te.party,
 		         te.aggressive, te.acoustic, te.electronic, te.instrumental
 		    from library_canonical lc
 		    join canonical_tracks ct on ct.id = lc.canonical_track_id
 		    left join spotidata.track_enrichment te on te.canonical_track_id = lc.canonical_track_id
+		), genres as (
+		  -- Set-based rather than track_enrichment.genres, whose per-row function call
+		  -- is most of the cost of reading 9k rows at once. Same genre test, same order.
+		  select tg.canonical_track_id as id,
+		         (array_agg(tg.genre order by tg.votes desc, tg.genre))[1:6] as names
+		    from spotidata.track_genres tg
+		   where tg.canonical_track_id in (select id from lib)
+		   group by 1
 		), ids as (
 		  select st.canonical_track_id as id, array_agg(lt.track_id order by lt.track_id) as track_ids
 		    from library_tracks lt
@@ -87,13 +95,14 @@ export async function sortifyLibrary(): Promise<string> {
 		      'lastPlayed', to_char(cps.last_played_at at time zone 'UTC', 'YYYY-MM-DD'),
 		      'year', extract(year from lib.released)::int,
 		      'popularity', lib.max_popularity,
-		      'genres', lib.genres[1:6],
+		      'genres', genres.names,
 		      'bpm', round(lib.bpm)::int,
 		      'moods', nullif(moods.labels, '{}')
 		    )))
 		      from lib
 		      join songs using (id)
 		      join moods using (id)
+		      left join genres using (id)
 		      left join ids using (id)
 		      left join credits using (id)
 		      left join canonical_play_stats cps on cps.canonical_track_id = lib.id
