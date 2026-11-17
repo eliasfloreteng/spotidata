@@ -1,0 +1,11 @@
+[package]
+name = "deckhand-model"
+description = "The library manifest the server publishes and the phone syncs from."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+rbl-export = { workspace = true }
