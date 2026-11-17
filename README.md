@@ -317,6 +317,16 @@ playlist holding the 2011 remaster is not offered the original. Sortify keeps
 the live playlist state itself; this is only the feature store. Postgres builds
 the whole JSON document, and the route gzips it and answers `If-None-Match`.
 
+**`/api/playlists` and `/api/playlists/{id}` feed
+[Deckhand](https://github.com/eliasfloreteng/deckhand)**, which keeps a lossless
+copy of the playlists you pick on a DJ stick. They read Spotify live, not the
+mirror, because the mirror is twelve hours old at worst and a track added in
+the afternoon should be on the stick that evening. The list carries each
+playlist's `snapshot_id`; Deckhand asks for a playlist's tracks (with ISRCs)
+only when that changed, so a check costs one request per 50 playlists. Both go
+through the same rate limiter as the sync, and answer 503 with `Retry-After`
+while Spotify wants a pause.
+
 ## Traps this codebase has already hit
 
 Each of these failed silently rather than loudly, so they have guards:
