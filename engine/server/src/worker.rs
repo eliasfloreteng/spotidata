@@ -79,9 +79,11 @@ fn process(music: &std::path::Path, store: &Store, blobs: &Blobs, row: &Row) -> 
         match serde_json::from_str::<crate::rekordbox::Facts>(&facts) {
             Ok(facts) => {
                 facts.apply(&mut source);
-                let json = serde_json::to_string(&source)?;
-                store.analysed(&row.name, &row.hash, &json, &facts.analysis, artwork.as_ref())?;
-                return Ok(());
+                if let Some(analysis) = &facts.analysis {
+                    let json = serde_json::to_string(&source)?;
+                    store.analysed(&row.name, &row.hash, &json, analysis, artwork.as_ref())?;
+                    return Ok(());
+                }
             }
             Err(e) => warn!(name = %row.name, error = %e, "unreadable rekordbox facts"),
         }

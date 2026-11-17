@@ -24,6 +24,18 @@ pub struct Library {
     /// file added on another Syncthing peer is never deleted by mistake.
     pub tombstones: Vec<Tombstone>,
     pub status: Status,
+    /// The rekordbox library the tracks' ids come from, once a snapshot was
+    /// uploaded. A stick rekordbox or rbxport synced from it is continued.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rekordbox: Option<RekordboxLibrary>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RekordboxLibrary {
+    /// `djmdProperty.DBID`.
+    pub db_id: u64,
+    /// The Cloud Library Sync id, 0 for none.
+    pub cloud_db_id: u32,
 }
 
 /// One file of the music folder, as Syncthing would mirror it.

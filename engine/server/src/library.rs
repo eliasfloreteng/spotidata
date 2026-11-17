@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use anyhow::Result;
-use deckhand_model::{is_audio, File, Library, Playlist, Status, Tombstone, Track, FORMAT};
+use deckhand_model::{is_audio, File, Library, Playlist, RekordboxLibrary, Status, Tombstone, Track, FORMAT};
 use rbl_export::SourceTrack;
 
 use crate::store::{State, Store};
@@ -68,10 +68,19 @@ pub fn build(music: &Path, store: &Store) -> Result<Library> {
         .collect();
     status.rekordbox_snapshot_ms = store.meta("rekordbox_snapshot_ms")?.and_then(|v| v.parse().ok());
 
+    let rekordbox = store
+        .meta("rekordbox_db_id")?
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|id| *id != 0)
+        .map(|db_id| RekordboxLibrary {
+            db_id,
+            cloud_db_id: store.meta("rekordbox_cloud_db_id").ok().flatten().and_then(|v| v.parse().ok()).unwrap_or(0),
+        });
+
     let mut hasher = blake3::Hasher::new();
-    hasher.update(serde_json::to_string(&(&files, &tracks, &playlists))?.as_bytes());
+    hasher.update(serde_json::to_string(&(&files, &tracks, &playlists, &rekordbox))?.as_bytes());
     let generation = hasher.finalize().to_hex()[..16].to_owned();
-    Ok(Library { format: FORMAT, generation, files, tracks, playlists, tombstones, status })
+    Ok(Library { format: FORMAT, generation, files, tracks, playlists, tombstones, status, rekordbox })
 }
 
 /// The entries of an M3U playlist that the folder holds, by file name.

@@ -2,6 +2,11 @@
 //! library. A track rekordbox analysed goes to the stick with rekordbox's
 //! grid, waveforms and cues; the rest get rbxport's analysis.
 //!
+//! The snapshot also gives the stick its owner: the library's DBID and each
+//! track's content id, as rekordbox and rbxport's desktop export write them.
+//! A stick they synced is continued rather than refused, and its tracks keep
+//! their player ids.
+//!
 //! The snapshot is a tar of `options.json` (rekordboxAgent's, for the
 //! database key), `master.db` (and `-wal`), and the `share/` tree's
 //! `PIONEER/USBANLZ`. See `scripts/upload-rekordbox.sh`.
@@ -21,6 +26,9 @@ use crate::store::Store;
 /// What rekordbox knows about one file that the file's tags do not.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Facts {
+    /// `djmdContent.ID`.
+    #[serde(default)]
+    pub content_id: u64,
     pub bpm_x100: u32,
     pub key: String,
     pub length_sec: u32,
@@ -28,23 +36,32 @@ pub struct Facts {
     pub color_id: u8,
     pub metadata: rbl_core::ExportMetadata,
     pub cues: Vec<rbl_anlz::cues::ExportCue>,
-    pub analysis: Analysis,
+    /// `None` when rekordbox has not analysed the track: the server does.
+    pub analysis: Option<Analysis>,
 }
 
 impl Facts {
-    /// The track as tagged, with rekordbox's analysis on top.
+    /// The track as tagged, with rekordbox's identity, cues and (when it
+    /// has one) analysis on top.
     pub fn apply(&self, source: &mut SourceTrack) {
-        source.bpm_x100 = self.bpm_x100;
-        if !self.key.is_empty() {
-            source.key.clone_from(&self.key);
-        }
-        if self.length_sec > 0 {
-            source.duration_sec = u16::try_from(self.length_sec).unwrap_or(u16::MAX);
+        source.id = self.content_id;
+        if self.analysis.is_some() {
+            source.bpm_x100 = self.bpm_x100;
+            if !self.key.is_empty() {
+                source.key.clone_from(&self.key);
+            }
+            if self.length_sec > 0 {
+                source.duration_sec = u16::try_from(self.length_sec).unwrap_or(u16::MAX);
+            }
         }
         source.rating = self.rating;
         source.color_id = self.color_id;
-        let (track_number, bit_depth) = (source.metadata.track_number, source.metadata.bit_depth);
+        let (track_number, bit_depth, analysed) =
+            (source.metadata.track_number, source.metadata.bit_depth, source.metadata.analysed);
         source.metadata = self.metadata.clone();
+        if self.analysis.is_none() {
+            source.metadata.analysed = analysed;
+        }
         if source.metadata.track_number == 0 {
             source.metadata.track_number = track_number;
         }
@@ -92,36 +109,45 @@ pub fn ingest(archive: &Path, work: &Path, store: &Store, blobs: &Blobs) -> Resu
             }
         }
     }
+    let db_id = rbl_db::export_info::db_id(conn).map_err(|e| anyhow!("{e}"))?;
+    let cloud_db_id = rbl_db::export_info::cloud_db_id(conn).map_err(|e| anyhow!("{e}"))?;
     let ids: Vec<String> = by_id.keys().cloned().collect();
     let extras = rbl_db::export_info::track_extras(conn, &ids).map_err(|e| anyhow!("{e}"))?;
 
     let mut facts: HashMap<String, Facts> = HashMap::new();
     for (id, (name, rating, color_id)) in by_id {
         let Some(extra) = extras.get(&id) else { continue };
-        let Some(analysed) = extra.analysis.as_ref().filter(|a| !a.analysis_path.is_empty()) else { continue };
-        let dat_path = location.share_root.join(analysed.analysis_path.trim_start_matches(['/', '\\']));
-        let read = |ext: &str| -> Option<String> {
-            let bytes = std::fs::read(dat_path.with_extension(ext)).ok()?;
-            rbl_anlz::parse(&bytes).ok()?;
-            blobs.put(&bytes).ok()
-        };
-        let Some(dat) = read("DAT") else {
-            warn!(%name, "rekordbox analysis file missing from the snapshot");
-            continue;
-        };
+        let Ok(content_id) = id.parse::<u64>() else { continue };
+        let analysed = extra.analysis.as_ref().filter(|a| !a.analysis_path.is_empty());
+        let analysis = analysed.and_then(|analysed| {
+            let dat_path = location.share_root.join(analysed.analysis_path.trim_start_matches(['/', '\\']));
+            let read = |ext: &str| -> Option<String> {
+                let bytes = std::fs::read(dat_path.with_extension(ext)).ok()?;
+                rbl_anlz::parse(&bytes).ok()?;
+                blobs.put(&bytes).ok()
+            };
+            let dat = read("DAT");
+            if dat.is_none() {
+                warn!(%name, "rekordbox analysis file missing from the snapshot");
+            }
+            Some(Analysis { origin: Origin::Rekordbox, dat: dat?, ext: read("EXT"), two_ex: read("2EX") })
+        });
         let entry = Facts {
-            bpm_x100: analysed.bpm_x100,
-            key: analysed.key.clone(),
-            length_sec: analysed.length_sec,
+            content_id,
+            bpm_x100: analysed.map_or(0, |a| a.bpm_x100),
+            key: analysed.map(|a| a.key.clone()).unwrap_or_default(),
+            length_sec: analysed.map_or(0, |a| a.length_sec),
             rating,
             color_id,
             metadata: extra.metadata.clone(),
             cues: extra.cues.clone(),
-            analysis: Analysis { origin: Origin::Rekordbox, dat, ext: read("EXT"), two_ex: read("2EX") },
+            analysis,
         };
-        // The same file imported twice: keep the one with more cues.
+        // The same file imported twice: keep the analysed one, then the one
+        // with more cues.
+        let rank = |f: &Facts| (f.analysis.is_some(), f.cues.len());
         match facts.get(&name) {
-            Some(existing) if existing.cues.len() >= entry.cues.len() => {}
+            Some(existing) if rank(existing) >= rank(&entry) => {}
             _ => {
                 facts.insert(name, entry);
             }
@@ -131,8 +157,10 @@ pub fn ingest(archive: &Path, work: &Path, store: &Store, blobs: &Blobs) -> Resu
     let rows: Vec<(String, String)> =
         facts.iter().map(|(name, f)| Ok((name.clone(), serde_json::to_string(f)?))).collect::<Result<_>>()?;
     store.replace_rekordbox(&rows)?;
+    store.set_meta("rekordbox_db_id", &db_id.to_string())?;
+    store.set_meta("rekordbox_cloud_db_id", &cloud_db_id.to_string())?;
     store.set_meta("rekordbox_snapshot_ms", &crate::store::now_ms().to_string())?;
-    info!(tracks = count, "rekordbox snapshot ingested");
+    info!(tracks = count, db_id, "rekordbox snapshot ingested");
     Ok(count)
 }
 
