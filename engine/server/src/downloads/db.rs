@@ -1,0 +1,160 @@
+//! The download queue in SQLite.
+
+use anyhow::Result;
+use deckhand_model::downloads::{Attempt, CatalogTrack, Download, State};
+use rusqlite::{params, OptionalExtension};
+
+use crate::store::{now_ms, Store};
+
+const COLUMNS: &str = "id, track, state, source, quality, file, error, attempts, created_ms, updated_ms";
+
+fn state_str(state: State) -> &'static str {
+    match state {
+        State::Queued => "queued",
+        State::Searching => "searching",
+        State::Downloading => "downloading",
+        State::Finishing => "finishing",
+        State::Done => "done",
+        State::Failed => "failed",
+        State::Cancelled => "cancelled",
+    }
+}
+
+fn parse_state(s: &str) -> State {
+    match s {
+        "searching" => State::Searching,
+        "downloading" => State::Downloading,
+        "finishing" => State::Finishing,
+        "done" => State::Done,
+        "failed" => State::Failed,
+        "cancelled" => State::Cancelled,
+        _ => State::Queued,
+    }
+}
+
+fn row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Download> {
+    let track: String = r.get(1)?;
+    let state: String = r.get(2)?;
+    let attempts: String = r.get(7)?;
+    Ok(Download {
+        id: r.get(0)?,
+        track: serde_json::from_str(&track).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?,
+        state: parse_state(&state),
+        source: r.get(3)?,
+        received: 0,
+        total: None,
+        quality: r.get(4)?,
+        file: r.get(5)?,
+        error: r.get(6)?,
+        attempts: serde_json::from_str(&attempts).unwrap_or_default(),
+        created_ms: r.get(8)?,
+        updated_ms: r.get(9)?,
+    })
+}
+
+pub fn insert(store: &Store, track: &CatalogTrack) -> Result<Download> {
+    let now = now_ms();
+    let conn = store.conn();
+    conn.execute(
+        "insert into downloads(catalog_id, track, state, created_ms, updated_ms) values(?1, ?2, 'queued', ?3, ?3)",
+        params![track.id, serde_json::to_string(track)?, now],
+    )?;
+    let id = conn.last_insert_rowid();
+    Ok(conn.query_row(&format!("select {COLUMNS} from downloads where id = ?1"), params![id], row)?)
+}
+
+pub fn get(store: &Store, id: i64) -> Result<Option<Download>> {
+    Ok(store
+        .conn()
+        .query_row(&format!("select {COLUMNS} from downloads where id = ?1"), params![id], row)
+        .optional()?)
+}
+
+/// The active download of a catalog track, if there is one.
+pub fn active_for(store: &Store, catalog_id: &str) -> Result<Option<Download>> {
+    Ok(store
+        .conn()
+        .query_row(
+            &format!(
+                "select {COLUMNS} from downloads where catalog_id = ?1
+                 and state in ('queued', 'searching', 'downloading', 'finishing') order by id desc limit 1"
+            ),
+            params![catalog_id],
+            row,
+        )
+        .optional()?)
+}
+
+/// Newest first; finished ones only from the last two weeks.
+pub fn list(store: &Store) -> Result<Vec<Download>> {
+    let since = now_ms() - 14 * 24 * 3600 * 1000;
+    let conn = store.conn();
+    let mut stmt = conn.prepare(&format!(
+        "select {COLUMNS} from downloads
+         where state in ('queued', 'searching', 'downloading', 'finishing') or updated_ms > ?1
+         order by id desc limit 200"
+    ))?;
+    let rows = stmt.query_map(params![since], row)?.collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+/// The oldest queued download not in `running`.
+pub fn next_queued(store: &Store, running: &std::collections::HashSet<i64>) -> Result<Option<i64>> {
+    let conn = store.conn();
+    let mut stmt = conn.prepare("select id from downloads where state = 'queued' order by id")?;
+    let ids = stmt.query_map([], |r| r.get::<_, i64>(0))?;
+    for id in ids {
+        let id = id?;
+        if !running.contains(&id) {
+            return Ok(Some(id));
+        }
+    }
+    Ok(None)
+}
+
+pub fn set_state(store: &Store, id: i64, state: State, source: Option<&str>) -> Result<()> {
+    store.conn().execute(
+        "update downloads set state = ?2, source = coalesce(?3, source), updated_ms = ?4 where id = ?1",
+        params![id, state_str(state), source, now_ms()],
+    )?;
+    Ok(())
+}
+
+pub fn set_attempts(store: &Store, id: i64, attempts: &[Attempt]) -> Result<()> {
+    store.conn().execute(
+        "update downloads set attempts = ?2, updated_ms = ?3 where id = ?1",
+        params![id, serde_json::to_string(attempts)?, now_ms()],
+    )?;
+    Ok(())
+}
+
+pub fn done(store: &Store, id: i64, file: &str, source: &str, quality: Option<&str>) -> Result<()> {
+    store.conn().execute(
+        "update downloads set state = 'done', file = ?2, source = ?3, quality = ?4, error = null, updated_ms = ?5 where id = ?1",
+        params![id, file, source, quality, now_ms()],
+    )?;
+    Ok(())
+}
+
+pub fn failed(store: &Store, id: i64, error: &str) -> Result<()> {
+    store.conn().execute(
+        "update downloads set state = 'failed', error = ?2, source = null, updated_ms = ?3 where id = ?1",
+        params![id, error, now_ms()],
+    )?;
+    Ok(())
+}
+
+/// Back to the queue, as if new.
+pub fn requeue(store: &Store, id: i64) -> Result<bool> {
+    let n = store.conn().execute(
+        "update downloads set state = 'queued', source = null, quality = null, file = null, error = null,
+             attempts = '[]', updated_ms = ?2
+         where id = ?1 and state in ('failed', 'cancelled')",
+        params![id, now_ms()],
+    )?;
+    Ok(n > 0)
+}
+
+pub fn delete(store: &Store, id: i64) -> Result<bool> {
+    Ok(store.conn().execute("delete from downloads where id = ?1", params![id])? > 0)
+}

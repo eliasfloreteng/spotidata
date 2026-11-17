@@ -4,10 +4,12 @@
 mod analyse;
 mod api;
 mod blobs;
+mod downloads;
 mod library;
 mod rekordbox;
 mod scan;
 mod store;
+mod tags;
 mod worker;
 
 use std::path::PathBuf;
@@ -50,6 +52,9 @@ async fn main() -> Result<()> {
     }
     worker::spawn(threads, music.clone(), store.clone(), blobs.clone());
 
+    let downloads = downloads::Service::new(store.clone(), music.clone(), &data)?;
+    downloads.spawn();
+
     let app = api::App {
         music,
         data,
@@ -57,6 +62,7 @@ async fn main() -> Result<()> {
         blobs,
         cache: std::sync::Arc::default(),
         ingesting: std::sync::Arc::default(),
+        downloads,
     };
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     info!(%bind, "listening");

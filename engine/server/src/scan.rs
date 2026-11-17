@@ -88,6 +88,11 @@ pub fn scan(music: &Path, store: &Store) -> Result<bool> {
             changed = true;
         }
     }
+    // Which recording each file holds, so a search can say it is already here.
+    for name in store.isrc_unread()? {
+        let isrc = crate::tags::isrc(&music.join(&name)).unwrap_or_default();
+        store.set_isrc(&name, &isrc)?;
+    }
     Ok(changed)
 }
 

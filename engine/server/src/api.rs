@@ -5,15 +5,20 @@
 //! - `GET  /api/music/{name}`   a file of the music folder, with ranges
 //! - `GET  /api/blobs/{hash}`   analysis and artwork, immutable
 //! - `PUT  /api/rekordbox`      a rekordbox snapshot (tar), see `rekordbox.rs`
+//! - `GET  /api/catalog/search?q=`  tracks to get, marked when already here
+//! - `GET  /api/downloads`      the queue, recent results and source health
+//! - `POST /api/downloads`      `{track}`: get a catalog track
+//! - `POST /api/downloads/{id}/retry`
+//! - `DELETE /api/downloads/{id}`  stop it, or forget a finished one
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use axum::body::Body;
-use axum::extract::{Path, Request, State};
+use axum::extract::{Path, Query, Request, State};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, put};
+use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use futures_util::TryStreamExt;
 use tokio::io::AsyncWriteExt;
@@ -33,6 +38,7 @@ pub struct App {
     /// The last manifest, with the store version it was built at.
     pub cache: Arc<Mutex<Option<(u64, Arc<Vec<u8>>)>>>,
     pub ingesting: Arc<tokio::sync::Mutex<()>>,
+    pub downloads: crate::downloads::Service,
 }
 
 pub fn router(app: App) -> Router {
@@ -42,6 +48,10 @@ pub fn router(app: App) -> Router {
         .route("/api/music/{name}", get(music))
         .route("/api/blobs/{hash}", get(blob))
         .route("/api/rekordbox", put(rekordbox))
+        .route("/api/catalog/search", get(search))
+        .route("/api/downloads", get(downloads).post(add_download))
+        .route("/api/downloads/{id}/retry", post(retry_download))
+        .route("/api/downloads/{id}", delete(remove_download))
         .merge(library)
         .with_state(app)
 }
@@ -120,4 +130,45 @@ async fn rekordbox(State(app): State<App>, req: Request) -> Result<Response, Err
     let _ = tokio::fs::remove_file(&archive).await;
     let tracks = result?;
     Ok(Json(serde_json::json!({ "tracks": tracks })).into_response())
+}
+
+#[derive(serde::Deserialize)]
+struct SearchQuery {
+    q: String,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+async fn search(State(app): State<App>, Query(query): Query<SearchQuery>) -> Result<Response, Error> {
+    let q = query.q.trim();
+    if q.is_empty() {
+        return Ok(Json(Vec::<deckhand_model::downloads::CatalogTrack>::new()).into_response());
+    }
+    match app.downloads.search(q, query.limit.unwrap_or(40)).await {
+        Ok(tracks) => Ok(Json(tracks).into_response()),
+        // The catalog being down is not the server failing.
+        Err(e) => Ok((StatusCode::BAD_GATEWAY, format!("{e:#}")).into_response()),
+    }
+}
+
+async fn downloads(State(app): State<App>) -> Result<Response, Error> {
+    Ok(Json(app.downloads.list()?).into_response())
+}
+
+async fn add_download(
+    State(app): State<App>,
+    Json(body): Json<deckhand_model::downloads::NewDownload>,
+) -> Result<Response, Error> {
+    Ok((StatusCode::CREATED, Json(app.downloads.add(&body.track)?)).into_response())
+}
+
+async fn retry_download(State(app): State<App>, Path(id): Path<i64>) -> Result<Response, Error> {
+    Ok(match app.downloads.retry(id)? {
+        Some(download) => Json(download).into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    })
+}
+
+async fn remove_download(State(app): State<App>, Path(id): Path<i64>) -> Result<Response, Error> {
+    Ok(if app.downloads.remove(id)? { StatusCode::NO_CONTENT } else { StatusCode::NOT_FOUND }.into_response())
 }

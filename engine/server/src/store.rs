@@ -98,7 +98,34 @@ impl Store {
                  deleted_ms integer not null
              );
              create table if not exists meta(key text primary key, value text not null);
-             create table if not exists rekordbox(name text primary key, facts text not null);",
+             create table if not exists rekordbox(name text primary key, facts text not null);
+             create table if not exists downloads(
+                 id integer primary key autoincrement,
+                 catalog_id text not null,
+                 track text not null,
+                 state text not null,
+                 source text,
+                 quality text,
+                 file text,
+                 error text,
+                 attempts text not null default '[]',
+                 created_ms integer not null,
+                 updated_ms integer not null
+             );
+             create table if not exists endpoints(
+                 id text primary key,
+                 health text not null
+             );",
+        )?;
+        // Added after the first release: the recording a file holds.
+        let has_isrc = conn.prepare("select 1 from pragma_table_info('files') where name = 'isrc'")?.exists([])?;
+        if !has_isrc {
+            conn.execute("alter table files add column isrc text", [])?;
+        }
+        // Downloads a restart interrupted start over.
+        conn.execute(
+            "update downloads set state = 'queued' where state in ('searching', 'downloading', 'finishing')",
+            [],
         )?;
         // A recipe change sends every analysed track back to the queue; the
         // rekordbox ones keep theirs.
@@ -162,7 +189,8 @@ impl Store {
             "insert into files(name, size, mtime_ms, hash, first_seen_ms, state, source)
              values(?1, ?2, ?3, ?4, ?5, ?6, ?7)
              on conflict(name) do update set size = ?2, mtime_ms = ?3, hash = ?4, state = ?6, source = ?7,
-                 error = null, origin = null, dat = null, ext = null, two_ex = null, art_small = null, art_medium = null, recipe = 0",
+                 error = null, origin = null, dat = null, ext = null, two_ex = null, art_small = null, art_medium = null, recipe = 0,
+                 isrc = null",
             params![name, to_i64(size), mtime_ms, hash, now, state.as_str(), source],
         )?;
         conn.execute("delete from tombstones where name = ?1", params![name])?;
@@ -287,6 +315,34 @@ impl Store {
         drop(conn);
         self.changed();
         Ok(())
+    }
+
+    /// Audio files whose ISRC has not been read yet.
+    pub fn isrc_unread(&self) -> Result<Vec<String>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare("select name from files where isrc is null and state != 'other'")?;
+        let rows = stmt.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<Vec<String>>>()?;
+        Ok(rows)
+    }
+
+    /// Records a file's ISRC; empty when it has none.
+    pub fn set_isrc(&self, name: &str, isrc: &str) -> Result<()> {
+        self.lock().execute("update files set isrc = ?2 where name = ?1", params![name, isrc])?;
+        Ok(())
+    }
+
+    /// Every file that holds a known recording, by ISRC.
+    pub fn isrcs(&self) -> Result<std::collections::HashMap<String, String>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare("select isrc, name from files where isrc is not null and isrc != ''")?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?.to_ascii_uppercase(), r.get(1)?)))?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(rows)
+    }
+
+    pub fn conn(&self) -> MutexGuard<'_, Connection> {
+        self.lock()
     }
 
     pub fn meta(&self, key: &str) -> Result<Option<String>> {

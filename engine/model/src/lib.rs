@@ -140,3 +140,139 @@ pub fn is_mirrored(name: &str) -> bool {
         && !name.ends_with(".part")
         && !name.ends_with(".tmp")
 }
+
+/// Getting music: a catalog to search, and downloads the server runs into
+/// the music folder (`/api/catalog/search`, `/api/downloads`).
+pub mod downloads {
+    use serde::{Deserialize, Serialize};
+
+    /// A track the catalog knows, which may or may not be in the folder yet.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct CatalogTrack {
+        /// `deezer:<id>`.
+        pub id: String,
+        pub title: String,
+        pub artists: Vec<String>,
+        pub album: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub isrc: Option<String>,
+        pub duration_sec: u32,
+        /// A cover around 250 px.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub cover: Option<String>,
+        #[serde(default)]
+        pub explicit: bool,
+        /// The file in the music folder that already holds this recording.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub in_library: Option<String>,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "lowercase")]
+    pub enum State {
+        Queued,
+        /// Asking the sources who has it.
+        Searching,
+        Downloading,
+        /// Checking, tagging and moving the file into the folder.
+        Finishing,
+        Done,
+        Failed,
+        Cancelled,
+    }
+
+    impl State {
+        #[must_use]
+        pub fn is_active(self) -> bool {
+            matches!(self, Self::Queued | Self::Searching | Self::Downloading | Self::Finishing)
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct Download {
+        pub id: i64,
+        pub track: CatalogTrack,
+        pub state: State,
+        /// The source being tried, or the one that delivered the file.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub source: Option<String>,
+        /// Bytes so far and, when known, in all.
+        #[serde(default)]
+        pub received: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub total: Option<u64>,
+        /// "FLAC 16-bit 44.1 kHz".
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub quality: Option<String>,
+        /// The file in the music folder, once done.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub file: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub error: Option<String>,
+        /// Every source tried, in order.
+        #[serde(default)]
+        pub attempts: Vec<Attempt>,
+        pub created_ms: i64,
+        pub updated_ms: i64,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct Attempt {
+        pub source: String,
+        pub outcome: Outcome,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        pub detail: String,
+        pub ms: u64,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum Outcome {
+        Ok,
+        /// The source answered but does not have the track.
+        NotFound,
+        /// Down, timed out, refused, or too slow to wait for.
+        Unavailable,
+        /// It sent something that is not the track (a preview, a lossy or
+        /// wrong-length file).
+        BadFile,
+    }
+
+    /// How one mirror of one source has been doing.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    pub struct SourceHealth {
+        /// `tidal:example.org`.
+        pub id: String,
+        /// `tidal`, `qobuz`, `deezer`, `amazon`.
+        pub source: String,
+        pub host: String,
+        /// Order the next download tries them in, from 1.
+        pub rank: usize,
+        /// Recent share of requests that worked, 0–1.
+        pub reliability: f64,
+        /// Recent download speed, kB/s; `None` before the first download.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub speed_kbps: Option<f64>,
+        /// Recent time to answer, ms.
+        pub latency_ms: f64,
+        pub downloads: u64,
+        /// Resting after failures until then, ms since the epoch.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub resting_until_ms: Option<i64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub last_error: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub last_ok_ms: Option<i64>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    pub struct Downloads {
+        pub downloads: Vec<Download>,
+        pub sources: Vec<SourceHealth>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct NewDownload {
+        pub track: CatalogTrack,
+    }
+}
