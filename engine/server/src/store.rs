@@ -127,6 +127,12 @@ impl Store {
         if !has_isrc {
             conn.execute("alter table files add column isrc text", [])?;
         }
+        // Added with Spotify playlists: the playlist a download was for.
+        let has_playlist =
+            conn.prepare("select 1 from pragma_table_info('downloads') where name = 'playlist'")?.exists([])?;
+        if !has_playlist {
+            conn.execute("alter table downloads add column playlist text", [])?;
+        }
         // Downloads a restart interrupted start over.
         conn.execute(
             "update downloads set state = 'queued' where state in ('searching', 'downloading', 'finishing')",

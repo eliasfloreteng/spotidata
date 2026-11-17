@@ -9,6 +9,7 @@ mod library;
 mod push;
 mod rekordbox;
 mod scan;
+mod spotify;
 mod store;
 mod tags;
 mod worker;
@@ -56,6 +57,9 @@ async fn main() -> Result<()> {
     let push = push::Push::new(store.clone());
     let downloads = downloads::Service::new(store.clone(), music.clone(), &data, push.clone())?;
     downloads.spawn();
+    let spotidata = std::env::var("DECKHAND_SPOTIDATA").ok();
+    let spotify = spotify::Spotify::new(store.clone(), music.clone(), downloads.clone(), spotidata.as_deref())?;
+    spotify.spawn();
 
     let app = api::App {
         music,
@@ -65,6 +69,7 @@ async fn main() -> Result<()> {
         cache: std::sync::Arc::default(),
         ingesting: std::sync::Arc::default(),
         downloads,
+        spotify,
         push,
     };
     let listener = tokio::net::TcpListener::bind(&bind).await?;

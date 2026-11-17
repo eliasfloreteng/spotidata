@@ -134,6 +134,22 @@ fn to_catalog(t: &DzTrack) -> CatalogTrack {
     }
 }
 
+/// The catalog's track for an ISRC; `None` when Deezer doesn't have it.
+pub async fn by_isrc(http: &reqwest::Client, isrc: &str) -> Result<Option<CatalogTrack>> {
+    let isrc = isrc.trim().to_ascii_uppercase();
+    if isrc.is_empty() || !isrc.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Ok(None);
+    }
+    let value = match get(http, &format!("{API}/track/isrc:{isrc}"), &[]).await {
+        Ok(value) => value,
+        // "no data": the catalog answered and doesn't have it.
+        Err(e) if e.to_string().contains("no data") => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    let t: DzTrack = serde_json::from_value(value)?;
+    Ok(t.readable.then(|| to_catalog(&t)))
+}
+
 /// Everything known about a track before asking the sources for it: the
 /// full artist list, album details for the tags, and the big cover.
 pub async fn details(http: &reqwest::Client, track: &CatalogTrack) -> Wanted {

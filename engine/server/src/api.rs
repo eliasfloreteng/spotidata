@@ -12,6 +12,10 @@
 //! - `DELETE /api/downloads/{id}`  stop it, or forget a finished one
 //! - `POST /api/challenges/{id}`  a solved check's pass (see `Challenge`)
 //! - `POST /api/devices`        a phone to notify
+//! - `GET  /api/spotify`        the Spotify playlists and which are kept
+//! - `POST /api/spotify/check`  read Spotify now
+//! - `GET  /api/spotify/playlists/{id}`  its tracks and where each stands
+//! - `PUT  /api/spotify/playlists/{id}`  `{selected}`: keep it, or stop
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -41,6 +45,7 @@ pub struct App {
     pub cache: Arc<Mutex<Option<(u64, Arc<Vec<u8>>)>>>,
     pub ingesting: Arc<tokio::sync::Mutex<()>>,
     pub downloads: crate::downloads::Service,
+    pub spotify: crate::spotify::Spotify,
     pub push: crate::push::Push,
 }
 
@@ -57,6 +62,9 @@ pub fn router(app: App) -> Router {
         .route("/api/downloads/{id}", delete(remove_download))
         .route("/api/challenges/{id}", post(solve_challenge))
         .route("/api/devices", post(register_device))
+        .route("/api/spotify", get(spotify))
+        .route("/api/spotify/check", post(check_spotify))
+        .route("/api/spotify/playlists/{id}", get(spotify_playlist).put(select_playlist))
         .merge(library)
         .with_state(app)
 }
@@ -195,4 +203,35 @@ async fn register_device(
 ) -> Result<Response, Error> {
     app.push.register(&device.token, &device.environment)?;
     Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+async fn spotify(State(app): State<App>) -> Result<Response, Error> {
+    Ok(Json(app.spotify.status()?).into_response())
+}
+
+async fn check_spotify(State(app): State<App>) -> Result<Response, Error> {
+    app.spotify.check_soon();
+    Ok(StatusCode::ACCEPTED.into_response())
+}
+
+async fn spotify_playlist(State(app): State<App>, Path(id): Path<String>) -> Result<Response, Error> {
+    Ok(match app.spotify.playlist(&id).await? {
+        Some(playlist) => Json(playlist).into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    })
+}
+
+async fn select_playlist(
+    State(app): State<App>,
+    Path(id): Path<String>,
+    Json(selection): Json<deckhand_model::spotify::Selection>,
+) -> Result<Response, Error> {
+    Ok(if app.spotify.select(&id, selection.selected)? {
+        app.spotify.status()?.playlists.into_iter().find(|p| p.id == id).map_or_else(
+            || StatusCode::NO_CONTENT.into_response(),
+            |playlist| Json(playlist).into_response(),
+        )
+    } else {
+        StatusCode::NOT_FOUND.into_response()
+    })
 }

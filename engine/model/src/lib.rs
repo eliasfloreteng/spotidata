@@ -216,6 +216,9 @@ pub mod downloads {
         /// Every source tried, in order.
         #[serde(default)]
         pub attempts: Vec<Attempt>,
+        /// The Spotify playlist it was got for; `None` when you asked for it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub playlist: Option<String>,
         pub created_ms: i64,
         pub updated_ms: i64,
     }
@@ -325,5 +328,106 @@ pub mod downloads {
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct NewDownload {
         pub track: CatalogTrack,
+    }
+}
+
+/// Spotify playlists kept in the music folder (`/api/spotify`): the server
+/// reads the ones you pick, gets the tracks the folder lacks and writes each
+/// as a `.m3u8`, which the next sync puts on the stick.
+pub mod spotify {
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct Spotify {
+        /// Whether the server is set up to read Spotify at all.
+        pub configured: bool,
+        /// A check is running now.
+        pub checking: bool,
+        /// The last check that read the account, ms since the epoch.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub checked_ms: Option<i64>,
+        /// Why the last check failed, when it did.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub error: Option<String>,
+        /// The account's playlists, in its own order.
+        pub playlists: Vec<Playlist>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct Playlist {
+        /// Spotify's playlist id.
+        pub id: String,
+        pub name: String,
+        pub owner: String,
+        /// Yours, rather than one you follow.
+        pub owned: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub image: Option<String>,
+        /// Tracks on Spotify.
+        pub tracks: usize,
+        /// Kept in the folder and on the stick.
+        pub selected: bool,
+        /// The playlist's file in the music folder, once written.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub file: Option<String>,
+        /// When its tracks were last read from Spotify.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub read_ms: Option<i64>,
+        /// Of its tracks, once read: in the folder, being got, and neither.
+        pub have: usize,
+        pub getting: usize,
+        pub missing: usize,
+        /// Why it could not be read or kept, when it could not.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub error: Option<String>,
+    }
+
+    /// `GET /api/spotify/playlists/{id}`.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct PlaylistTracks {
+        pub playlist: Playlist,
+        pub tracks: Vec<Track>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct Track {
+        /// `None` for a local file on Spotify, which cannot be got.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub spotify_id: Option<String>,
+        pub title: String,
+        pub artists: Vec<String>,
+        pub album: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub isrc: Option<String>,
+        pub duration_sec: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub cover: Option<String>,
+        pub state: TrackState,
+        /// The folder's file that holds it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub file: Option<String>,
+        /// The download getting it, or that last tried.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub download: Option<i64>,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "lowercase")]
+    pub enum TrackState {
+        /// In the folder.
+        Here,
+        /// Being downloaded, or waiting for a check you solve.
+        Getting,
+        /// Not in the folder and not being got: the playlist isn't kept, or
+        /// a download failed (it is tried again after a day).
+        Missing,
+        /// A local file on Spotify; there is nothing to download.
+        Local,
+    }
+
+    /// `PUT /api/spotify/playlists/{id}`.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct Selection {
+        pub selected: bool,
     }
 }

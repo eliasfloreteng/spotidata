@@ -6,7 +6,7 @@
 //!
 //! The server only ever adds files here; it never replaces or deletes one.
 
-mod catalog;
+pub mod catalog;
 mod db;
 mod decrypt;
 mod fetch;
@@ -291,13 +291,27 @@ impl Service {
 
     /// Queues a track, unless it is already queued.
     pub fn add(&self, track: &CatalogTrack) -> Result<Download> {
+        self.add_for(track, None)
+    }
+
+    /// Queues a track a Spotify playlist wants, unless it is already queued.
+    pub fn add_for(&self, track: &CatalogTrack, playlist: Option<&str>) -> Result<Download> {
         if let Some(existing) = db::active_for(&self.inner.store, &track.id)? {
             return Ok(existing);
         }
-        let download = db::insert(&self.inner.store, track)?;
-        info!(id = download.id, title = %track.title, "download queued");
+        let download = db::insert(&self.inner.store, track, playlist)?;
+        info!(id = download.id, title = %track.title, playlist, "download queued");
         self.inner.wake.notify_one();
         Ok(download)
+    }
+
+    pub fn get(&self, id: i64) -> Result<Option<Download>> {
+        db::get(&self.inner.store, id)
+    }
+
+    /// The catalog's track for a recording, when it has it.
+    pub async fn by_isrc(&self, isrc: &str) -> Result<Option<CatalogTrack>> {
+        catalog::by_isrc(&self.inner.http, isrc).await
     }
 
     pub fn retry(&self, id: i64) -> Result<Option<Download>> {

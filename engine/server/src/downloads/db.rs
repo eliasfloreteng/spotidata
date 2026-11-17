@@ -6,7 +6,7 @@ use rusqlite::{params, OptionalExtension};
 
 use crate::store::{now_ms, Store};
 
-const COLUMNS: &str = "id, track, state, source, quality, file, error, attempts, created_ms, updated_ms";
+const COLUMNS: &str = "id, track, state, source, quality, file, error, attempts, created_ms, updated_ms, playlist";
 
 fn state_str(state: State) -> &'static str {
     match state {
@@ -51,15 +51,18 @@ fn row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Download> {
         attempts: serde_json::from_str(&attempts).unwrap_or_default(),
         created_ms: r.get(8)?,
         updated_ms: r.get(9)?,
+        playlist: r.get(10)?,
     })
 }
 
-pub fn insert(store: &Store, track: &CatalogTrack) -> Result<Download> {
+/// Queues a track; `playlist` names the Spotify playlist that wants it.
+pub fn insert(store: &Store, track: &CatalogTrack, playlist: Option<&str>) -> Result<Download> {
     let now = now_ms();
     let conn = store.conn();
     conn.execute(
-        "insert into downloads(catalog_id, track, state, created_ms, updated_ms) values(?1, ?2, 'queued', ?3, ?3)",
-        params![track.id, serde_json::to_string(track)?, now],
+        "insert into downloads(catalog_id, track, state, created_ms, updated_ms, playlist)
+         values(?1, ?2, 'queued', ?3, ?3, ?4)",
+        params![track.id, serde_json::to_string(track)?, now, playlist],
     )?;
     let id = conn.last_insert_rowid();
     Ok(conn.query_row(&format!("select {COLUMNS} from downloads where id = ?1"), params![id], row)?)
