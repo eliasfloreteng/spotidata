@@ -190,6 +190,14 @@ impl LibraryNames {
     pub fn new(tracks: impl IntoIterator<Item = (String, String, String)>) -> Self {
         let mut map: HashMap<String, Vec<(String, String)>> = HashMap::new();
         for (file, title, artist) in tracks {
+            // The folder's own naming, "Title - Artist, Artist.flac", for a
+            // file whose tags say less (some have none at all).
+            let stem = file.rsplit_once('.').map_or(file.as_str(), |(stem, _)| stem);
+            if let Some((t, a)) = stem.rsplit_once(" - ") {
+                if (normalise(t), normalise(a)) != (normalise(&title), normalise(&artist)) {
+                    map.entry(normalise(t)).or_default().push((normalise(a), file.clone()));
+                }
+            }
             map.entry(normalise(&title)).or_default().push((normalise(&artist), file));
         }
         Self(map)
@@ -228,5 +236,20 @@ mod tests {
         );
         assert_eq!(names.find("9PM (Till I Come) - Extended", &["ATB".to_owned()]), None);
         assert_eq!(names.find("9PM (Till I Come)", &["Someone".to_owned()]), None);
+    }
+
+    #[test]
+    fn untagged_files_match_by_their_name() {
+        let names = LibraryNames::new([
+            ("CODE - Nedaj.flac".to_owned(), "CODE - Nedaj".to_owned(), String::new()),
+            (
+                "I Want Your Soul - Prospa Remix - Armand Van Helden, Prospa.flac".to_owned(),
+                "I Want Your Soul - Prospa Remix - Armand Van Helden, Prospa".to_owned(),
+                String::new(),
+            ),
+        ]);
+        assert_eq!(names.find("CODE", &["Nedaj".to_owned()]).as_deref(), Some("CODE - Nedaj.flac"));
+        assert!(names.find("I Want Your Soul - Prospa Remix", &["Armand Van Helden".to_owned()]).is_some());
+        assert_eq!(names.find("CODE - Nedaj", &["Someone".to_owned()]), None);
     }
 }
