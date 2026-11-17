@@ -349,6 +349,13 @@ pub mod spotify {
         /// Why the last check failed, when it did.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub error: Option<String>,
+        /// Spotify is read only when you ask (`POST /api/spotify/check`),
+        /// not every ten minutes; nothing new is downloaded by itself.
+        #[serde(default)]
+        pub paused: bool,
+        /// When the next check runs by itself; `None` while paused.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub next_check_ms: Option<i64>,
         /// The account's playlists, in its own order.
         pub playlists: Vec<Playlist>,
     }
@@ -429,5 +436,63 @@ pub mod spotify {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub struct Selection {
         pub selected: bool,
+    }
+
+    /// `PUT /api/spotify`.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct Settings {
+        pub paused: bool,
+    }
+
+    /// One thing the Spotify sync did (`GET /api/spotify/activity`), newest
+    /// first. Repeats close together are one entry with a count.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct Activity {
+        pub id: i64,
+        /// When it happened (the latest time, for a merged entry).
+        pub ms: i64,
+        pub kind: ActivityKind,
+        /// The playlist, for what concerns one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub playlist: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub name: Option<String>,
+        /// Tracks: read, queued, retried or landed.
+        #[serde(default)]
+        pub count: usize,
+        /// For `changed`: tracks added and removed on Spotify.
+        #[serde(default)]
+        pub added: usize,
+        #[serde(default)]
+        pub removed: usize,
+        /// What went wrong, or what became of the playlist file.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub detail: Option<String>,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum ActivityKind {
+        /// You started keeping a playlist.
+        Kept,
+        /// You stopped; `detail` says whether its file went.
+        Dropped,
+        /// A kept playlist was read for the first time (`count` tracks).
+        Read,
+        /// It changed on Spotify (`added`, `removed`).
+        Changed,
+        /// Downloads queued for its missing tracks.
+        Queued,
+        /// Failed downloads tried again.
+        Retried,
+        /// Tracks that landed in the folder and joined its playlist file.
+        Landed,
+        /// Spotify couldn't be read (`detail`).
+        Failed,
+        /// Reading Spotify works again after a failure.
+        Recovered,
+        /// You paused or resumed the checks.
+        Paused,
+        Resumed,
     }
 }

@@ -12,10 +12,13 @@
 //! - `DELETE /api/downloads/{id}`  stop it, or forget a finished one
 //! - `POST /api/challenges/{id}`  a solved check's pass (see `Challenge`)
 //! - `POST /api/devices`        a phone to notify
-//! - `GET  /api/spotify`        the Spotify playlists and which are kept
+//! - `GET  /api/spotify`        the Spotify playlists, which are kept, and the checks
+//! - `PUT  /api/spotify`        `{paused}`: check only when asked, or every ten minutes
 //! - `POST /api/spotify/check`  read Spotify now
+//! - `GET  /api/spotify/activity?playlist=&limit=`  what the sync did, newest first
 //! - `GET  /api/spotify/playlists/{id}`  its tracks and where each stands
 //! - `PUT  /api/spotify/playlists/{id}`  `{selected}`: keep it, or stop
+//! - `POST /api/spotify/playlists/{id}/check`  read it again, retry its failed tracks now
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -62,9 +65,11 @@ pub fn router(app: App) -> Router {
         .route("/api/downloads/{id}", delete(remove_download))
         .route("/api/challenges/{id}", post(solve_challenge))
         .route("/api/devices", post(register_device))
-        .route("/api/spotify", get(spotify))
+        .route("/api/spotify", get(spotify).put(set_spotify))
         .route("/api/spotify/check", post(check_spotify))
+        .route("/api/spotify/activity", get(spotify_activity))
         .route("/api/spotify/playlists/{id}", get(spotify_playlist).put(select_playlist))
+        .route("/api/spotify/playlists/{id}/check", post(check_playlist))
         .merge(library)
         .with_state(app)
 }
@@ -209,9 +214,35 @@ async fn spotify(State(app): State<App>) -> Result<Response, Error> {
     Ok(Json(app.spotify.status()?).into_response())
 }
 
+async fn set_spotify(
+    State(app): State<App>,
+    Json(settings): Json<deckhand_model::spotify::Settings>,
+) -> Result<Response, Error> {
+    app.spotify.set_paused(settings.paused)?;
+    Ok(Json(app.spotify.status()?).into_response())
+}
+
 async fn check_spotify(State(app): State<App>) -> Result<Response, Error> {
     app.spotify.check_soon();
     Ok(StatusCode::ACCEPTED.into_response())
+}
+
+#[derive(serde::Deserialize)]
+struct ActivityQuery {
+    playlist: Option<String>,
+    limit: Option<usize>,
+}
+
+async fn spotify_activity(State(app): State<App>, Query(query): Query<ActivityQuery>) -> Result<Response, Error> {
+    Ok(Json(app.spotify.activity(query.playlist.as_deref(), query.limit.unwrap_or(100))?).into_response())
+}
+
+async fn check_playlist(State(app): State<App>, Path(id): Path<String>) -> Result<Response, Error> {
+    Ok(if app.spotify.check_playlist(&id)? {
+        StatusCode::ACCEPTED.into_response()
+    } else {
+        StatusCode::NOT_FOUND.into_response()
+    })
 }
 
 async fn spotify_playlist(State(app): State<App>, Path(id): Path<String>) -> Result<Response, Error> {

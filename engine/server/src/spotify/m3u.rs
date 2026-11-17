@@ -67,6 +67,17 @@ pub fn write(music: &Path, name: &str, text: &str) -> Result<bool> {
     Ok(true)
 }
 
+/// The files a playlist file lists; none when it can't be read.
+pub fn files(path: &Path) -> std::collections::HashSet<String> {
+    std::fs::read_to_string(path)
+        .unwrap_or_default()
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(str::to_owned)
+        .collect()
+}
+
 /// Deletes a playlist file the server wrote, unless it was changed since
 /// (`hash` is what was written). Returns whether it is gone.
 pub fn remove(music: &Path, name: &str, written: Option<&str>) -> Result<bool> {

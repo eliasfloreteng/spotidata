@@ -3,6 +3,8 @@
 use anyhow::Result;
 use rusqlite::{params, OptionalExtension};
 
+use deckhand_model::spotify::{Activity, ActivityKind};
+
 use super::remote::{RemotePlaylist, RemoteTrack};
 use crate::store::{now_ms, Store};
 
@@ -34,6 +36,17 @@ pub fn migrate(store: &Store) -> Result<()> {
          create table if not exists spotify_links(
              key text primary key,
              download integer not null
+         );
+         create table if not exists spotify_activity(
+             id integer primary key,
+             ms integer not null,
+             kind text not null,
+             playlist text,
+             name text,
+             count integer not null default 0,
+             added integer not null default 0,
+             removed integer not null default 0,
+             detail text
          );",
     )?;
     Ok(())
@@ -183,4 +196,137 @@ pub fn set_link(store: &Store, key: &str, download: i64) -> Result<()> {
         params![key, download],
     )?;
     Ok(())
+}
+
+/// Entries kept; older ones go.
+const ACTIVITY_KEPT: i64 = 500;
+/// Repeats of a counted kind for one playlist within this are one entry.
+const MERGE_WITHIN_MS: i64 = 30 * 60 * 1000;
+
+/// What a new entry says.
+#[derive(Debug, Clone, Default)]
+pub struct Event<'a> {
+    pub playlist: Option<(&'a str, &'a str)>,
+    pub count: usize,
+    pub added: usize,
+    pub removed: usize,
+    pub detail: Option<&'a str>,
+}
+
+fn kind_name(kind: ActivityKind) -> String {
+    serde_json::to_value(kind).ok().and_then(|v| v.as_str().map(str::to_owned)).unwrap_or_default()
+}
+
+/// Records what the sync did. Queued, retried and landed tracks of one
+/// playlist add up in one entry while they keep coming.
+pub fn log(store: &Store, kind: ActivityKind, event: &Event<'_>) -> Result<()> {
+    let now = now_ms();
+    let name = kind_name(kind);
+    let (playlist, playlist_name) = event.playlist.unzip();
+    let count = i64::try_from(event.count).unwrap_or(0);
+    let mut conn = store.conn();
+    let tx = conn.transaction()?;
+    let merged = matches!(kind, ActivityKind::Queued | ActivityKind::Retried | ActivityKind::Landed)
+        && tx.execute(
+            "update spotify_activity set count = count + ?4, ms = ?5, name = ?3
+             where id = (select max(id) from spotify_activity where playlist is ?2)
+               and kind = ?1 and ms > ?5 - ?6",
+            params![name, playlist, playlist_name, count, now, MERGE_WITHIN_MS],
+        )? > 0;
+    if !merged {
+        tx.execute(
+            "insert into spotify_activity(ms, kind, playlist, name, count, added, removed, detail)
+             values(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                now,
+                name,
+                playlist,
+                playlist_name,
+                count,
+                i64::try_from(event.added).unwrap_or(0),
+                i64::try_from(event.removed).unwrap_or(0),
+                event.detail
+            ],
+        )?;
+        tx.execute(
+            "delete from spotify_activity where id <= (select max(id) from spotify_activity) - ?1",
+            params![ACTIVITY_KEPT],
+        )?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+/// The newest entries first, for one playlist or all.
+pub fn activity(store: &Store, playlist: Option<&str>, limit: usize) -> Result<Vec<Activity>> {
+    let conn = store.conn();
+    let mut stmt = conn.prepare(
+        "select id, ms, kind, playlist, name, count, added, removed, detail from spotify_activity
+         where ?1 is null or playlist = ?1 order by id desc limit ?2",
+    )?;
+    let rows = stmt
+        .query_map(params![playlist, i64::try_from(limit).unwrap_or(100)], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, Option<String>>(3)?,
+                r.get::<_, Option<String>>(4)?,
+                r.get::<_, i64>(5)?,
+                r.get::<_, i64>(6)?,
+                r.get::<_, i64>(7)?,
+                r.get::<_, Option<String>>(8)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let count = |n: i64| usize::try_from(n).unwrap_or(0);
+    Ok(rows
+        .into_iter()
+        .filter_map(|(id, ms, kind, playlist, name, n, added, removed, detail)| {
+            let kind = serde_json::from_value(serde_json::Value::String(kind)).ok()?;
+            Some(Activity {
+                id,
+                ms,
+                kind,
+                playlist,
+                name,
+                count: count(n),
+                added: count(added),
+                removed: count(removed),
+                detail,
+            })
+        })
+        .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn repeats_close_together_add_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(&dir.path().join("t.db")).unwrap();
+        migrate(&store).unwrap();
+        let house = Event { playlist: Some(("p1", "House")), count: 3, ..Event::default() };
+        log(&store, ActivityKind::Queued, &house).unwrap();
+        log(&store, ActivityKind::Queued, &Event { count: 2, ..house.clone() }).unwrap();
+        log(&store, ActivityKind::Landed, &Event { count: 1, ..house.clone() }).unwrap();
+        log(&store, ActivityKind::Landed, &Event { count: 4, ..house.clone() }).unwrap();
+        // Not merged: something else for the playlist came in between.
+        log(&store, ActivityKind::Queued, &Event { count: 1, ..house.clone() }).unwrap();
+        log(&store, ActivityKind::Failed, &Event { detail: Some("down"), ..Event::default() }).unwrap();
+        let all = activity(&store, None, 10).unwrap();
+        let summary: Vec<_> = all.iter().map(|a| (a.kind, a.count)).collect();
+        assert_eq!(
+            summary,
+            vec![
+                (ActivityKind::Failed, 0),
+                (ActivityKind::Queued, 1),
+                (ActivityKind::Landed, 5),
+                (ActivityKind::Queued, 5)
+            ]
+        );
+        assert_eq!(activity(&store, Some("p1"), 10).unwrap().len(), 3);
+    }
 }

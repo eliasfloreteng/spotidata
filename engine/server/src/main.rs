@@ -41,11 +41,16 @@ async fn main() -> Result<()> {
     let store = store::Store::open(&data.join("deckhand.db"))?;
     let blobs = blobs::Blobs::new(data.join("blobs"))?;
 
+    // Counts the music folder's changes, for waking the phone.
+    let changes = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
     {
-        let (music, store) = (music.clone(), store.clone());
+        let (music, store, changes) = (music.clone(), store.clone(), changes.clone());
         std::thread::Builder::new().name("scan".into()).spawn(move || loop {
             match scan::scan(&music, &store) {
-                Ok(true) => info!("music folder changed"),
+                Ok(true) => {
+                    info!("music folder changed");
+                    changes.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                }
                 Ok(false) => {}
                 Err(e) => warn!(error = %e, "scan failed"),
             }
@@ -55,6 +60,24 @@ async fn main() -> Result<()> {
     worker::spawn(threads, music.clone(), store.clone(), blobs.clone());
 
     let push = push::Push::new(store.clone());
+    {
+        // New files: wake the phone to download them ahead of the next
+        // sync. At most every ten minutes while they keep coming, and once
+        // more after the last.
+        let push = push.clone();
+        tokio::spawn(async move {
+            let mut seen = changes.load(std::sync::atomic::Ordering::Relaxed);
+            loop {
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                let now = changes.load(std::sync::atomic::Ordering::Relaxed);
+                if now != seen {
+                    seen = now;
+                    push.wake().await;
+                    tokio::time::sleep(Duration::from_secs(9 * 60)).await;
+                }
+            }
+        });
+    }
     let downloads = downloads::Service::new(store.clone(), music.clone(), &data, push.clone())?;
     downloads.spawn();
     let spotidata = std::env::var("DECKHAND_SPOTIDATA").ok();

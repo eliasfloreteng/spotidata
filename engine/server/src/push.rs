@@ -1,4 +1,5 @@
-//! Notifications to the phone through APNs, for things only you can do.
+//! Notifications to the phone through APNs, for things only you can do,
+//! and silent ones that wake the app to download new music ahead of a sync.
 //!
 //! Configured with `DECKHAND_APNS_KEY` (path to the team's `.p8`),
 //! `DECKHAND_APNS_KEY_ID` and `DECKHAND_APNS_TEAM_ID`; without them nothing
@@ -92,6 +93,20 @@ impl Push {
     /// Sends an alert to every registered phone. `data` rides along for the
     /// app to act on when it is tapped.
     pub async fn alert(&self, title: &str, body: &str, data: Value) {
+        let mut payload = json!({ "aps": { "alert": { "title": title, "body": body }, "sound": "default" } });
+        if let (Some(payload), Value::Object(data)) = (payload.as_object_mut(), data) {
+            payload.extend(data);
+        }
+        self.send(&payload, "alert", "10").await;
+    }
+
+    /// Wakes the app in the background, without showing anything, so it
+    /// downloads what the stick will need. iOS spaces these out by itself.
+    pub async fn wake(&self) {
+        self.send(&json!({ "aps": { "content-available": 1 } }), "background", "5").await;
+    }
+
+    async fn send(&self, payload: &Value, kind: &str, priority: &str) {
         let Some(key) = self.key.clone() else { return };
         let devices: Vec<(String, String)> = {
             let conn = self.store.conn();
@@ -110,10 +125,6 @@ impl Push {
                 return;
             }
         };
-        let mut payload = json!({ "aps": { "alert": { "title": title, "body": body }, "sound": "default" } });
-        if let (Some(payload), Value::Object(data)) = (payload.as_object_mut(), data) {
-            payload.extend(data);
-        }
         for (device, environment) in devices {
             let host = if environment == "production" { "api.push.apple.com" } else { "api.sandbox.push.apple.com" };
             let sent = self
@@ -121,13 +132,13 @@ impl Push {
                 .post(format!("https://{host}/3/device/{device}"))
                 .bearer_auth(&token)
                 .header("apns-topic", TOPIC)
-                .header("apns-push-type", "alert")
-                .header("apns-priority", "10")
-                .json(&payload)
+                .header("apns-push-type", kind)
+                .header("apns-priority", priority)
+                .json(payload)
                 .send()
                 .await;
             match sent {
-                Ok(response) if response.status().is_success() => info!("notified a phone"),
+                Ok(response) if response.status().is_success() => info!(kind, "notified a phone"),
                 Ok(response) => {
                     let status = response.status();
                     let reason = response.text().await.unwrap_or_default();
