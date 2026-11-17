@@ -6,6 +6,7 @@ mod api;
 mod blobs;
 mod downloads;
 mod library;
+mod push;
 mod rekordbox;
 mod scan;
 mod store;
@@ -52,7 +53,8 @@ async fn main() -> Result<()> {
     }
     worker::spawn(threads, music.clone(), store.clone(), blobs.clone());
 
-    let downloads = downloads::Service::new(store.clone(), music.clone(), &data)?;
+    let push = push::Push::new(store.clone());
+    let downloads = downloads::Service::new(store.clone(), music.clone(), &data, push.clone())?;
     downloads.spawn();
 
     let app = api::App {
@@ -63,6 +65,7 @@ async fn main() -> Result<()> {
         cache: std::sync::Arc::default(),
         ingesting: std::sync::Arc::default(),
         downloads,
+        push,
     };
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     info!(%bind, "listening");

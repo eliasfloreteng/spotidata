@@ -60,7 +60,9 @@ pub async fn fetch(
     let started = Instant::now();
     let mut meter = Meter { started, received: 0, total: None, alternatives, flowing: None };
     live.progress(0, None);
-    let Media::Url { url, headers } = media;
+    let Media::Url { url, headers } = media else {
+        return Err(FetchError::Unavailable("was never asked for the file".to_owned()));
+    };
     let mut request = http.get(url);
     for (k, v) in headers {
         request = request.header(k, v);

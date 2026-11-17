@@ -40,9 +40,20 @@ async fn cenc(path: &Path, key_hex: &str) -> Result<()> {
     if key_hex.len() != 32 || !key_hex.chars().all(|c| c.is_ascii_hexdigit()) {
         anyhow::bail!("the key is not a 128-bit hex key");
     }
+    to_flac(path, &["-decryption_key", key_hex]).await
+}
+
+/// Copies FLAC out of an MP4 wrapper; fails for any other codec.
+pub async fn unwrap_mp4(path: &Path) -> Result<()> {
+    to_flac(path, &[]).await
+}
+
+async fn to_flac(path: &Path, input_options: &[&str]) -> Result<()> {
     let out = path.with_extension("flac");
     let output = tokio::process::Command::new("ffmpeg")
-        .args(["-nostdin", "-v", "error", "-y", "-decryption_key", key_hex, "-i"])
+        .args(["-nostdin", "-v", "error", "-y"])
+        .args(input_options)
+        .arg("-i")
         .arg(path)
         .args(["-map", "0:a:0", "-c:a", "copy", "-f", "flac"])
         .arg(&out)
@@ -51,7 +62,7 @@ async fn cenc(path: &Path, key_hex: &str) -> Result<()> {
         .context("running ffmpeg")?;
     if !output.status.success() {
         let _ = tokio::fs::remove_file(&out).await;
-        anyhow::bail!("could not decrypt: {}", String::from_utf8_lossy(&output.stderr).trim());
+        anyhow::bail!("could not unpack it: {}", String::from_utf8_lossy(&output.stderr).trim());
     }
     tokio::fs::rename(&out, path).await.context("replacing the encrypted file")
 }

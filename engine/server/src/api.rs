@@ -10,6 +10,8 @@
 //! - `POST /api/downloads`      `{track}`: get a catalog track
 //! - `POST /api/downloads/{id}/retry`
 //! - `DELETE /api/downloads/{id}`  stop it, or forget a finished one
+//! - `POST /api/challenges/{id}`  a solved check's pass (see `Challenge`)
+//! - `POST /api/devices`        a phone to notify
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -39,6 +41,7 @@ pub struct App {
     pub cache: Arc<Mutex<Option<(u64, Arc<Vec<u8>>)>>>,
     pub ingesting: Arc<tokio::sync::Mutex<()>>,
     pub downloads: crate::downloads::Service,
+    pub push: crate::push::Push,
 }
 
 pub fn router(app: App) -> Router {
@@ -52,6 +55,8 @@ pub fn router(app: App) -> Router {
         .route("/api/downloads", get(downloads).post(add_download))
         .route("/api/downloads/{id}/retry", post(retry_download))
         .route("/api/downloads/{id}", delete(remove_download))
+        .route("/api/challenges/{id}", post(solve_challenge))
+        .route("/api/devices", post(register_device))
         .merge(library)
         .with_state(app)
 }
@@ -171,4 +176,23 @@ async fn retry_download(State(app): State<App>, Path(id): Path<i64>) -> Result<R
 
 async fn remove_download(State(app): State<App>, Path(id): Path<i64>) -> Result<Response, Error> {
     Ok(if app.downloads.remove(id)? { StatusCode::NO_CONTENT } else { StatusCode::NOT_FOUND }.into_response())
+}
+
+async fn solve_challenge(
+    State(app): State<App>,
+    Path(id): Path<String>,
+    Json(solved): Json<deckhand_model::downloads::Solved>,
+) -> Result<Response, Error> {
+    Ok(match app.downloads.solve(&id, solved).await? {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(why) => (StatusCode::UNPROCESSABLE_ENTITY, why).into_response(),
+    })
+}
+
+async fn register_device(
+    State(app): State<App>,
+    Json(device): Json<deckhand_model::downloads::Device>,
+) -> Result<Response, Error> {
+    app.push.register(&device.token, &device.environment)?;
+    Ok(StatusCode::NO_CONTENT.into_response())
 }

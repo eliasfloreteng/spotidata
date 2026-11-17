@@ -115,6 +115,11 @@ impl Store {
              create table if not exists endpoints(
                  id text primary key,
                  health text not null
+             );
+             create table if not exists devices(
+                 token text primary key,
+                 environment text not null,
+                 updated_ms integer not null
              );",
         )?;
         // Added after the first release: the recording a file holds.

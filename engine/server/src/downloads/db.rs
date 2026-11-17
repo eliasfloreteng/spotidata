@@ -14,6 +14,7 @@ fn state_str(state: State) -> &'static str {
         State::Searching => "searching",
         State::Downloading => "downloading",
         State::Finishing => "finishing",
+        State::Waiting => "waiting",
         State::Done => "done",
         State::Failed => "failed",
         State::Cancelled => "cancelled",
@@ -25,6 +26,7 @@ fn parse_state(s: &str) -> State {
         "searching" => State::Searching,
         "downloading" => State::Downloading,
         "finishing" => State::Finishing,
+        "waiting" => State::Waiting,
         "done" => State::Done,
         "failed" => State::Failed,
         "cancelled" => State::Cancelled,
@@ -77,7 +79,7 @@ pub fn active_for(store: &Store, catalog_id: &str) -> Result<Option<Download>> {
         .query_row(
             &format!(
                 "select {COLUMNS} from downloads where catalog_id = ?1
-                 and state in ('queued', 'searching', 'downloading', 'finishing') order by id desc limit 1"
+                 and state in ('queued', 'searching', 'downloading', 'finishing', 'waiting') order by id desc limit 1"
             ),
             params![catalog_id],
             row,
@@ -91,7 +93,7 @@ pub fn list(store: &Store) -> Result<Vec<Download>> {
     let conn = store.conn();
     let mut stmt = conn.prepare(&format!(
         "select {COLUMNS} from downloads
-         where state in ('queued', 'searching', 'downloading', 'finishing') or updated_ms > ?1
+         where state in ('queued', 'searching', 'downloading', 'finishing', 'waiting') or updated_ms > ?1
          order by id desc limit 200"
     ))?;
     let rows = stmt.query_map(params![since], row)?.collect::<rusqlite::Result<Vec<_>>>()?;
@@ -144,12 +146,34 @@ pub fn failed(store: &Store, id: i64, error: &str) -> Result<()> {
     Ok(())
 }
 
+/// Waiting for a check to be solved; `why` says which.
+pub fn waiting(store: &Store, id: i64, why: &str) -> Result<()> {
+    store.conn().execute(
+        "update downloads set state = 'waiting', error = ?2, source = null, updated_ms = ?3 where id = ?1",
+        params![id, why, now_ms()],
+    )?;
+    Ok(())
+}
+
+/// Every waiting download back to the queue; returns how many.
+pub fn requeue_waiting(store: &Store) -> Result<usize> {
+    Ok(store.conn().execute(
+        "update downloads set state = 'queued', error = null, updated_ms = ?1 where state = 'waiting'",
+        params![now_ms()],
+    )?)
+}
+
+pub fn count_waiting(store: &Store) -> Result<usize> {
+    let n: i64 = store.conn().query_row("select count(*) from downloads where state = 'waiting'", [], |r| r.get(0))?;
+    Ok(usize::try_from(n).unwrap_or(0))
+}
+
 /// Back to the queue, as if new.
 pub fn requeue(store: &Store, id: i64) -> Result<bool> {
     let n = store.conn().execute(
         "update downloads set state = 'queued', source = null, quality = null, file = null, error = null,
              attempts = '[]', updated_ms = ?2
-         where id = ?1 and state in ('failed', 'cancelled')",
+         where id = ?1 and state in ('failed', 'cancelled', 'waiting')",
         params![id, now_ms()],
     )?;
     Ok(n > 0)

@@ -176,15 +176,19 @@ pub mod downloads {
         Downloading,
         /// Checking, tagging and moving the file into the folder.
         Finishing,
+        /// Only a source behind a check you solve in the app has it left;
+        /// it starts again once you have.
+        Waiting,
         Done,
         Failed,
         Cancelled,
     }
 
     impl State {
+        /// Still to finish: queued, running, or waiting for you.
         #[must_use]
         pub fn is_active(self) -> bool {
-            matches!(self, Self::Queued | Self::Searching | Self::Downloading | Self::Finishing)
+            matches!(self, Self::Queued | Self::Searching | Self::Downloading | Self::Finishing | Self::Waiting)
         }
     }
 
@@ -236,6 +240,8 @@ pub mod downloads {
         /// It sent something that is not the track (a preview, a lossy or
         /// wrong-length file).
         BadFile,
+        /// It has the track but wants a check solved in the app first.
+        NeedsYou,
     }
 
     /// How one mirror of one source has been doing.
@@ -269,6 +275,51 @@ pub mod downloads {
     pub struct Downloads {
         pub downloads: Vec<Download>,
         pub sources: Vec<SourceHealth>,
+        #[serde(default)]
+        pub challenges: Vec<Challenge>,
+    }
+
+    /// A source that hands out files only after a person solves a check
+    /// (Cloudflare Turnstile) on its site. The app shows the check; solving it
+    /// gives a pass the server then uses on its own for a while.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct Challenge {
+        /// `flacdownloader`.
+        pub id: String,
+        /// "flacdownloader.com".
+        pub site: String,
+        /// The page the check runs on: its origin is the site's.
+        pub page: String,
+        /// The Turnstile site key.
+        pub sitekey: String,
+        /// Downloads waiting until it is solved.
+        pub waiting: usize,
+        /// Whether the server holds a working pass.
+        pub solved: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub expires_ms: Option<i64>,
+        /// Downloads the pass has left, when the site says.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub remaining: Option<u32>,
+    }
+
+    /// What the app sends after solving a check: the site's pass, and the
+    /// browser it was solved in, which the server then poses as.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct Solved {
+        pub pass: String,
+        #[serde(default)]
+        pub remaining: Option<u32>,
+        pub user_agent: String,
+    }
+
+    /// A phone to notify (`POST /api/devices`).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct Device {
+        /// The APNs device token, hex.
+        pub token: String,
+        /// `development` (sandbox) or `production`.
+        pub environment: String,
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

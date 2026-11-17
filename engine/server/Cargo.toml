@@ -43,6 +43,7 @@ blowfish = "0.10.0"
 cbc = "0.2.1"
 md5 = { package = "md-5", version = "0.11.0" }
 base64 = "0.23.1"
+jsonwebtoken = { version = "12.0.0", features = ["aws_lc_rs"] }
 
 [dev-dependencies]
 tempfile = "3"

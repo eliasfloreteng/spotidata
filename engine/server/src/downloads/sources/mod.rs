@@ -3,6 +3,7 @@
 //! health registry decides which mirror and which source go first.
 
 mod antra;
+mod flacdownloader;
 mod hifi;
 mod monochrome;
 
@@ -18,6 +19,9 @@ use crate::store::Store;
 pub enum Media {
     /// One file.
     Url { url: String, headers: Vec<(String, String)> },
+    /// Not asked for yet: `Source::resolve` turns it into a URL when the
+    /// download actually starts, for sources where asking costs something.
+    Pending(serde_json::Value),
 }
 
 /// What the file needs after download before it is playable.
@@ -45,6 +49,8 @@ pub enum LookupError {
     Unavailable(String),
     /// The mirror asked to be left alone for this many seconds.
     RateLimited(u64),
+    /// It has the track, but the check with this gate id needs solving.
+    NeedsYou(String),
 }
 
 impl std::fmt::Display for LookupError {
@@ -52,6 +58,7 @@ impl std::fmt::Display for LookupError {
         match self {
             Self::NotFound(s) | Self::Unavailable(s) => f.write_str(s),
             Self::RateLimited(_) => f.write_str("rate limited"),
+            Self::NeedsYou(_) => f.write_str("waiting for you to solve its check"),
         }
     }
 }
@@ -91,21 +98,50 @@ pub trait Source: Send + Sync {
         mirror: &'a str,
         want: &'a Wanted,
     ) -> BoxFuture<'a, Result<Found, LookupError>>;
+    /// Turns a found track into a link, right before downloading it.
+    fn resolve<'a>(
+        &'a self,
+        _http: &'a reqwest::Client,
+        found: Found,
+        _want: &'a Wanted,
+    ) -> BoxFuture<'a, Result<Found, LookupError>> {
+        Box::pin(async move { Ok(found) })
+    }
     /// Rediscovers the mirrors, for sources whose operators publish them.
     fn refresh<'a>(&'a self, _http: &'a reqwest::Client) -> BoxFuture<'a, ()> {
         Box::pin(async {})
     }
 }
 
-/// Every source this server can use. Amazon needs ffmpeg to decrypt.
-pub fn all(store: &Store, ffmpeg: bool) -> Vec<Arc<dyn Source>> {
+/// A check a person solves in the app, which some sources sit behind.
+pub trait Gate: Send + Sync {
+    fn id(&self) -> &'static str;
+    fn describe(&self, waiting: usize) -> deckhand_model::downloads::Challenge;
+    /// Takes the pass the app got by solving the check, and confirms the
+    /// server can use it; the error is said to the person.
+    fn solve<'a>(
+        &'a self,
+        http: &'a reqwest::Client,
+        pass: String,
+        remaining: Option<u32>,
+        user_agent: String,
+    ) -> BoxFuture<'a, Result<(), String>>;
+}
+
+/// Every source this server can use, and the checks some sit behind.
+/// Amazon needs ffmpeg to decrypt.
+pub fn all(store: &Store, ffmpeg: bool) -> (Vec<Arc<dyn Source>>, Vec<Arc<dyn Gate>>) {
     let antra = antra::Manifest::new(store.clone());
+    let fd = flacdownloader::Session::new(store.clone());
     let mut sources: Vec<Arc<dyn Source>> = vec![
         Arc::new(antra::Antra::new(antra::Service::Tidal, antra.clone())),
         Arc::new(monochrome::Monochrome),
         Arc::new(antra::Antra::new(antra::Service::Deezer, antra.clone())),
         Arc::new(antra::Antra::new(antra::Service::Qobuz, antra.clone())),
         Arc::new(hifi::Hifi::default()),
+        Arc::new(flacdownloader::FlacDownloader::new(flacdownloader::Route::Tidal, fd.clone())),
+        Arc::new(flacdownloader::FlacDownloader::new(flacdownloader::Route::Deezer, fd.clone())),
+        Arc::new(flacdownloader::FlacDownloader::new(flacdownloader::Route::Qobuz, fd.clone())),
     ];
     if ffmpeg {
         sources.push(Arc::new(antra::Antra::new(antra::Service::Amazon, antra)));
@@ -114,7 +150,7 @@ pub fn all(store: &Store, ffmpeg: bool) -> Vec<Arc<dyn Source>> {
     let off = std::env::var("DECKHAND_SOURCES_OFF").unwrap_or_default();
     let off: Vec<&str> = off.split(',').map(str::trim).collect();
     sources.retain(|s| !off.contains(&s.name()));
-    sources
+    (sources, vec![fd])
 }
 
 /// The endpoint id of a mirror: `tidal:example.org`.

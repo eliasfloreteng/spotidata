@@ -27,7 +27,8 @@ use tracing::{info, warn};
 
 use self::fetch::FetchError;
 use self::health::{Event, Registry};
-use self::sources::{LookupError, Source};
+use self::sources::{Gate, LookupError, Source};
+use crate::push::Push;
 use crate::store::Store;
 use crate::tags;
 
@@ -41,6 +42,8 @@ const LOOKUP_TIMEOUT: Duration = Duration::from_secs(20);
 /// How often an idle server checks on mirrors nothing has used lately.
 const PROBE_EVERY: Duration = Duration::from_secs(10 * 60);
 const PROBE_STALE_MS: i64 = 30 * 60 * 1000;
+/// A check is asked for at most this often.
+const NAG_EVERY: Duration = Duration::from_secs(30 * 60);
 /// How often the published mirror lists are re-read.
 const REDISCOVER_EVERY: Duration = Duration::from_secs(60 * 60);
 
@@ -114,13 +117,31 @@ struct Inner {
     staging: PathBuf,
     http: reqwest::Client,
     sources: Vec<Arc<dyn Source>>,
+    gates: Vec<Arc<dyn Gate>>,
     health: Registry,
+    push: Push,
+    ffmpeg: bool,
     wake: Notify,
     running: Mutex<HashMap<i64, (CancellationToken, Live)>>,
+    /// When each gate last sent a notification.
+    nagged: Mutex<HashMap<String, Instant>>,
 }
 
+/// Every source left that has the track sits behind a check only a person
+/// can solve; carries the gates' ids.
+#[derive(Debug)]
+struct NeedsYou(Vec<String>);
+
+impl std::fmt::Display for NeedsYou {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "waiting for the checks of {}", self.0.join(", "))
+    }
+}
+
+impl std::error::Error for NeedsYou {}
+
 impl Service {
-    pub fn new(store: Store, music: PathBuf, data: &Path) -> Result<Self> {
+    pub fn new(store: Store, music: PathBuf, data: &Path, push: Push) -> Result<Self> {
         let staging = data.join("downloads");
         // Leftovers of downloads a restart cut short.
         let _ = std::fs::remove_dir_all(&staging);
@@ -134,16 +155,21 @@ impl Service {
         if !ffmpeg {
             warn!("ffmpeg is missing; the Amazon source is off");
         }
+        let (sources, gates) = sources::all(&store, ffmpeg);
         Ok(Self {
             inner: Arc::new(Inner {
-                sources: sources::all(&store, ffmpeg),
+                sources,
+                gates,
                 store,
                 music,
                 staging,
                 http,
                 health,
+                push,
+                ffmpeg,
                 wake: Notify::new(),
                 running: Mutex::default(),
+                nagged: Mutex::default(),
             }),
         })
     }
@@ -205,7 +231,62 @@ impl Service {
             }
         }
         drop(running);
-        Ok(Downloads { downloads, sources: self.inner.health.report(self.endpoints()) })
+        let waiting = db::count_waiting(&self.inner.store)?;
+        Ok(Downloads {
+            downloads,
+            sources: self.inner.health.report(self.endpoints()),
+            challenges: self.inner.gates.iter().map(|g| g.describe(waiting)).collect(),
+        })
+    }
+
+    /// Takes the pass the app got by solving a check, and starts the
+    /// downloads that were waiting for it.
+    pub async fn solve(&self, gate: &str, solved: deckhand_model::downloads::Solved) -> Result<Result<(), String>> {
+        let Some(gate) = self.inner.gates.iter().find(|g| g.id() == gate).cloned() else {
+            return Ok(Err("No such check.".to_owned()));
+        };
+        let result = gate.solve(&self.inner.http, solved.pass, solved.remaining, solved.user_agent).await;
+        if result.is_ok() {
+            info!(gate = gate.id(), "check solved");
+            self.nagged().remove(gate.id());
+            let n = db::requeue_waiting(&self.inner.store)?;
+            if n > 0 {
+                info!(n, "downloads waiting for the check go again");
+            }
+            self.inner.wake.notify_one();
+        }
+        Ok(result)
+    }
+
+    /// "flacdownloader.com" for a gate id.
+    fn site(&self, gate: &str) -> String {
+        self.inner.gates.iter().find(|g| g.id() == gate).map_or_else(|| gate.to_owned(), |g| g.describe(0).site)
+    }
+
+    fn nagged(&self) -> std::sync::MutexGuard<'_, HashMap<String, Instant>> {
+        self.inner.nagged.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Asks the phone to solve a gate's check, at most every half hour.
+    async fn nag(&self, gates: &[String], title: &str) {
+        for gate in gates {
+            {
+                let mut nagged = self.nagged();
+                if nagged.get(gate).is_some_and(|t| t.elapsed() < NAG_EVERY) {
+                    continue;
+                }
+                nagged.insert(gate.clone(), Instant::now());
+            }
+            let site = self.site(gate);
+            self.inner
+                .push
+                .alert(
+                    "A download needs you",
+                    &format!("{title} is only left on {site}, which wants a quick check first. Tap to solve it."),
+                    serde_json::json!({ "challenge": gate }),
+                )
+                .await;
+        }
     }
 
     /// Queues a track, unless it is already queued.
@@ -293,10 +374,20 @@ impl Service {
                 info!(id, %file, %source, "downloaded");
                 db::done(store, id, &file, &source, quality.as_deref())
             }
-            Err(e) => {
-                warn!(id, title = %download.track.title, error = %e, "download failed");
-                db::failed(store, id, &e.to_string())
-            }
+            Err(e) => match e.downcast_ref::<NeedsYou>() {
+                Some(needs) => {
+                    info!(id, title = %download.track.title, "download waits for a check");
+                    let sites: Vec<String> = needs.0.iter().map(|g| self.site(g)).collect();
+                    let saved =
+                        db::waiting(store, id, &format!("Waiting for you to solve {}'s check.", sites.join(" and ")));
+                    self.nag(&needs.0, &download.track.title).await;
+                    saved
+                }
+                None => {
+                    warn!(id, title = %download.track.title, error = %e, "download failed");
+                    db::failed(store, id, &e.to_string())
+                }
+            },
         };
         if let Err(e) = saved {
             warn!(id, error = %e, "could not record a download's result");
@@ -399,6 +490,7 @@ impl Service {
 
         let last = plan.len() - 1;
         let mut not_found = 0;
+        let mut blocked: Vec<String> = Vec::new();
         for (i, (source, mirrors)) in plan.iter().enumerate() {
             for (j, mirror) in mirrors.iter().enumerate() {
                 if cancel.is_cancelled() {
@@ -410,16 +502,41 @@ impl Service {
                     (0, Some(handle)) => handle.await.unwrap_or((Err(LookupError::Unavailable("crashed".into())), 0.0)),
                     _ => lookup(&**source, &self.inner.http, mirror, want).await,
                 };
+                // Found: now ask for the file itself, which some sources
+                // charge for (a token, a solved check).
                 let found = match found {
                     Ok(found) => {
                         health.record(&endpoint, Event::Answered { latency_ms });
-                        found
+                        match tokio::time::timeout(LOOKUP_TIMEOUT, source.resolve(&self.inner.http, found, want)).await
+                        {
+                            Ok(resolved) => resolved,
+                            Err(_) => Err(LookupError::Unavailable("took too long to hand out the file".to_owned())),
+                        }
                     }
-                    Err(LookupError::NotFound(why)) => {
+                    Err(e @ (LookupError::NotFound(_) | LookupError::NeedsYou(_))) => {
                         health.record(&endpoint, Event::Answered { latency_ms });
+                        Err(e)
+                    }
+                    Err(e) => Err(e),
+                };
+                let found = match found {
+                    Ok(found) => found,
+                    Err(LookupError::NotFound(why)) => {
                         attempts.push(attempt(&endpoint, Outcome::NotFound, why, started));
                         not_found += 1;
                         // Every mirror of a service has the same catalogue.
+                        break;
+                    }
+                    Err(LookupError::NeedsYou(gate)) => {
+                        attempts.push(attempt(
+                            &endpoint,
+                            Outcome::NeedsYou,
+                            "has it, once you solve its check".to_owned(),
+                            started,
+                        ));
+                        if !blocked.contains(&gate) {
+                            blocked.push(gate);
+                        }
                         break;
                     }
                     Err(LookupError::Unavailable(why)) => {
@@ -438,11 +555,18 @@ impl Service {
                 let alternatives = i < last || j + 1 < mirrors.len();
                 match fetch::fetch(&self.inner.http, &found.media, staged, live, cancel, alternatives).await {
                     Ok(fetched) => {
-                        let checked = match &found.decrypt {
+                        let mut checked = match &found.decrypt {
                             Some(cipher) => decrypt::decrypt(staged, cipher).await,
                             None => Ok(()),
+                        };
+                        // Some services wrap FLAC in MP4; unwrap it.
+                        if checked.is_ok()
+                            && self.inner.ffmpeg
+                            && tags::probe(staged).is_ok_and(|p| p.file_type == lofty::file::FileType::Mp4)
+                        {
+                            checked = decrypt::unwrap_mp4(staged).await;
                         }
-                        .and_then(|()| check(staged, want));
+                        let checked = checked.and_then(|()| check(staged, want));
                         match checked {
                             Ok(probe) => {
                                 health
@@ -486,6 +610,9 @@ impl Service {
         }
         for handle in early.into_values() {
             handle.abort();
+        }
+        if !blocked.is_empty() {
+            return Err(NeedsYou(blocked).into());
         }
         if not_found == plan.len() {
             anyhow::bail!("No source has this track.");
@@ -532,7 +659,7 @@ impl Service {
                         checks.push(async move {
                             let (result, latency_ms) = lookup(&*source, &http, &mirror, &want).await;
                             match result {
-                                Ok(_) | Err(LookupError::NotFound(_)) => {
+                                Ok(_) | Err(LookupError::NotFound(_) | LookupError::NeedsYou(_)) => {
                                     health.record(&endpoint, Event::Answered { latency_ms });
                                 }
                                 Err(LookupError::Unavailable(error)) => {
