@@ -343,6 +343,14 @@ impl Store {
     }
 
     /// Every file that holds a known recording, by ISRC.
+    /// The file whose content has this hash, if the folder holds one.
+    pub fn by_hash(&self, hash: &str) -> Result<Option<String>> {
+        Ok(self
+            .lock()
+            .query_row("select name from files where hash = ?1 limit 1", params![hash], |r| r.get(0))
+            .optional()?)
+    }
+
     pub fn isrcs(&self) -> Result<std::collections::HashMap<String, String>> {
         let conn = self.lock();
         let mut stmt = conn.prepare("select isrc, name from files where isrc is not null and isrc != ''")?;

@@ -26,6 +26,21 @@ pub fn isrc(path: &Path) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+/// What a file's own tags call it; empty where it says nothing.
+#[derive(Debug, Clone, Default)]
+pub struct Named {
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+}
+
+pub fn named(path: &Path) -> Result<Named> {
+    let file = read(path)?;
+    let Some(tag) = file.primary_tag().or_else(|| file.first_tag()) else { return Ok(Named::default()) };
+    let text = |s: Option<std::borrow::Cow<'_, str>>| s.map(|s| s.trim().to_owned()).unwrap_or_default();
+    Ok(Named { title: text(tag.title()), artist: text(tag.artist()), album: text(tag.album()) })
+}
+
 /// What a downloaded file turned out to be.
 #[derive(Debug, Clone, Copy)]
 pub struct Probe {

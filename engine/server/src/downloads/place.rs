@@ -24,7 +24,8 @@ pub fn file_name(title: &str, artists: &[String], ext: &str) -> String {
     };
     let mut title = clean(title);
     let artist = clean(&artists.join(", "));
-    let suffix = format!(" - {artist}.{ext}");
+    // A file of your own may name no artist; it is then just its title.
+    let suffix = if artist.is_empty() { format!(".{ext}") } else { format!(" - {artist}.{ext}") };
     // Keep the artist; shorten the title if the name would be too long.
     let budget = 240usize.saturating_sub(suffix.len()).max(40);
     if title.len() > budget {
@@ -78,6 +79,7 @@ mod tests {
         );
         assert_eq!(file_name("AC/DC: Live?", &["A".into()], "flac"), "AC-DC- Live_ - A.flac");
         assert_eq!(file_name("...Ready", &["A".into()], "flac"), "Ready - A.flac");
+        assert_eq!(file_name("Artist - Title", &[], "mp3"), "Artist - Title.mp3");
         let long = "x".repeat(400);
         assert!(file_name(&long, &["A".into()], "flac").len() <= 255);
     }

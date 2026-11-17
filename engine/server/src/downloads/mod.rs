@@ -11,6 +11,7 @@ mod db;
 mod decrypt;
 mod fetch;
 pub mod health;
+mod import;
 mod place;
 mod sources;
 
@@ -125,6 +126,8 @@ struct Inner {
     running: Mutex<HashMap<i64, (CancellationToken, Live)>>,
     /// When each gate last sent a notification.
     nagged: Mutex<HashMap<String, Instant>>,
+    /// Held while a file from the phone is checked and filed.
+    importing: Mutex<()>,
 }
 
 /// Every source left that has the track sits behind a check only a person
@@ -170,6 +173,7 @@ impl Service {
                 wake: Notify::new(),
                 running: Mutex::default(),
                 nagged: Mutex::default(),
+                importing: Mutex::default(),
             }),
         })
     }

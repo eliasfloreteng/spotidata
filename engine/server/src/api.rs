@@ -10,6 +10,7 @@
 //! - `POST /api/downloads`      `{track}`: get a catalog track
 //! - `POST /api/downloads/{id}/retry`
 //! - `DELETE /api/downloads/{id}`  stop it, or forget a finished one
+//! - `POST /api/imports?name=`  an audio file from the phone, as the body
 //! - `POST /api/challenges/{id}`  a solved check's pass (see `Challenge`)
 //! - `POST /api/devices`        a phone to notify
 //! - `GET  /api/spotify`        the Spotify playlists, which are kept, and the checks
@@ -63,6 +64,7 @@ pub fn router(app: App) -> Router {
         .route("/api/downloads", get(downloads).post(add_download))
         .route("/api/downloads/{id}/retry", post(retry_download))
         .route("/api/downloads/{id}", delete(remove_download))
+        .route("/api/imports", post(import))
         .route("/api/challenges/{id}", post(solve_challenge))
         .route("/api/devices", post(register_device))
         .route("/api/spotify", get(spotify).put(set_spotify))
@@ -189,6 +191,40 @@ async fn retry_download(State(app): State<App>, Path(id): Path<i64>) -> Result<R
 
 async fn remove_download(State(app): State<App>, Path(id): Path<i64>) -> Result<Response, Error> {
     Ok(if app.downloads.remove(id)? { StatusCode::NO_CONTENT } else { StatusCode::NOT_FOUND }.into_response())
+}
+
+/// Hour-long WAV mixes fit; anything larger is not a track.
+const MAX_IMPORT: u64 = 2 << 30;
+
+#[derive(serde::Deserialize)]
+struct ImportQuery {
+    /// The file's name on the phone.
+    name: String,
+}
+
+async fn import(State(app): State<App>, Query(query): Query<ImportQuery>, req: Request) -> Result<Response, Error> {
+    let staged = app.downloads.staging_file()?;
+    let mut file = tokio::fs::File::from_std(staged.as_file().try_clone()?);
+    let mut stream = req.into_body().into_data_stream();
+    let mut size = 0u64;
+    while let Some(chunk) = stream.try_next().await? {
+        size += chunk.len() as u64;
+        if size > MAX_IMPORT {
+            return Ok((StatusCode::PAYLOAD_TOO_LARGE, format!("{} is too large to be a track.", query.name))
+                .into_response());
+        }
+        file.write_all(&chunk).await?;
+    }
+    file.flush().await?;
+    drop(file);
+    let downloads = app.downloads.clone();
+    let result = tokio::task::spawn_blocking(move || downloads.import(staged.path(), &query.name)).await??;
+    Ok(match result {
+        Ok(imported) => {
+            (if imported.added { StatusCode::CREATED } else { StatusCode::OK }, Json(imported)).into_response()
+        }
+        Err(why) => (StatusCode::UNPROCESSABLE_ENTITY, why).into_response(),
+    })
 }
 
 async fn solve_challenge(

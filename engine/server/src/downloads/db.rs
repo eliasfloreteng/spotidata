@@ -68,6 +68,20 @@ pub fn insert(store: &Store, track: &CatalogTrack, playlist: Option<&str>) -> Re
     Ok(conn.query_row(&format!("select {COLUMNS} from downloads where id = ?1"), params![id], row)?)
 }
 
+/// A file sent from the phone, recorded as done the moment it is filed, so
+/// it shows among the downloads and goes to the stick like one.
+pub fn insert_done(store: &Store, track: &CatalogTrack, file: &str, source: &str, quality: &str) -> Result<Download> {
+    let now = now_ms();
+    let conn = store.conn();
+    conn.execute(
+        "insert into downloads(catalog_id, track, state, file, source, quality, created_ms, updated_ms)
+         values(?1, ?2, 'done', ?3, ?4, ?5, ?6, ?6)",
+        params![track.id, serde_json::to_string(track)?, file, source, quality, now],
+    )?;
+    let id = conn.last_insert_rowid();
+    Ok(conn.query_row(&format!("select {COLUMNS} from downloads where id = ?1"), params![id], row)?)
+}
+
 pub fn get(store: &Store, id: i64) -> Result<Option<Download>> {
     Ok(store
         .conn()
@@ -88,6 +102,16 @@ pub fn active_for(store: &Store, catalog_id: &str) -> Result<Option<Download>> {
             row,
         )
         .optional()?)
+}
+
+/// The files finished downloads of a catalog track went to, newest first.
+pub fn files_for(store: &Store, catalog_id: &str) -> Result<Vec<String>> {
+    let conn = store.conn();
+    let mut stmt = conn.prepare(
+        "select file from downloads where catalog_id = ?1 and state = 'done' and file is not null order by id desc",
+    )?;
+    let files = stmt.query_map(params![catalog_id], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
+    Ok(files)
 }
 
 /// Newest first; finished ones only from the last two weeks.

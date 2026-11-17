@@ -329,6 +329,19 @@ pub mod downloads {
     pub struct NewDownload {
         pub track: CatalogTrack,
     }
+
+    /// What became of a file sent from the phone (`POST /api/imports`).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct Imported {
+        /// The file in the music folder that holds it.
+        pub file: String,
+        /// False when the folder had the recording already (the same file,
+        /// or the same ISRC) and nothing was added.
+        pub added: bool,
+        /// Its entry among the downloads, when it was added.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub download: Option<Download>,
+    }
 }
 
 /// Spotify playlists kept in the music folder (`/api/spotify`): the server
