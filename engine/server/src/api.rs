@@ -49,6 +49,9 @@ pub struct App {
     pub blobs: Blobs,
     /// The last manifest, with the store version it was built at.
     pub cache: Arc<Mutex<Option<(u64, Arc<Vec<u8>>)>>>,
+    /// When this process started: with the store version, the manifest's
+    /// ETag, since the version counts from zero again on a restart.
+    pub started_ms: i64,
     pub ingesting: Arc<tokio::sync::Mutex<()>>,
     pub downloads: crate::downloads::Service,
     pub spotify: crate::spotify::Spotify,
@@ -95,8 +98,14 @@ impl IntoResponse for Error {
     }
 }
 
-async fn library(State(app): State<App>) -> Result<Response, Error> {
+/// The manifest. With `If-None-Match` naming the one the app has, `304`:
+/// an app that keeps the window open asks often, and mostly nothing changed.
+async fn library(State(app): State<App>, headers: axum::http::HeaderMap) -> Result<Response, Error> {
     let version = app.store.version();
+    let etag = format!("\"{}-{version}\"", app.started_ms);
+    if headers.get(header::IF_NONE_MATCH).and_then(|v| v.to_str().ok()) == Some(etag.as_str()) {
+        return Ok((StatusCode::NOT_MODIFIED, [(header::ETAG, etag)]).into_response());
+    }
     let cached = app.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
     let body = match cached {
         Some((v, body)) if v == version => body,
@@ -108,7 +117,8 @@ async fn library(State(app): State<App>) -> Result<Response, Error> {
             body
         }
     };
-    Ok(([(header::CONTENT_TYPE, "application/json")], Body::from(body.as_ref().clone())).into_response())
+    let headers = [(header::CONTENT_TYPE, "application/json".to_owned()), (header::ETAG, etag), (header::CACHE_CONTROL, "no-cache".to_owned())];
+    Ok((headers, Body::from(body.as_ref().clone())).into_response())
 }
 
 async fn music(State(app): State<App>, Path(name): Path<String>, req: Request) -> Result<Response, Error> {

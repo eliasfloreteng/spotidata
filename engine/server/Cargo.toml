@@ -40,6 +40,8 @@ rusqlite = { version = "0.40", features = ["bundled-sqlcipher-vendored-openssl"]
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tar = "0.4"
+# rekordbox stores a path in whichever Unicode form macOS handed it.
+unicode-normalization = "0.1"
 tempfile = "3"
 lofty = "0.25.5"
 # Decodes FLAC for the AIFF conversion; rbl-audio decodes with it too.

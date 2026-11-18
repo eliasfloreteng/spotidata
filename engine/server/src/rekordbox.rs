@@ -103,7 +103,9 @@ pub fn ingest(archive: &Path, work: &Path, store: &Store, blobs: &Blobs) -> Resu
         })?;
         for row in rows {
             let (id, path, rating, color) = row?;
-            let name = path.rsplit(['/', '\\']).next().unwrap_or_default().to_owned();
+            // Composed, as `Store::rekordbox_facts` looks it up: rekordbox keeps
+            // a path in whichever form macOS gave it, decomposed or not.
+            let name = crate::store::name_key(path.rsplit(['/', '\\']).next().unwrap_or_default());
             if !id.is_empty() && !name.is_empty() {
                 by_id.insert(id, (name, u8::try_from(rating).unwrap_or(0), u8::try_from(color).unwrap_or(0)));
             }

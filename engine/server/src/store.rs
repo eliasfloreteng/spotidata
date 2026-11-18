@@ -296,7 +296,7 @@ impl Store {
     pub fn rekordbox_facts(&self, name: &str) -> Result<Option<String>> {
         Ok(self
             .lock()
-            .query_row("select facts from rekordbox where name = ?1", params![name], |r| r.get(0))
+            .query_row("select facts from rekordbox where name = ?1", params![name_key(name)], |r| r.get(0))
             .optional()?)
     }
 
@@ -310,18 +310,34 @@ impl Store {
             let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
             rows.collect::<rusqlite::Result<_>>()?
         };
+        // The folder's files by the key rekordbox's names are kept under.
+        let files: Vec<(String, Option<String>)> = {
+            let mut stmt = tx.prepare("select name, origin from files where state != 'other'")?;
+            let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            rows.collect::<rusqlite::Result<_>>()?
+        };
+        let mut by_key: std::collections::HashMap<String, Vec<&str>> = std::collections::HashMap::new();
+        for (name, _) in &files {
+            by_key.entry(name_key(name)).or_default().push(name);
+        }
         tx.execute("delete from rekordbox", [])?;
+        let mut vouched = std::collections::HashSet::new();
         for (name, json) in facts {
-            tx.execute("insert into rekordbox(name, facts) values(?1, ?2)", params![name, json])?;
-            if old.get(name) != Some(json) {
-                tx.execute("update files set state = 'pending' where name = ?1 and state != 'other'", params![name])?;
+            let name = name_key(name);
+            tx.execute("insert or replace into rekordbox(name, facts) values(?1, ?2)", params![name, json])?;
+            if old.get(&name) != Some(json) {
+                for file in by_key.get(&name).into_iter().flatten() {
+                    tx.execute("update files set state = 'pending' where name = ?1", params![file])?;
+                }
             }
+            vouched.insert(name);
         }
         // Tracks rekordbox no longer vouches for go back to rbxport.
-        tx.execute(
-            "update files set state = 'pending' where origin = 'rekordbox' and name not in (select name from rekordbox)",
-            [],
-        )?;
+        for (name, origin) in &files {
+            if origin.as_deref() == Some("rekordbox") && !vouched.contains(&name_key(name)) {
+                tx.execute("update files set state = 'pending' where name = ?1", params![name])?;
+            }
+        }
         tx.commit()?;
         drop(conn);
         self.changed();
@@ -428,4 +444,31 @@ fn to_u64(n: i64) -> u64 {
 
 pub fn now_ms() -> i64 {
     chrono::Utc::now().timestamp_millis()
+}
+
+/// A file name as rekordbox's facts are kept and looked up by: composed
+/// Unicode, so "å" matches whether macOS decomposed it or not.
+pub fn name_key(name: &str) -> String {
+    use unicode_normalization::UnicodeNormalization;
+    name.nfc().collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rekordbox_facts_match_whatever_unicode_form() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(&dir.path().join("db.sqlite")).unwrap();
+        // The folder's file is composed; rekordbox stored the path decomposed.
+        let composed = "17 \u{e5}r - Veronica Maggio.flac";
+        let decomposed = "17 a\u{30a}r - Veronica Maggio.flac";
+        store.upsert(composed, 1, 1, "h", State::Ready, None).unwrap();
+        store.replace_rekordbox(&[(decomposed.to_owned(), "{}".to_owned())]).unwrap();
+        assert_eq!(store.rekordbox_facts(composed).unwrap().as_deref(), Some("{}"));
+        assert_eq!(store.rekordbox_facts(decomposed).unwrap().as_deref(), Some("{}"));
+        // New facts queue the file for analysis with them.
+        assert_eq!(store.get(composed).unwrap().unwrap().state, State::Pending);
+    }
 }

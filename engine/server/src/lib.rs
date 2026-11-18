@@ -107,6 +107,7 @@ impl Server {
                 store,
                 blobs,
                 cache: Arc::default(),
+                started_ms: crate::store::now_ms(),
                 ingesting: Arc::default(),
                 downloads,
                 spotify,
