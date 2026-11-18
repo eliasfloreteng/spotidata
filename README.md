@@ -323,7 +323,10 @@ copy of the playlists you pick on a DJ stick. They read Spotify live, not the
 mirror, because the mirror is twelve hours old at worst and a track added in
 the afternoon should be on the stick that evening. The list carries each
 playlist's `snapshot_id`; Deckhand asks for a playlist's tracks (with ISRCs)
-only when that changed, so a check costs one request per 50 playlists. Both go
+only when that changed, so a check costs one request per 50 playlists.
+`/api/playlists/{id}/info` describes any playlist Spotify shows the app, by
+id, as the list would (one request): Deckhand checks a playlist you added by
+its link, rather than from your library, this way. Both go
 through the same rate limiter as the sync, and answer 503 with `Retry-After`
 while Spotify wants a pause.
 

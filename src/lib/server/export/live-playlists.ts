@@ -6,7 +6,13 @@ import {
 	SpotifyNotFound,
 	SpotifyRateLimited
 } from '../spotify/errors.ts';
-import { isFullTrack, type Paging, type PlaylistTrackItem, type SpotifyImage } from '../spotify/types.ts';
+import {
+	isFullTrack,
+	type Paging,
+	type PlaylistTrackItem,
+	type SimplifiedPlaylist,
+	type SpotifyImage
+} from '../spotify/types.ts';
 
 /**
  * The account's playlists as they are on Spotify right now, for Deckhand (the
@@ -86,6 +92,29 @@ export async function livePlaylists(): Promise<LivePlaylist[]> {
 		if (!page.next || page.items.length === 0) break;
 	}
 	return out;
+}
+
+/**
+ * One playlist as the list describes it, by id: any playlist Spotify shows
+ * this app, not only the account's. One request; Deckhand checks a playlist
+ * added by its link this way.
+ */
+export async function livePlaylist(id: string): Promise<LivePlaylist> {
+	const [owner, p] = await Promise.all([
+		myId(),
+		spotifyGet<SimplifiedPlaylist>(`/playlists/${id}`, {
+			query: { fields: 'id,name,snapshot_id,owner(id,display_name),images,tracks(total)' }
+		})
+	]);
+	return {
+		id: p.id,
+		name: p.name,
+		owner: p.owner?.display_name ?? p.owner?.id ?? '',
+		owned: p.owner?.id === owner,
+		snapshot_id: p.snapshot_id,
+		tracks: p.tracks?.total ?? 0,
+		image: pick(p.images)
+	};
 }
 
 const ITEM_FIELDS =
