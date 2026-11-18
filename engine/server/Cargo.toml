@@ -42,6 +42,8 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tar = "0.4"
 tempfile = "3"
 lofty = "0.25.5"
+# Decodes FLAC for the AIFF conversion; rbl-audio decodes with it too.
+symphonia = { version = "0.5", default-features = false, features = ["flac"] }
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "stream", "json", "gzip", "brotli", "http2", "charset", "query"] }
 blowfish = "0.10.0"
 cbc = "0.2.1"

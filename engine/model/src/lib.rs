@@ -280,6 +280,18 @@ pub mod downloads {
         pub sources: Vec<SourceHealth>,
         #[serde(default)]
         pub challenges: Vec<Challenge>,
+        #[serde(default)]
+        pub settings: Settings,
+    }
+
+    /// How downloads are filed (`PUT /api/downloads/settings`).
+    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct Settings {
+        /// Convert FLAC to AIFF before filing it, downloads and imported
+        /// files alike, for players that don't play FLAC. What is in the
+        /// folder already stays as it is.
+        #[serde(default)]
+        pub aiff: bool,
     }
 
     /// A source that hands out files only after a person solves a check

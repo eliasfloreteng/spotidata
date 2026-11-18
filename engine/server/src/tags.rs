@@ -88,6 +88,20 @@ pub fn probe(path: &Path) -> Result<Probe> {
     })
 }
 
+/// Gives `to` the tags (and pictures) of `from`, in `to`'s own kind of tag:
+/// a FLAC's Vorbis comments become an AIFF's ID3.
+pub fn copy(from: &Path, to: &Path) -> Result<()> {
+    let source = read(from).context("reading the original's tags")?;
+    let Some(tag) = source.primary_tag().or_else(|| source.first_tag()) else { return Ok(()) };
+    let mut file = read(to)?;
+    let mut tag = tag.clone();
+    tag.re_map(file.primary_tag_type());
+    file.clear();
+    file.insert_tag(tag);
+    file.save_to_path(to, WriteOptions::default()).context("writing tags")?;
+    Ok(())
+}
+
 /// The tags a downloaded track is filed under.
 #[derive(Debug, Clone, Default)]
 pub struct Meta {

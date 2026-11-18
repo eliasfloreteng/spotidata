@@ -53,8 +53,14 @@ impl Service {
         let stem = original.rsplit_once('.').map_or(original, |(stem, _)| stem);
         let title = if named.title.is_empty() { stem.trim().to_owned() } else { named.title };
         let artists: Vec<String> = Some(named.artist).filter(|a| !a.is_empty()).into_iter().collect();
+        let (filed, probe) = self.filed_as(staged, probe)?;
+        let ext = if filed == staged { ext } else { "aiff" };
         let name = place::file_name(&title, &artists, ext);
-        let file = place::place(staged, &self.inner.music, &name)?;
+        let placed = place::place(&filed, &self.inner.music, &name);
+        if filed != staged {
+            let _ = std::fs::remove_file(&filed);
+        }
+        let file = placed?;
         info!(%original, %file, "imported");
 
         let track = CatalogTrack {

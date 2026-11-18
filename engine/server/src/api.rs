@@ -6,7 +6,8 @@
 //! - `GET  /api/blobs/{hash}`   analysis and artwork, immutable
 //! - `PUT  /api/rekordbox`      a rekordbox snapshot (tar), see `rekordbox.rs`
 //! - `GET  /api/catalog/search?q=`  tracks to get, marked when already here
-//! - `GET  /api/downloads`      the queue, recent results and source health
+//! - `GET  /api/downloads`      the queue, recent results, source health and settings
+//! - `PUT  /api/downloads/settings`  `{aiff}`: file FLAC as AIFF from now on
 //! - `POST /api/downloads`      `{track}`: get a catalog track
 //! - `POST /api/downloads/{id}/retry`
 //! - `DELETE /api/downloads/{id}`  stop it, or forget a finished one
@@ -63,6 +64,7 @@ pub fn router(app: App) -> Router {
         .route("/api/rekordbox", put(rekordbox))
         .route("/api/catalog/search", get(search))
         .route("/api/downloads", get(downloads).post(add_download))
+        .route("/api/downloads/settings", put(set_download_settings))
         .route("/api/downloads/{id}/retry", post(retry_download))
         .route("/api/downloads/{id}", delete(remove_download))
         .route("/api/imports", post(import))
@@ -182,6 +184,13 @@ async fn add_download(
     Json(body): Json<deckhand_model::downloads::NewDownload>,
 ) -> Result<Response, Error> {
     Ok((StatusCode::CREATED, Json(app.downloads.add(&body.track)?)).into_response())
+}
+
+async fn set_download_settings(
+    State(app): State<App>,
+    Json(settings): Json<deckhand_model::downloads::Settings>,
+) -> Result<Response, Error> {
+    Ok(Json(app.downloads.set_settings(settings)?).into_response())
 }
 
 async fn retry_download(State(app): State<App>, Path(id): Path<i64>) -> Result<Response, Error> {

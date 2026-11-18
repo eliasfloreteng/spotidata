@@ -6,6 +6,7 @@
 //!
 //! The server only ever adds files here; it never replaces or deletes one.
 
+mod aiff;
 pub mod catalog;
 mod db;
 mod decrypt;
@@ -17,11 +18,12 @@ mod sources;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
-use deckhand_model::downloads::{Attempt, CatalogTrack, Download, Downloads, Outcome, State};
+use deckhand_model::downloads::{Attempt, CatalogTrack, Download, Downloads, Outcome, Settings, State};
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -47,6 +49,8 @@ const PROBE_STALE_MS: i64 = 30 * 60 * 1000;
 const NAG_EVERY: Duration = Duration::from_secs(30 * 60);
 /// How often the published mirror lists are re-read.
 const REDISCOVER_EVERY: Duration = Duration::from_secs(60 * 60);
+/// Where converting to AIFF is remembered.
+const AIFF_KEY: &str = "downloads.aiff";
 
 /// What a source is asked for.
 #[derive(Debug, Clone, Default)]
@@ -122,6 +126,8 @@ struct Inner {
     health: Registry,
     push: Push,
     ffmpeg: bool,
+    /// FLAC is filed as AIFF.
+    aiff: AtomicBool,
     wake: Notify,
     running: Mutex<HashMap<i64, (CancellationToken, Live)>>,
     /// When each gate last sent a notification.
@@ -159,6 +165,7 @@ impl Service {
             warn!("ffmpeg is missing; the Amazon source is off");
         }
         let (sources, gates) = sources::all(&store, ffmpeg);
+        let aiff = store.meta(AIFF_KEY)?.as_deref() == Some("1");
         Ok(Self {
             inner: Arc::new(Inner {
                 sources,
@@ -170,6 +177,7 @@ impl Service {
                 health,
                 push,
                 ffmpeg,
+                aiff: AtomicBool::new(aiff),
                 wake: Notify::new(),
                 running: Mutex::default(),
                 nagged: Mutex::default(),
@@ -240,7 +248,36 @@ impl Service {
             downloads,
             sources: self.inner.health.report(self.endpoints()),
             challenges: self.inner.gates.iter().map(|g| g.describe(waiting)).collect(),
+            settings: self.settings(),
         })
+    }
+
+    pub fn settings(&self) -> Settings {
+        Settings { aiff: self.inner.aiff.load(Ordering::Relaxed) }
+    }
+
+    /// Applies to what is filed from now on; the folder is left as it is.
+    pub fn set_settings(&self, settings: Settings) -> Result<Settings> {
+        if self.inner.aiff.swap(settings.aiff, Ordering::Relaxed) != settings.aiff {
+            self.inner.store.set_meta(AIFF_KEY, if settings.aiff { "1" } else { "0" })?;
+            info!(aiff = settings.aiff, "download format");
+        }
+        Ok(self.settings())
+    }
+
+    /// The file to place in the folder for `staged`, and its probe: an AIFF
+    /// made from it next to it, when the setting asks and it is FLAC.
+    fn filed_as(&self, staged: &Path, probe: tags::Probe) -> Result<(PathBuf, tags::Probe)> {
+        if !(self.inner.aiff.load(Ordering::Relaxed) && probe.file_type == lofty::file::FileType::Flac) {
+            return Ok((staged.to_owned(), probe));
+        }
+        let converted = staged.with_extension("aiff");
+        if let Err(e) = aiff::convert(staged, &converted) {
+            let _ = std::fs::remove_file(&converted);
+            return Err(e);
+        }
+        let probe = tags::probe(&converted)?;
+        Ok((converted, probe))
     }
 
     /// Takes the pass the app got by solving a check, and starts the
@@ -448,16 +485,22 @@ impl Service {
         meta.album.clone_from(&want.album);
         meta.isrc.clone_from(&want.isrc);
         meta.cover = cover;
-        let name = place::file_name(&want.title, &want.artists, ext);
-        let music = self.inner.music.clone();
-        let staged_for_task = staged.clone();
-        let file = tokio::task::spawn_blocking(move || -> Result<String> {
+        let (this, staged_for_task) = (self.clone(), staged.clone());
+        let placed = tokio::task::spawn_blocking(move || -> Result<(String, tags::Probe)> {
             tags::write(&staged_for_task, &meta)?;
-            place::place(&staged_for_task, &music, &name)
+            let (filed, probe) = this.filed_as(&staged_for_task, probe)?;
+            let ext = if filed == staged_for_task { ext } else { "aiff" };
+            let name = place::file_name(&want.title, &want.artists, ext);
+            let placed = place::place(&filed, &this.inner.music, &name);
+            if filed != staged_for_task {
+                let _ = std::fs::remove_file(&filed);
+            }
+            Ok((placed?, probe))
         })
         .await?;
         let _ = std::fs::remove_file(&staged);
-        Ok(Got { file: file?, source, quality: Some(probe.quality()) })
+        let (file, probe) = placed?;
+        Ok(Got { file, source, quality: Some(probe.quality()) })
     }
 
     /// Walks the sources best first until one delivers a file that checks
