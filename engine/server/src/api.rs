@@ -17,6 +17,7 @@
 //! - `PUT  /api/spotify`        `{paused}`: check only when asked, or every ten minutes
 //! - `POST /api/spotify/check`  read Spotify now
 //! - `GET  /api/spotify/activity?playlist=&limit=`  what the sync did, newest first
+//! - `POST /api/spotify/playlists`  `{link}`: keep the playlist a link names, any playlist
 //! - `GET  /api/spotify/playlists/{id}`  its tracks and where each stands
 //! - `PUT  /api/spotify/playlists/{id}`  `{selected}`: keep it, or stop
 //! - `POST /api/spotify/playlists/{id}/check`  read it again, retry its failed tracks now
@@ -70,6 +71,7 @@ pub fn router(app: App) -> Router {
         .route("/api/spotify", get(spotify).put(set_spotify))
         .route("/api/spotify/check", post(check_spotify))
         .route("/api/spotify/activity", get(spotify_activity))
+        .route("/api/spotify/playlists", post(add_playlist))
         .route("/api/spotify/playlists/{id}", get(spotify_playlist).put(select_playlist))
         .route("/api/spotify/playlists/{id}/check", post(check_playlist))
         .merge(library)
@@ -278,6 +280,16 @@ async fn check_playlist(State(app): State<App>, Path(id): Path<String>) -> Resul
         StatusCode::ACCEPTED.into_response()
     } else {
         StatusCode::NOT_FOUND.into_response()
+    })
+}
+
+async fn add_playlist(
+    State(app): State<App>,
+    Json(add): Json<deckhand_model::spotify::AddPlaylist>,
+) -> Result<Response, Error> {
+    Ok(match app.spotify.add(&add.link).await? {
+        Ok(playlist) => (StatusCode::CREATED, Json(playlist)).into_response(),
+        Err(why) => (StatusCode::UNPROCESSABLE_ENTITY, why).into_response(),
     })
 }
 

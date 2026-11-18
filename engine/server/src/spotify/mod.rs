@@ -1,8 +1,10 @@
 //! Spotify playlists kept in the music folder.
 //!
-//! You pick playlists in the app. Every ten minutes (and when asked) the
-//! server reads the account's playlists through Spotidata and, for a picked
-//! one whose snapshot changed, its tracks. Then, against the folder:
+//! You pick playlists in the app, from the account's or by pasting a link to
+//! any other. Every ten minutes (and when asked) the server reads the
+//! account's playlists through Spotidata (and each one added by its link
+//! that the account doesn't list) and, for a picked one whose snapshot
+//! changed, its tracks. Then, against the folder:
 //!
 //! 1. each track is found by ISRC, else by title and first artist, else by
 //!    the download that got it;
@@ -23,6 +25,7 @@
 //! does is kept as activity (`db::log`), for the app to show.
 
 pub mod db;
+pub mod link;
 pub mod m3u;
 pub mod remote;
 
@@ -32,7 +35,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use deckhand_model::downloads::{CatalogTrack, Download, State as DownloadState};
 use deckhand_model::spotify::{Activity, ActivityKind, Playlist, PlaylistTracks, Spotify as Status, Track, TrackState};
 use tokio::sync::Notify;
@@ -273,6 +276,44 @@ impl Spotify {
         Ok(Some(PlaylistTracks { playlist: self.describe(&row, &index)?, tracks }))
     }
 
+    /// Starts keeping the playlist a link (or `spotify:` URI, or id) names,
+    /// whether or not the account lists it. `Err` inside says why not, for
+    /// you to read.
+    pub async fn add(&self, link: &str) -> Result<Result<Playlist, String>> {
+        let Some(remote) = &self.inner.remote else {
+            return Ok(Err("The server isn't set up to read Spotify.".to_owned()));
+        };
+        let id = match (link::parse(link), link::short(link)) {
+            (Some(id), _) => id,
+            (None, Some(url)) => match link::follow(remote.http(), url).await? {
+                Some(id) => id,
+                None => return Ok(Err("That link doesn't open a playlist.".to_owned())),
+            },
+            (None, None) => return Ok(Err("That isn't a link to a Spotify playlist.".to_owned())),
+        };
+        let p = match remote.info(&id).await {
+            Ok(p) => p,
+            Err(e) if e.is::<Gone>() => {
+                return Ok(Err("Spotify won't show this playlist to the server. Its own mixes and editorial \
+                               playlists can't be read by apps; a copy of one in your library can."
+                    .to_owned()));
+            }
+            Err(e) => return Err(e),
+        };
+        let store = &self.inner.store;
+        let was = db::get(store, &p.id)?;
+        db::add_linked(store, &p)?;
+        if !was.as_ref().is_some_and(|row| row.selected) {
+            info!(playlist = %p.name, "keeping a Spotify playlist added by its link");
+            let event = Event { playlist: Some((p.id.as_str(), p.name.as_str())), ..Event::default() };
+            db::log(store, ActivityKind::Kept, &event)?;
+        }
+        self.check_soon();
+        let row = db::get(store, &p.id)?.context("the playlist just added is not there")?;
+        let index = self.index()?;
+        Ok(Ok(self.describe(&row, &index)?))
+    }
+
     /// Starts or stops keeping a playlist; `false` for an unknown one.
     pub fn select(&self, id: &str, selected: bool) -> Result<bool> {
         let store = &self.inner.store;
@@ -305,6 +346,7 @@ impl Spotify {
         }
         let error = match (&p.error, p.gone) {
             (Some(error), _) => Some(error.clone()),
+            (None, true) if p.linked_ms.is_some() => Some(Gone.to_string()),
             (None, true) => Some("It's no longer in your Spotify library.".to_owned()),
             (None, false) => None,
         };
@@ -316,6 +358,7 @@ impl Spotify {
             image: p.image.clone(),
             tracks: p.total,
             selected: p.selected,
+            linked: p.linked_ms.is_some(),
             file: p.file.clone(),
             read_ms: p.read_ms,
             have,
@@ -363,6 +406,24 @@ impl Spotify {
         let store = &self.inner.store;
         let list = remote.playlists().await?;
         db::replace_list(store, &list)?;
+        // Kept by their link but not the account's: asked one by one.
+        let listed: HashSet<&str> = list.iter().map(|p| p.id.as_str()).collect();
+        for p in db::all(store)?.into_iter().filter(|p| p.selected && p.linked_ms.is_some()) {
+            if listed.contains(p.id.as_str()) {
+                continue;
+            }
+            match remote.info(&p.id).await {
+                Ok(info) => db::update_info(store, &info)?,
+                Err(e) if e.is::<Gone>() => {
+                    db::set_gone(store, &p.id)?;
+                    db::set_error(store, &p.id, Some(&e.to_string()))?;
+                }
+                Err(e) => {
+                    db::set_error(store, &p.id, Some(&format!("{e:#}")))?;
+                    return Err(e);
+                }
+            }
+        }
         for p in db::all(store)?.into_iter().filter(|p| p.selected && !p.gone) {
             let forced = lock(&self.inner.force).contains(&p.id);
             if p.read_snapshot.as_deref() == Some(p.snapshot.as_str()) && !forced {

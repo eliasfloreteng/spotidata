@@ -49,6 +49,13 @@ pub fn migrate(store: &Store) -> Result<()> {
              detail text
          );",
     )?;
+    // Added with playlists added by their link: when it was, for one that
+    // is kept whether or not the account lists it.
+    let has_linked =
+        store.conn().prepare("select 1 from pragma_table_info('spotify_playlists') where name = 'linked_ms'")?.exists([])?;
+    if !has_linked {
+        store.conn().execute("alter table spotify_playlists add column linked_ms integer", [])?;
+    }
     Ok(())
 }
 
@@ -68,10 +75,13 @@ pub struct Row {
     pub file: Option<String>,
     pub file_hash: Option<String>,
     pub error: Option<String>,
+    /// Added by its link (when), rather than picked from the account's
+    /// list: kept and read whether or not the account lists it.
+    pub linked_ms: Option<i64>,
 }
 
 const COLUMNS: &str =
-    "id, name, owner, owned, image, total, snapshot, gone, selected, read_snapshot, read_ms, file, file_hash, error";
+    "id, name, owner, owned, image, total, snapshot, gone, selected, read_snapshot, read_ms, file, file_hash, error, linked_ms";
 
 fn row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Row> {
     Ok(Row {
@@ -89,6 +99,7 @@ fn row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Row> {
         file: r.get(11)?,
         file_hash: r.get(12)?,
         error: r.get(13)?,
+        linked_ms: r.get(14)?,
     })
 }
 
@@ -108,11 +119,11 @@ pub fn get(store: &Store, id: &str) -> Result<Option<Row>> {
 }
 
 /// Records the account's playlists as Spotify lists them now; the rest are
-/// marked gone.
+/// marked gone, but for those added by their link, which follow the list.
 pub fn replace_list(store: &Store, list: &[RemotePlaylist]) -> Result<()> {
     let mut conn = store.conn();
     let tx = conn.transaction()?;
-    tx.execute("update spotify_playlists set gone = 1", [])?;
+    tx.execute("update spotify_playlists set gone = 1 where linked_ms is null", [])?;
     for (position, p) in list.iter().enumerate() {
         tx.execute(
             "insert into spotify_playlists(id, name, owner, owned, image, total, snapshot, position, gone)
@@ -131,14 +142,59 @@ pub fn replace_list(store: &Store, list: &[RemotePlaylist]) -> Result<()> {
             ],
         )?;
     }
+    let ids: Vec<&str> = list.iter().map(|p| p.id.as_str()).collect();
+    let unlisted: Vec<String> = {
+        let mut stmt = tx.prepare("select id from spotify_playlists where linked_ms is not null order by linked_ms")?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        rows.into_iter().filter(|id| !ids.contains(&id.as_str())).collect()
+    };
+    for (n, id) in unlisted.iter().enumerate() {
+        tx.execute(
+            "update spotify_playlists set position = ?2 where id = ?1",
+            params![id, i64::try_from(list.len() + n).unwrap_or(0)],
+        )?;
+    }
     tx.commit()?;
     Ok(())
 }
 
-/// Whether the playlist exists; selecting an unknown one is refused.
+/// A playlist added by its link: kept from now on, after the account's own.
+pub fn add_linked(store: &Store, p: &RemotePlaylist) -> Result<()> {
+    store.conn().execute(
+        "insert into spotify_playlists(id, name, owner, owned, image, total, snapshot, position, gone, selected, linked_ms)
+         values(?1, ?2, ?3, ?4, ?5, ?6, ?7, (select coalesce(max(position), -1) + 1 from spotify_playlists), 0, 1, ?8)
+         on conflict(id) do update set name = ?2, owner = ?3, owned = ?4, image = ?5, total = ?6, snapshot = ?7,
+             gone = 0, selected = 1, linked_ms = coalesce(linked_ms, ?8)",
+        params![p.id, p.name, p.owner, p.owned, p.image, i64::try_from(p.tracks).unwrap_or(0), p.snapshot_id, now_ms()],
+    )?;
+    Ok(())
+}
+
+/// A playlist added by its link, as Spotify describes it now.
+pub fn update_info(store: &Store, p: &RemotePlaylist) -> Result<()> {
+    store.conn().execute(
+        "update spotify_playlists set name = ?2, owner = ?3, owned = ?4, image = ?5, total = ?6, snapshot = ?7, gone = 0
+         where id = ?1",
+        params![p.id, p.name, p.owner, p.owned, p.image, i64::try_from(p.tracks).unwrap_or(0), p.snapshot_id],
+    )?;
+    Ok(())
+}
+
+/// Spotify no longer shows a playlist added by its link.
+pub fn set_gone(store: &Store, id: &str) -> Result<()> {
+    store.conn().execute("update spotify_playlists set gone = 1 where id = ?1", params![id])?;
+    Ok(())
+}
+
+/// Whether the playlist exists; selecting an unknown one is refused. One
+/// added by its link that you stop keeping is the account's again: it
+/// stays listed only if the account lists it.
 pub fn select(store: &Store, id: &str, selected: bool) -> Result<bool> {
     Ok(store.conn().execute(
-        "update spotify_playlists set selected = ?2, error = case when ?2 then error else null end where id = ?1",
+        "update spotify_playlists set selected = ?2,
+             error = case when ?2 then error else null end,
+             linked_ms = case when ?2 then linked_ms else null end
+         where id = ?1",
         params![id, selected],
     )? > 0)
 }
@@ -302,6 +358,38 @@ pub fn activity(store: &Store, playlist: Option<&str>, limit: usize) -> Result<V
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn remote(id: &str) -> RemotePlaylist {
+        RemotePlaylist {
+            id: id.to_owned(),
+            name: id.to_owned(),
+            owner: String::new(),
+            owned: false,
+            snapshot_id: "s1".to_owned(),
+            tracks: 0,
+            image: None,
+        }
+    }
+
+    #[test]
+    fn linked_playlists_outlast_the_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(&dir.path().join("t.db")).unwrap();
+        migrate(&store).unwrap();
+        replace_list(&store, &[remote("a"), remote("b")]).unwrap();
+        add_linked(&store, &remote("x")).unwrap();
+        // Also the account's: still kept by its link once it isn't.
+        add_linked(&store, &remote("b")).unwrap();
+        replace_list(&store, &[remote("a")]).unwrap();
+        let rows = all(&store).unwrap();
+        let shown: Vec<_> = rows.iter().map(|p| (p.id.as_str(), p.gone, p.selected)).collect();
+        assert_eq!(shown, vec![("a", false, false), ("b", false, true), ("x", false, true)]);
+        // Stopped: the account's again, so gone at the next list.
+        select(&store, "x", false).unwrap();
+        replace_list(&store, &[remote("a")]).unwrap();
+        let x = get(&store, "x").unwrap().unwrap();
+        assert!(x.gone && x.linked_ms.is_none());
+    }
 
     #[test]
     fn repeats_close_together_add_up() {

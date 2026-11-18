@@ -1,6 +1,7 @@
 //! Spotify, as Spotidata serves it: Spotidata holds the account's sign-in
 //! and the rate limiter every Spotify call of the house goes through, and
-//! reads the playlists live (`GET /api/playlists`, `/api/playlists/{id}`).
+//! reads the playlists live (`GET /api/playlists`, `/api/playlists/{id}`,
+//! `/api/playlists/{id}/info` for one added by its link).
 
 use std::time::Duration;
 
@@ -94,6 +95,20 @@ impl Remote {
             bail!("not a playlist id");
         }
         self.get(&format!("/api/playlists/{id}")).await
+    }
+
+    /// Any playlist Spotify shows the account, as the list describes it,
+    /// without its tracks.
+    pub async fn info(&self, id: &str) -> Result<RemotePlaylist> {
+        if !id.chars().all(|c| c.is_ascii_alphanumeric()) {
+            bail!("not a playlist id");
+        }
+        self.get(&format!("/api/playlists/{id}/info")).await
+    }
+
+    /// The client, for following a short link.
+    pub fn http(&self) -> &reqwest::Client {
+        &self.http
     }
 
     async fn get<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T> {

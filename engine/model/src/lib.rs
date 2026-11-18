@@ -387,6 +387,11 @@ pub mod spotify {
         pub tracks: usize,
         /// Kept in the folder and on the stick.
         pub selected: bool,
+        /// Added by its link rather than picked from the account's list:
+        /// kept whether or not the account lists it, and listed only while
+        /// kept (unless the account lists it too).
+        #[serde(default)]
+        pub linked: bool,
         /// The playlist's file in the music folder, once written.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub file: Option<String>,
@@ -443,6 +448,13 @@ pub mod spotify {
         Missing,
         /// A local file on Spotify; there is nothing to download.
         Local,
+    }
+
+    /// `POST /api/spotify/playlists`: a playlist to keep, by what you paste
+    /// (a link, a short link the Spotify app shares, a `spotify:` URI, an id).
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct AddPlaylist {
+        pub link: String,
     }
 
     /// `PUT /api/spotify/playlists/{id}`.
