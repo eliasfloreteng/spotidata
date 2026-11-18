@@ -33,7 +33,8 @@ pub struct Config {
     pub data: PathBuf,
     /// Tracks analysed at once.
     pub analysis_threads: usize,
-    /// Spotidata's address; without it the Spotify sync is off.
+    /// Spotidata's address, for an account's playlists; without it,
+    /// playlists are kept by their link only.
     pub spotidata: Option<String>,
     /// How often the music folder is looked at for changes.
     pub scan_every: Duration,

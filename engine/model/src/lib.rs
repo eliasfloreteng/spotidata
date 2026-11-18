@@ -362,10 +362,19 @@ pub mod downloads {
 pub mod spotify {
     use serde::{Deserialize, Serialize};
 
+    fn yes() -> bool {
+        true
+    }
+
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct Spotify {
         /// Whether the server is set up to read Spotify at all.
         pub configured: bool,
+        /// Whether it reads an account (through Spotidata), whose own
+        /// playlists are listed; without one, playlists are kept only by
+        /// their link, read as Spotify shows anyone.
+        #[serde(default = "yes")]
+        pub account: bool,
         /// A check is running now.
         pub checking: bool,
         /// The last check that read the account, ms since the epoch.
