@@ -63,6 +63,11 @@ impl Push {
         Self { store, http, key, token: Arc::default() }
     }
 
+    /// Whether there is a key to send with.
+    pub fn is_configured(&self) -> bool {
+        self.key.is_some()
+    }
+
     pub fn register(&self, token: &str, environment: &str) -> Result<()> {
         let environment = if environment == "production" { "production" } else { "development" };
         let token: String = token.chars().filter(char::is_ascii_hexdigit).collect();
