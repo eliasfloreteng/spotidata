@@ -14,7 +14,12 @@ INSERT INTO external_limiters (service, tokens, capacity, refill_per_sec) VALUES
   ('musicbrainz', 1, 1, 1),
   -- AcousticBrainz asks only that clients be reasonable; 2/s with a small
   -- burst, and each request carries 25 recordings.
-  ('acousticbrainz', 4, 4, 2)
+  ('acousticbrainz', 4, 4, 2),
+  -- Deezer's public API allows 50 requests per 5 seconds per IP, and Deckhand
+  -- searches its catalog from the same address. Four a second leaves it room.
+  -- One request per track (the ISRC lookup); the preview itself comes off the
+  -- CDN, which is not the API.
+  ('deezer', 4, 4, 4)
 ON CONFLICT (service) DO NOTHING;
 
 -- Returns granted=false with a wait hint rather than sleeping, so the caller

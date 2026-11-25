@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '$lib/server/db/index.ts';
 import { getWorkerUtils } from '$lib/server/queue/runner.ts';
 import { setSetting } from '$lib/server/settings.ts';
-import { ENRICH_JOB_KEY } from '$lib/server/queue/tasks/enrich.ts';
+import { ANALYSE_JOB_KEY, ENRICH_JOB_KEY } from '$lib/server/queue/tasks/enrich.ts';
 import { PRIORITY_ENRICH } from '$lib/server/queue/constants.ts';
 import {
 	getCoverage,
@@ -16,15 +16,17 @@ import type { RequestHandler } from './$types';
 /** POST /api/enrich/start|pause|retry-misses|unblock */
 export const POST: RequestHandler = async ({ params, request }) => {
 	const utils = await getWorkerUtils();
+	// Both chains: the MusicBrainz crawl and rbxport's analysis of the previews.
+	const kick = () =>
+		Promise.all([
+			utils.addJob('enrich:tick', {}, { jobKey: ENRICH_JOB_KEY, jobKeyMode: 'replace', priority: PRIORITY_ENRICH }),
+			utils.addJob('analyse:tick', {}, { jobKey: ANALYSE_JOB_KEY, jobKeyMode: 'replace', priority: PRIORITY_ENRICH })
+		]);
 
 	switch (params.action) {
 		case 'start': {
 			await setSetting('enrich.enabled', true);
-			await utils.addJob(
-				'enrich:tick',
-				{},
-				{ jobKey: ENRICH_JOB_KEY, jobKeyMode: 'replace', priority: PRIORITY_ENRICH }
-			);
+			await kick();
 			return json({ ok: true, queued: true });
 		}
 
@@ -33,7 +35,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			// then finds the setting off and stops chaining.
 			await setSetting('enrich.enabled', false);
 			await db.execute(sql`
-				delete from graphile_worker._private_jobs where key = ${ENRICH_JOB_KEY}
+				delete from graphile_worker._private_jobs where key in (${ENRICH_JOB_KEY}, ${ANALYSE_JOB_KEY})
 			`);
 			return json({ ok: true, paused: true });
 		}
@@ -52,11 +54,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			// Manual override of a 429/503 penalty. Same caveat as the Spotify
 			// one: clearing a block early is how you earn a longer one.
 			await db.execute(sql`update external_limiters set blocked_until = null, updated_at = now()`);
-			await utils.addJob(
-				'enrich:tick',
-				{},
-				{ jobKey: ENRICH_JOB_KEY, jobKeyMode: 'replace', priority: PRIORITY_ENRICH }
-			);
+			await kick();
 			return json({ ok: true });
 		}
 

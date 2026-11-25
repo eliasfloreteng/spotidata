@@ -68,6 +68,8 @@ export async function startWorker(): Promise<void> {
 				// music it has not seen. The chain keeps itself going while there
 				// is work, so this mostly fires into a no-op.
 				'*/15 * * * * enrich:tick ?jobKey=enrich-tick',
+				// The same for rbxport's analysis of the previews, its own chain.
+				'*/15 * * * * analyse:tick ?jobKey=analyse-tick',
 				// Generated playlists. A sync enqueues this itself when the library
 				// changes; the hourly pass is what catches the other input — the
 				// enrichment crawl giving a recording its first genre, which no

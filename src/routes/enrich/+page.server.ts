@@ -29,6 +29,7 @@ export const load: PageServerLoad = async () => {
 		enabled: settings['enrich.enabled'],
 		stages: {
 			audio: settings['enrich.audioFeatures'],
+			rbxport: settings['enrich.rbxport'],
 			artists: settings['enrich.artists'],
 			albums: settings['enrich.albums']
 		},

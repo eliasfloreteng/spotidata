@@ -41,7 +41,9 @@
 	 * AcousticBrainz batches 25 at a time and barely registers next to that.
 	 */
 	const etaSeconds = $derived.by(() => {
-		const perStage: Record<string, number> = { recordings: 1, audio: 0.08, artists: 1.4, albums: 2 };
+		// rbxport's chain runs beside the crawl, but a lookup, a download and a
+		// decode come to about half a second a track.
+		const perStage: Record<string, number> = { recordings: 1, audio: 0.08, rbxport: 0.5, artists: 1.4, albums: 2 };
 		return crawled.reduce((a, c) => {
 			const left = Math.max(0, c.candidates - c.matched - c.missed);
 			return a + left * (perStage[c.stage] ?? 1);
@@ -112,7 +114,8 @@
 		<h1>Enrichment</h1>
 		<p class="muted">
 			What Spotify does not return — genres, artist origins, labels and barcodes from
-			MusicBrainz, BPM and musical key from AcousticBrainz.
+			MusicBrainz, BPM and musical key from AcousticBrainz and from rbxport's own measurement of
+			each recording's preview.
 		</p>
 	</div>
 	<div class="actions">
@@ -204,7 +207,8 @@
 				</div>
 				<div class="stagefoot faint small">
 					{#if c.candidates > 0}
-						{num(c.matched)} found · {num(c.missed)} not in MusicBrainz ·
+						{num(c.matched)} {c.stage === 'rbxport' ? 'measured' : 'found'} ·
+						{num(c.missed)} {c.stage === 'rbxport' ? 'without a preview' : 'not in MusicBrainz'} ·
 						{num(Math.max(0, c.candidates - settled))} to go
 					{:else}
 						nothing to do
@@ -253,6 +257,12 @@
 			{num(limiters.find((l) => l.service === 'acousticbrainz')?.requestsTotal ?? 0)} requests ·
 			25 recordings each. Submissions closed in 2022, so coverage is fixed and partial — a
 			recording with no analysis will never get one.
+		</dd>
+		<dt>Deezer and rbxport</dt>
+		<dd>
+			{num(limiters.find((l) => l.service === 'deezer')?.requestsTotal ?? 0)} requests · four a
+			second. Each recording's 30-second preview is found by its ISRC, downloaded and measured
+			by rbxport, the analysis Deckhand runs; nothing is kept but the numbers.
 		</dd>
 		<dt>MusicBrainz account</dt>
 		<dd>

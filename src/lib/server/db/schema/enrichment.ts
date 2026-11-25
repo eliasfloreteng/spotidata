@@ -1,4 +1,5 @@
 import {
+	bigint,
 	boolean,
 	check,
 	date,
@@ -344,6 +345,52 @@ export const audioFeatures = table(
 		check('audio_features_status', sql`${t.status} in ('ok','missing')`),
 		index('audio_features_bpm_ix').on(t.bpm).where(sql`${t.bpm} is not null`),
 		index('audio_features_key_ix').on(t.keyKey, t.keyScale)
+	]
+);
+
+// --------------------------------------------------------------- rbxport
+
+/**
+ * Tempo and key measured by rbxport (`analyser/`, the same analysis Deckhand
+ * runs on the stick) from Deezer's 30-second preview of the recording.
+ *
+ * This is the one analysis that covers the whole library: Deezer has a
+ * preview for nearly every ISRC, where AcousticBrainz stopped at 2022. Keyed
+ * by ISRC for the reason everything here is — a stable id survives a
+ * canonical regrouping, and an analysis costs a download and a decode.
+ *
+ * `missing` is a recording Deezer has no preview of; `failed` one whose
+ * preview rbxport could not measure. Both are kept so the chain moves on, and
+ * retrying the misses clears them.
+ */
+export const trackAnalysis = table(
+	'track_analysis',
+	{
+		isrc: text().primaryKey(),
+		status: text().$type<'ok' | 'missing' | 'failed'>().notNull(),
+		/** The Deezer track whose preview was measured. */
+		deezerTrackId: bigint({ mode: 'number' }),
+		/** How the Deezer track was found: by the ISRC, or by title, artist and length. */
+		matchedBy: text().$type<'isrc' | 'search'>(),
+		bpm: real(),
+		/** 0–1: how far the tempo stands out from the next best that is not a multiple of it. */
+		bpmConfidence: real(),
+		/** rbxport's name for the key, e.g. 'Ebm'. */
+		keyName: text(),
+		/** e.g. '2A'. */
+		camelot: text(),
+		/** Seconds of audio measured; about 30 for a preview. */
+		seconds: real(),
+		rms: real(),
+		/** The analyser build, so a change to rbxport can be re-run. */
+		analyser: text().notNull(),
+		error: text(),
+		analysedAt: tsNow()
+	},
+	(t) => [
+		check('track_analysis_status', sql`${t.status} in ('ok','missing','failed')`),
+		check('track_analysis_matched_by', sql`${t.matchedBy} in ('isrc','search')`),
+		index('track_analysis_status_ix').on(t.status)
 	]
 );
 

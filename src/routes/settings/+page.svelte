@@ -179,7 +179,7 @@
 		<h2>Enrichment</h2>
 		<p class="faint small">
 			Genres, artist origins, labels and barcodes from MusicBrainz; BPM and musical key from
-			AcousticBrainz. Both are open — no account, no key. MusicBrainz allows one request per
+			AcousticBrainz, and measured by rbxport from Deezer's previews. Both are open — no account, no key. MusicBrainz allows one request per
 			second and has no batch lookup, so a first pass over this library takes hours; it runs at
 			the lowest priority and never delays a Spotify sync.
 			<a href="/enrich">Progress and controls →</a>
@@ -202,6 +202,16 @@
 					<em class="faint small">
 						AcousticBrainz, 25 recordings per request — the cheapest stage by far. Coverage
 						is fixed at whatever was submitted before it closed in 2022.
+					</em>
+				</span>
+			</label>
+			<label class="check">
+				<input type="checkbox" name="enrichRbxport" checked={data.settings['enrich.rbxport']} />
+				<span>
+					BPM and key measured by rbxport
+					<em class="faint small">
+						Deezer's 30-second preview of each recording in the library, measured with the
+						analysis Deckhand uses. Covers the whole library; the DJ tab reads it.
 					</em>
 				</span>
 			</label>

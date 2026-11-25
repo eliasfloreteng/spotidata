@@ -59,6 +59,12 @@ function list(name: string): string[] {
 		.filter(Boolean);
 }
 
+/** `cargo build --release` in `analyser/` puts it here; the image puts it on PATH. */
+function localAnalyser(): string {
+	const built = path.resolve(process.cwd(), 'analyser/target/release/rbx-analyse');
+	return fs.existsSync(built) ? built : 'rbx-analyse';
+}
+
 export type WorkerMode = 'embedded' | 'external' | 'off';
 
 export const config = {
@@ -127,6 +133,16 @@ export const config = {
 	acousticbrainz: {
 		baseUrl: process.env.ACOUSTICBRAINZ_URL ?? 'https://acousticbrainz.org',
 		requestsPerSecond: Number(process.env.ACOUSTICBRAINZ_RPS ?? '2')
+	},
+
+	/**
+	 * rbxport's tempo and key, measured from Deezer's 30-second previews: the
+	 * analysis that covers the whole library. `bin` is the `analyser/` binary —
+	 * on PATH in the image, built in place in a checkout.
+	 */
+	analysis: {
+		bin: process.env.RBX_ANALYSE_BIN ?? localAnalyser(),
+		deezerUrl: process.env.DEEZER_API_URL ?? 'https://api.deezer.com'
 	},
 
 	worker: {

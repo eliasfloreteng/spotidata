@@ -28,6 +28,7 @@ DROP VIEW IF EXISTS spotidata.enrichment_coverage CASCADE;
 DROP VIEW IF EXISTS spotidata.enrich_recording_candidates CASCADE;
 DROP VIEW IF EXISTS spotidata.enrich_artist_candidates CASCADE;
 DROP VIEW IF EXISTS spotidata.enrich_album_candidates CASCADE;
+DROP VIEW IF EXISTS spotidata.analyse_candidates CASCADE;
 
 CREATE VIEW spotidata.enrich_recording_candidates AS
   SELECT ct.id AS canonical_track_id,
@@ -60,6 +61,24 @@ CREATE VIEW spotidata.enrich_album_candidates AS
           OR EXISTS (SELECT 1 FROM library_canonical lc
                       WHERE lc.canonical_track_id = ct.id))
    GROUP BY ct.primary_album_id;
+
+-- What rbxport measures: every ISRC in the library — the music kept, not the
+-- music merely played, since a DJ mixes out of what is kept. One row per ISRC,
+-- with what a Deezer search needs when the ISRC alone finds nothing: the
+-- title, the first credited artist and the length.
+CREATE VIEW spotidata.analyse_candidates AS
+  SELECT DISTINCT ON (ct.isrc)
+         ct.isrc,
+         ct.title,
+         a.name AS artist,
+         ct.duration_ms,
+         coalesce(ps.plays, 0) AS plays
+    FROM library_canonical lc
+    JOIN canonical_tracks ct ON ct.id = lc.canonical_track_id
+    LEFT JOIN artists a ON a.id = ct.primary_artist_id
+    LEFT JOIN canonical_play_stats ps ON ps.canonical_track_id = ct.id
+   WHERE ct.isrc IS NOT NULL
+   ORDER BY ct.isrc, coalesce(ps.plays, 0) DESC, ct.id;
 
 -- ---------------------------------------------------- request-free matching
 --
@@ -148,12 +167,20 @@ CREATE VIEW spotidata.track_enrichment AS
          af.average_loudness,
          af.replay_gain,
          af.genre_rosamerica,
-         af.mood_mirex
+         af.mood_mirex,
+         -- rbxport's measurement of the Deezer preview: the tempo and key
+         -- that cover the whole library, where AcousticBrainz's stop at 2022.
+         ta.bpm                            AS rbx_bpm,
+         ta.bpm_confidence                 AS rbx_bpm_confidence,
+         ta.key_name                       AS rbx_key,
+         ta.camelot                        AS rbx_camelot
     FROM canonical_tracks ct
     LEFT JOIN isrc_recordings ir ON ir.isrc = ct.isrc
     LEFT JOIN mb_recordings mr   ON mr.mbid = ir.recording_mbid
     LEFT JOIN audio_features af  ON af.recording_mbid = ir.recording_mbid
-                                AND af.status = 'ok';
+                                AND af.status = 'ok'
+    LEFT JOIN track_analysis ta  ON ta.isrc = ct.isrc
+                                AND ta.status = 'ok';
 
 -- Matched rows only: a miss is recorded in `artist_musicbrainz` so it is never
 -- asked again, but a row of nothing but NULLs is noise in a read model.
@@ -230,6 +257,13 @@ CREATE VIEW spotidata.enrichment_coverage AS
          (SELECT count(DISTINCT ir.recording_mbid) FROM spotidata.enrich_recording_candidates c
             JOIN isrc_recordings ir ON ir.isrc = c.isrc
             JOIN audio_features af ON af.recording_mbid = ir.recording_mbid AND af.status = 'missing')::int
+  UNION ALL
+  SELECT 'rbxport',
+         (SELECT count(*) FROM spotidata.analyse_candidates)::int,
+         (SELECT count(*) FROM spotidata.analyse_candidates c
+            JOIN track_analysis ta ON ta.isrc = c.isrc AND ta.status = 'ok')::int,
+         (SELECT count(*) FROM spotidata.analyse_candidates c
+            JOIN track_analysis ta ON ta.isrc = c.isrc AND ta.status <> 'ok')::int
   UNION ALL
   SELECT 'artists',
          (SELECT count(*) FROM spotidata.enrich_artist_candidates)::int,

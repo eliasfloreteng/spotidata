@@ -206,7 +206,11 @@ share. Read them through the views, which own the join path:
   \`text[]\`, MusicBrainz tags filtered to its curated genre list), \`bpm\`,
   \`key_key\`/\`key_scale\`, and the 0–1 classifier probabilities
   (\`danceable\`, \`happy\`, \`sad\`, \`party\`, \`relaxed\`, \`aggressive\`,
-  \`acoustic\`, \`electronic\`, \`instrumental\`).
+  \`acoustic\`, \`electronic\`, \`instrumental\`). \`rbx_bpm\`,
+  \`rbx_bpm_confidence\`, \`rbx_key\` and \`rbx_camelot\` are rbxport's own
+  measurement of each library recording's 30-second Deezer preview: they
+  cover nearly the whole library, where AcousticBrainz's \`bpm\` covers about
+  half. Prefer them for tempo and key; either can read an octave out.
 - \`spotidata.artist_enrichment\` — keyed \`artist_id\` (the Spotify id).
   \`country\`, \`area_name\`, \`begin_area_name\` (where they are *from*),
   \`begin_date\`/\`end_date\`, \`type\` ('Person' | 'Group' | …), \`genres\`.

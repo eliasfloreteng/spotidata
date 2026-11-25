@@ -1,16 +1,19 @@
 import { sql, type SQL } from 'drizzle-orm';
 import { anyOf, notIn } from '../db/arrays.ts';
 import { query } from '../db/index.ts';
-import { CAMELOT, movesFrom, type KeyMode, type KeyMove } from '../../utils/music.ts';
+import { movesFrom, type KeyMode, type KeyMove } from '../../utils/music.ts';
 import { like, thumb, total, type ArtistRef } from './shared.ts';
 
 /**
  * Finding the next record to play.
  *
- * The pool is every library recording AcousticBrainz measured a tempo and a
- * key for — about half the library, and nothing can be done about the rest:
- * submissions closed in 2022. A track outside the pool can still sit in a set,
- * it just cannot be matched against, so it shows its numbers as unknown.
+ * The pool is every library recording rbxport measured a tempo and a key for,
+ * from Deezer's 30-second preview (`queue/tasks/analyse.ts`) — the whole
+ * library but the few recordings Deezer has no preview of, rather than the
+ * half AcousticBrainz covered before it closed in 2022. A track outside the
+ * pool can still sit in a set, it just cannot be matched against, so it shows
+ * its numbers as unknown. AcousticBrainz still lends its mood classifiers to
+ * the "feel" part of the score where it has them.
  *
  * Which keys may follow which is decided in TypeScript (`movesFrom` in
  * utils/music.ts) and handed to Postgres as a table, so the suggestion list and
@@ -18,14 +21,8 @@ import { like, thumb, total, type ArtistRef } from './shared.ts';
  * only, in `TEMPO_FOLD`, for the same reason in the other direction.
  */
 
-/** AcousticBrainz's ("A#", "minor") → Camelot code, as a join table. */
-const CAMELOT_TABLE = sql`(
-	select split_part(k, ' ', 1) as key_key, split_part(k, ' ', 2) as key_scale, code
-	  from jsonb_each_text(${JSON.stringify(CAMELOT)}::jsonb) as c(k, code)
-)`;
-
 /**
- * One row per library recording with a measured tempo and key.
+ * One row per library recording with a tempo and key rbxport measured.
  *
  * Read through `track_enrichment` like every other enrichment consumer, so
  * "measured" means what it means on the track page. Two things are left out
@@ -36,9 +33,9 @@ const CAMELOT_TABLE = sql`(
  */
 const POOL = sql`
 	select lc.canonical_track_id as id,
-	       te.bpm,
-	       cam.code,
-	       te.key_strength,
+	       te.rbx_bpm as bpm,
+	       te.rbx_camelot as code,
+	       te.rbx_bpm_confidence as bpm_confidence,
 	       te.recording_mbid as mbid,
 	       te.danceable, te.electronic, te.aggressive, te.happy, te.relaxed,
 	       lc.liked,
@@ -46,9 +43,8 @@ const POOL = sql`
 	       coalesce(cps.plays, 0) as plays
 	  from library_canonical lc
 	  join spotidata.track_enrichment te on te.canonical_track_id = lc.canonical_track_id
-	  join ${CAMELOT_TABLE} cam on cam.key_key = te.key_key and cam.key_scale = lower(te.key_scale)
 	  left join canonical_play_stats cps on cps.canonical_track_id = lc.canonical_track_id
-	 where te.bpm is not null`;
+	 where te.rbx_bpm is not null and te.rbx_camelot is not null`;
 
 /** A pool row's MusicBrainz genres, best-voted first — the view's own definition. */
 const genresOf = (alias: string) =>
@@ -63,9 +59,9 @@ const hasGenre = (alias: string, genre: string) => sql`exists (
 /**
  * The pitch needed to match `next` to `playing`, with octaves folded.
  *
- * AcousticBrainz's tempo estimate is often an octave out — a 174 BPM drum &
- * bass record reads as 87 — and a DJ beat-matches across that anyway, so the
- * nearest of ½×, 1× and 2× wins. A lateral, because `pct` is wanted alongside
+ * A tempo can read an octave out — rbxport measures within 70–180 BPM, so an
+ * 87 BPM record and a 174 BPM one look alike to it in thirty seconds — and a
+ * DJ beat-matches across that anyway, so the nearest of ½×, 1× and 2× wins. A lateral, because `pct` is wanted alongside
  * the factor that produced it.
  */
 const TEMPO_FOLD = (playing: SQL, next: SQL) => sql`lateral (
@@ -119,7 +115,8 @@ interface Display {
 export interface DjTrack extends Display {
 	bpm: number;
 	camelot: string;
-	keyStrength: number | null;
+	/** rbxport's 0–1 confidence in the tempo; low means it may be off. */
+	bpmConfidence: number | null;
 	genres: string[] | null;
 	/** AcousticBrainz's P(danceable), 0–1. */
 	danceable: number | null;
@@ -186,7 +183,7 @@ export async function browseTracks(opts: {
 		with p as (${POOL})
 		select ${total},
 		       p.id as "canonicalTrackId",
-		       p.bpm, p.code as camelot, p.key_strength as "keyStrength", ${genresOf('p')} as genres,
+		       p.bpm, p.code as camelot, p.bpm_confidence as "bpmConfidence", ${genresOf('p')} as genres,
 		       p.danceable, p.liked, p.plays,
 		       ${DISPLAY}
 		  from p
@@ -289,12 +286,11 @@ export async function setTracks(ids: string[]): Promise<SetTrack[]> {
 		    from jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb) with ordinality as s(id, ord)
 		),
 		r as (
-		  select s.ord, ct.id, te.bpm, cam.code, te.genres,
-		         lag(te.bpm) over (order by s.ord) as prev_bpm
+		  select s.ord, ct.id, te.rbx_bpm as bpm, te.rbx_camelot as code, te.genres,
+		         lag(te.rbx_bpm) over (order by s.ord) as prev_bpm
 		    from s
 		    join canonical_tracks ct on ct.id = s.id
 		    left join spotidata.track_enrichment te on te.canonical_track_id = ct.id
-		    left join ${CAMELOT_TABLE} cam on cam.key_key = te.key_key and cam.key_scale = lower(te.key_scale)
 		)
 		select r.ord as position,
 		       r.id as "canonicalTrackId",
@@ -338,7 +334,9 @@ export interface NextOptions {
  * The score weighs, in order: how safe the key move is, how little pitching it
  * takes, how much the two share genres, how alike they feel to AcousticBrainz's
  * classifiers, and — lightly — whether it is a record you actually play. The
- * key and the tempo are gates as well as weights; the rest only rank.
+ * key and the tempo are gates as well as weights; the rest only rank. The
+ * classifiers are AcousticBrainz's, so a recording it never heard counts as
+ * neutral there.
  *
  * A folded tempo (½× or 2×) is a real mix but a riskier one, so it gives up a
  * little of its tempo score.
@@ -410,7 +408,7 @@ export async function nextTracks(seed: string, opts: NextOptions): Promise<NextT
 		   order by ${SONG('ct')}, score desc, sc.id
 		)
 		select r.id as "canonicalTrackId",
-		       r.bpm, r.code as camelot, r.key_strength as "keyStrength", r.genres,
+		       r.bpm, r.code as camelot, r.bpm_confidence as "bpmConfidence", r.genres,
 		       r.danceable, r.liked, r.plays,
 		       r.move, r.pct as "tempoPct", r.factor as "tempoFactor",
 		       r.overlap as "genreOverlap", r.shared as "sharedGenres",

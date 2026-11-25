@@ -28,6 +28,7 @@ const STAGE_LABELS: Record<string, string> = {
 	genres: 'Genre vocabulary',
 	recordings: 'Recordings (ISRC → MusicBrainz)',
 	audio: 'BPM & key (AcousticBrainz)',
+	rbxport: 'BPM & key (rbxport, from Deezer previews)',
 	artists: 'Artists',
 	albums: 'Albums'
 };
@@ -47,9 +48,10 @@ export async function getCoverage(): Promise<StageCoverage[]> {
 		 order by case c.stage
 		            when 'recordings' then 1
 		            when 'audio' then 2
-		            when 'artists' then 3
-		            when 'albums' then 4
-		            else 5 end
+		            when 'rbxport' then 3
+		            when 'artists' then 4
+		            when 'albums' then 5
+		            else 6 end
 	`);
 	return rows.map((r) => ({ ...r, label: STAGE_LABELS[r.stage] ?? r.stage }));
 }
@@ -108,12 +110,13 @@ export async function getLimiters(): Promise<LimiterView[]> {
 	`);
 }
 
-/** Queued enrichment work, which is how the page knows the chain is alive. */
+/** Queued enrichment work, which is how the page knows a chain is alive. */
 export async function isChainQueued(): Promise<boolean> {
 	const rows = await query<{ n: number }>(sql`
 		select count(*)::int as n
 		  from graphile_worker._private_jobs
-		 where task_id = (select id from graphile_worker._private_tasks where identifier = 'enrich:tick')
+		 where task_id in (select id from graphile_worker._private_tasks
+		                    where identifier in ('enrich:tick', 'analyse:tick'))
 	`);
 	return (rows[0]?.n ?? 0) > 0;
 }

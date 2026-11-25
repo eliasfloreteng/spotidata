@@ -65,7 +65,7 @@
 			<h1>DJ</h1>
 			<p class="muted">
 				Find what mixes. {num(shape.pool)} of {num(shape.library)} recordings have a tempo and a key
-				measured by AcousticBrainz. Narrow by key and tempo, pick a record to start a set, and every
+				measured by rbxport from their 30-second preview. Narrow by key and tempo, pick a record to start a set, and every
 				next one is ranked by how well it blends out of the last.
 			</p>
 		</div>
@@ -91,8 +91,8 @@
 			<header class="cardhead">
 				<h2>Tempo</h2>
 				<p class="faint sub">
-					Recordings per 5 BPM. AcousticBrainz is sometimes an octave out, so a 174 BPM record can
-					sit at 87 — the set builder matches across that.
+					Recordings per 5 BPM. Thirty seconds can read an octave out, so an 87 BPM record can sit
+					at 174 — the set builder matches across that.
 				</p>
 			</header>
 			<div class="strip" role="group" aria-label="Tempo">
@@ -193,12 +193,14 @@
 									</div>
 								</div>
 							</td>
-							<td class="r num">{bpm(t.bpm)}</td>
+							<td class="r num">
+								{#if t.bpmConfidence != null && t.bpmConfidence < 0.45}
+									<span class="faint xs" title="rbxport is only {pct(t.bpmConfidence)} confident in this tempo">?</span>
+								{/if}
+								{bpm(t.bpm)}
+							</td>
 							<td class="nowrap">
 								<a class="code" href={withParams(page.url, { key: t.camelot, page: null })} title={keyForCamelot(t.camelot) ?? ''}>{t.camelot}</a>
-								{#if t.keyStrength != null && t.keyStrength < 0.5}
-									<span class="faint xs" title="AcousticBrainz is only {pct(t.keyStrength)} confident in this key">?</span>
-								{/if}
 							</td>
 							<td class="genres">
 								{#each (t.genres ?? []).slice(0, 2) as g (g)}
@@ -322,7 +324,8 @@
 
 			{#if !seed || seed.bpm == null || !seed.camelot}
 				<p class="empty faint">
-					AcousticBrainz never measured the last track, so there is nothing to match it against.
+					rbxport has not measured the last track — Deezer has no preview of it, or the analysis has
+					not reached it yet — so there is nothing to match it against.
 					Remove it, or pick what follows from <a href="/dj">the pool</a>.
 				</p>
 			{:else}

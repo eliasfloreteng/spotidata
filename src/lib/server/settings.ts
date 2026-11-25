@@ -35,6 +35,11 @@ export interface Settings {
 	 */
 	'enrich.enabled': boolean;
 	'enrich.audioFeatures': boolean;
+	/**
+	 * rbxport's tempo and key, measured from Deezer's previews — a download and
+	 * a decode per recording, beside the MusicBrainz crawl rather than in it.
+	 */
+	'enrich.rbxport': boolean;
 	'enrich.artists': boolean;
 	'enrich.albums': boolean;
 }
@@ -50,6 +55,7 @@ export const DEFAULT_SETTINGS: Settings = {
 	'history.pollRecentlyPlayed': true,
 	'enrich.enabled': true,
 	'enrich.audioFeatures': true,
+	'enrich.rbxport': true,
 	'enrich.artists': true,
 	'enrich.albums': true
 };

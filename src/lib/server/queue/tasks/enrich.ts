@@ -40,6 +40,8 @@ import { PRIORITY_ENRICH } from '../constants.ts';
  */
 
 export const ENRICH_JOB_KEY = 'enrich-tick';
+/** The rbxport chain's (`analyse.ts`), here so this module need not import it back. */
+export const ANALYSE_JOB_KEY = 'analyse-tick';
 
 /** Bounded so a single job stays around half a minute of wall clock. */
 const BATCH = {
@@ -54,7 +56,7 @@ const BATCH = {
 /** Re-fetch the genre vocabulary about as often as it meaningfully changes. */
 const GENRE_TTL_DAYS = 30;
 
-interface StageResult {
+export interface StageResult {
 	/** Items looked at; zero means the stage has nothing left to do. */
 	processed: number;
 	done: number;
@@ -62,11 +64,11 @@ interface StageResult {
 	requests: number;
 }
 
-const NOTHING: StageResult = { processed: 0, done: 0, missed: 0, requests: 0 };
+export const NOTHING: StageResult = { processed: 0, done: 0, missed: 0, requests: 0 };
 
 // ------------------------------------------------------------ bookkeeping
 
-async function markStage(
+export async function markStage(
 	key: string,
 	status: 'idle' | 'running' | 'complete' | 'error' | 'blocked',
 	result: StageResult = NOTHING,
@@ -436,7 +438,7 @@ export const enrichTick: Task = async (_payload, helpers) => {
  * none. Everything here is a "we asked and were told no", never a match.
  */
 export const enrichRetryMisses: Task = async (payload, helpers) => {
-	const { scope = 'all' } = (payload ?? {}) as { scope?: 'all' | StageKey };
+	const { scope = 'all' } = (payload ?? {}) as { scope?: 'all' | StageKey | 'rbxport' };
 
 	if (scope === 'all' || scope === 'recordings') {
 		await db.execute(sql`delete from isrc_recordings where status = 'not_found'`);
@@ -450,6 +452,10 @@ export const enrichRetryMisses: Task = async (payload, helpers) => {
 	if (scope === 'all' || scope === 'albums') {
 		await db.execute(sql`delete from album_musicbrainz where status = 'not_found'`);
 	}
+	// Deezer adds catalog daily, and a failed measurement may be a bad download.
+	if (scope === 'all' || scope === 'rbxport') {
+		await db.execute(sql`delete from track_analysis where status <> 'ok'`);
+	}
 
 	await db.execute(sql`update enrich_stages set missed = 0, status = 'idle', finished_at = null`);
 	await logEvent(null, 'info', `Enrichment misses cleared (${scope})`);
@@ -458,5 +464,10 @@ export const enrichRetryMisses: Task = async (payload, helpers) => {
 		'enrich:tick',
 		{},
 		{ jobKey: ENRICH_JOB_KEY, jobKeyMode: 'replace', priority: PRIORITY_ENRICH }
+	);
+	await helpers.addJob(
+		'analyse:tick',
+		{},
+		{ jobKey: ANALYSE_JOB_KEY, jobKeyMode: 'replace', priority: PRIORITY_ENRICH }
 	);
 };

@@ -41,6 +41,7 @@ import { ondemandEntity } from './ondemand.ts';
 import { syncAllPlaylists, syncPlaylist } from './playlists.ts';
 import { runAllAutomations, runAutomationTask } from './automations.ts';
 import { enrichTick, enrichRetryMisses } from './enrich.ts';
+import { analyseTick } from './analyse.ts';
 
 /**
  * Album-track overflow is seeded implicitly: `sync:albums-batch` enqueues a
@@ -126,6 +127,9 @@ export const taskList: TaskList = {
 	// MusicBrainz / AcousticBrainz. One self-chaining job, paced at 1 req/s.
 	'enrich:tick': enrichTick,
 	'enrich:retry-misses': enrichRetryMisses,
+
+	// rbxport's tempo and key from Deezer previews. Its own chain, paced by Deezer's limit.
+	'analyse:tick': analyseTick,
 
 	// Generated playlists: push a genre collection into Spotify and keep it there.
 	'playlist:sync': syncPlaylist,

@@ -71,6 +71,7 @@ export const actions: Actions = {
 
 		await setSetting('enrich.enabled', form.get('enrichEnabled') === 'on');
 		await setSetting('enrich.audioFeatures', form.get('enrichAudio') === 'on');
+		await setSetting('enrich.rbxport', form.get('enrichRbxport') === 'on');
 		await setSetting('enrich.artists', form.get('enrichArtists') === 'on');
 		await setSetting('enrich.albums', form.get('enrichAlbums') === 'on');
 

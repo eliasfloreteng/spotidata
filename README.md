@@ -259,16 +259,31 @@ rather than when the automation was created. Runs happen hourly, after every
 completed sync, and inline when the button is pressed.
 
 **`/dj` finds the next record.** The pool is every library recording
-AcousticBrainz measured a tempo and a key for — about 5k of 9k, and fixed,
-since it stopped taking submissions. Browse it by a Camelot wheel and a
+rbxport measured a tempo and a key for (below). Browse it by a Camelot wheel and a
 tempo strip that each count under every filter but their own, pick a record
 to start a set, and every suggestion after that is ranked against the last
 track: how safe the key move is, how little pitching it takes, then shared
 MusicBrainz genres, AcousticBrainz feel and, lightly, whether you play it.
 Key and tempo are gates as well as weights (±3/6/10%, harmonic or with the
 +2/+7 energy moves); the rest only rank. Tempo is matched with octaves folded,
-because AcousticBrainz reads plenty of 174 BPM records as 87 and a DJ mixes
+because thirty seconds of an 87 BPM record can read as 174 and a DJ mixes
 across that anyway.
+
+**rbxport measures the whole library.** AcousticBrainz covered about 5k of 9k
+recordings and will never cover more, so tempo and key come from
+[rbxport](https://github.com/eliasfloreteng/rbxport)'s analysis instead — the
+same crates, at the same rev, that Deckhand analyses the stick with.
+`analyser/` is a small Rust binary around them (`rbx-analyse <file>…`, JSON
+lines out), built into the image. The audio is Deezer's 30-second preview,
+found by ISRC (else by title, first artist and length, strictly), downloaded,
+measured and thrown away; `track_analysis` keeps the numbers, keyed by ISRC.
+`analyse:tick` is a self-chaining job beside the MusicBrainz crawl, paced at
+four Deezer requests a second, and shows as a stage on `/enrich`.
+
+Against rekordbox's analysis of the full files, on 49 tracks: the preview's
+tempo agrees within 1 BPM for 86% (94% with octaves folded), and its key
+exactly for 73%, on a neighbouring code for 90%. A low tempo confidence is
+where the misses are, and the DJ tab marks it.
 
 Which keys may follow which is defined once, in TypeScript (`movesFrom` in
 `utils/music.ts`), and handed to Postgres as a table — so the suggestions and
