@@ -10,6 +10,7 @@
 		{ href: '/library', label: 'Library' },
 		{ href: '/liked', label: 'Liked' },
 		{ href: '/genres', label: 'Genres' },
+		{ href: '/dj', label: 'DJ' },
 		{ href: '/artists', label: 'Artists' },
 		{ href: '/albums', label: 'Albums' },
 		{ href: '/playlists', label: 'Playlists' },

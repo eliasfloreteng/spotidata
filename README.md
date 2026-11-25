@@ -258,6 +258,27 @@ without pushing any of it, and applies at the moment each source is attached
 rather than when the automation was created. Runs happen hourly, after every
 completed sync, and inline when the button is pressed.
 
+**`/dj` finds the next record.** The pool is every library recording
+AcousticBrainz measured a tempo and a key for — about 5k of 9k, and fixed,
+since it stopped taking submissions. Browse it by a Camelot wheel and a
+tempo strip that each count under every filter but their own, pick a record
+to start a set, and every suggestion after that is ranked against the last
+track: how safe the key move is, how little pitching it takes, then shared
+MusicBrainz genres, AcousticBrainz feel and, lightly, whether you play it.
+Key and tempo are gates as well as weights (±3/6/10%, harmonic or with the
++2/+7 energy moves); the rest only rank. Tempo is matched with octaves folded,
+because AcousticBrainz reads plenty of 174 BPM records as 87 and a DJ mixes
+across that anyway.
+
+Which keys may follow which is defined once, in TypeScript (`movesFrom` in
+`utils/music.ts`), and handed to Postgres as a table — so the suggestions and
+the set's transition labels cannot disagree. The set lives in the URL as
+repeated `?s=`, like the genre builder: adding is a link, back is undo.
+Suggestions collapse to one per *song* (`song_title_key`), so the radio edit
+and the extended mix are not both offered, nor either once the other is in
+the set. "Save to Spotify" writes the set as a new private playlist, which is
+also the way onto the DJ stick: Deckhand copies any playlist.
+
 **Analytics are raw SQL, no materialized views.** Every chart is a `GROUP BY`
 over `library_canonical` (8.8k rows, resident in shared buffers) — all sixteen
 dashboard queries run in ~130 ms total. MVs also cannot be parameterized by an
@@ -379,7 +400,7 @@ db/sql/post/       fallback_key, rate limiter, refresh_canonical, refresh_librar
 src/lib/server/    db/ spotify/ musicbrainz/ ingest/ import/ queue/ stats/
                    entities/ mcp/
 src/lib/charts/    d3 computes, Svelte renders — no d3-selection
-src/routes/        dashboard, entity pages, /history, /genres, /automations,
+src/routes/        dashboard, entity pages, /history, /genres, /dj, /automations,
                    /sync, /enrich, /settings, /api
 scripts/           probe-api, apply-sql, check-migration, check-sql-conventions,
                    backup, restore-auth, spike-worker
