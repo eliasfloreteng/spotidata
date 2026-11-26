@@ -1,9 +1,20 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { enhance } from '$app/forms';
 	import { num, duration, relativeTime } from '$lib/utils/format.ts';
 	import type { SyncStatus } from '$lib/server/queue/status.ts';
 
 	let { data } = $props();
+
+	/** rbxport's tempo and key, measured beside the sync rather than in it. */
+	const analysis = $derived(data.analysis);
+	const analysed = $derived(analysis.measured + analysis.missing + analysis.failed);
+	const ANALYSIS_TONE: Record<string, string> = {
+		complete: 'good',
+		running: 'active',
+		blocked: 'warn',
+		failing: 'bad'
+	};
 
 	let status = $state<SyncStatus>(data.status);
 	let busy = $state(false);
@@ -207,6 +218,49 @@
 	</div>
 </section>
 
+<section class="card">
+	<div class="cardhead">
+		<h2>
+			Tempo &amp; key
+			<span class="faint small">rbxport, from each recording's Deezer preview</span>
+		</h2>
+		<form method="POST" action="?/retryAnalysis" use:enhance>
+			<button
+				class="btn"
+				type="submit"
+				disabled={analysis.missing + analysis.failed === 0}
+				title="Forget the recordings that were not measured, so Deezer is asked again"
+			>
+				Retry misses
+			</button>
+		</form>
+	</div>
+	<div class="bar-row">
+		<div class="bar">
+			<div
+				class="fill"
+				style="width:{analysis.candidates > 0 ? Math.min(100, (analysed / analysis.candidates) * 100) : 0}%"
+			></div>
+		</div>
+		<span class="num small">{num(analysed)}/{num(analysis.candidates)}</span>
+		<span class="pill {ANALYSIS_TONE[analysis.state] ?? 'idle'}">{analysis.state}</span>
+	</div>
+	<p class="faint small analysis-line">
+		{num(analysis.measured)} measured · {num(analysis.missing)} without a preview ·
+		{num(analysis.failed)} unreadable · {num(Math.max(0, analysis.candidates - analysed))} to go ·
+		{num(analysis.requests)} Deezer requests
+		{#if analysis.lastAnalysedAt}· last measured {relativeTime(analysis.lastAnalysedAt)}{/if}
+	</p>
+	{#if analysis.state === 'off'}
+		<p class="small">Switched off under <a href="/settings">Settings</a>; what was measured stays.</p>
+	{:else if analysis.blockedUntil}
+		<p class="small">Deezer asked for a pause; the chain resumes {relativeTime(analysis.blockedUntil)}.</p>
+	{:else if analysis.state === 'waiting'}
+		<p class="small faint">Not queued right now — the next quarter-hour restarts it.</p>
+	{/if}
+	{#if analysis.lastError}<p class="bad small">{analysis.lastError}</p>{/if}
+</section>
+
 <div class="split">
 	<section class="card">
 		<h2>API throughput <span class="faint small">requests per minute, last 2h</span></h2>
@@ -374,6 +428,16 @@
 		transition: width 0.4s ease;
 	}
 	.phaseline {
+		margin: 8px 0 0;
+	}
+	.cardhead {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		gap: 12px;
+		flex-wrap: wrap;
+	}
+	.analysis-line {
 		margin: 8px 0 0;
 	}
 	.pctlabel {

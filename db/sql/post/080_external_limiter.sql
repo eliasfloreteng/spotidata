@@ -4,17 +4,10 @@
 --
 -- Kept separate from `rate_limiter` rather than generalising it: that table is
 -- a singleton with a Spotify-specific AIMD controller and a `forbiddenFlags`
--- hook wired to its `blocked_until`. These services need neither — they need a
--- hard, unnegotiable pace (MusicBrainz: one request per second, no exceptions)
--- and a place to park a 503 backoff.
+-- hook wired to its `blocked_until`. Other services need neither — they need a
+-- hard pace of their own and a place to park a 429 backoff.
 
 INSERT INTO external_limiters (service, tokens, capacity, refill_per_sec) VALUES
-  -- MusicBrainz publishes 1 req/s for anonymous clients and blocks IPs that
-  -- exceed it. capacity = 1 means no burst is even possible.
-  ('musicbrainz', 1, 1, 1),
-  -- AcousticBrainz asks only that clients be reasonable; 2/s with a small
-  -- burst, and each request carries 25 recordings.
-  ('acousticbrainz', 4, 4, 2),
   -- Deezer's public API allows 50 requests per 5 seconds per IP, and Deckhand
   -- searches its catalog from the same address. Four a second leaves it room.
   -- One request per track (the ISRC lookup); the preview itself comes off the
@@ -71,9 +64,9 @@ BEGIN
   END IF;
 END $$;
 
--- Opens the breaker for everyone until `p_seconds` have passed. MusicBrainz
--- answers overload with 503 and a Retry-After, and the only correct response
--- is to stop entirely — slowing down still costs them a request.
+-- Opens the breaker for everyone until `p_seconds` have passed. A service that
+-- answers with "quota exceeded" wants a pause, and the only correct response
+-- is to stop entirely — slowing down still costs it a request.
 CREATE OR REPLACE FUNCTION spotidata.xrl_penalize(p_service text, p_seconds integer)
 RETURNS timestamptz LANGUAGE sql AS $$
   UPDATE external_limiters SET

@@ -1,9 +1,9 @@
 /**
- * Presentation helpers for the acoustic analysis.
+ * Musical keys and the Camelot wheel, for the DJ tab.
  *
- * AcousticBrainz reports the key as an ASCII root plus a scale ("G#",
- * "major"), which is correct and ugly. These turn it into what a musician
- * would write, and into the Camelot code a DJ would sort by.
+ * Keys are written as an ASCII root plus a scale ("G#", "minor"), which is
+ * correct and ugly. These turn it into what a musician would write, and into
+ * the Camelot code a DJ would sort by.
  */
 
 const SHARP_TO_UNICODE: Record<string, string> = {
@@ -50,53 +50,6 @@ export const CAMELOT: Record<string, string> = {
 	'A# minor': '3A',
 	'B minor': '10A'
 };
-
-export function camelot(key: string | null, scale: string | null): string | null {
-	if (!key || !scale) return null;
-	return CAMELOT[`${key} ${scale.toLowerCase()}`] ?? null;
-}
-
-/** Tempo names as a listener would use them, not as a metronome would. */
-export function tempoLabel(bpm: number | null): string | null {
-	if (bpm == null) return null;
-	if (bpm < 70) return 'slow';
-	if (bpm < 100) return 'mid-tempo';
-	if (bpm < 125) return 'upbeat';
-	if (bpm < 145) return 'fast';
-	return 'very fast';
-}
-
-/**
- * The classifier probabilities worth showing, strongest first.
- *
- * Essentia's mood models are two-class and independent — a track can read 0.9
- * happy and 0.7 sad — so these are presented as separate readings rather than
- * summed into a profile that would not mean anything.
- */
-export interface Trait {
-	label: string;
-	value: number;
-}
-
-export function traits(source: Record<string, number | null>, min = 0.6): Trait[] {
-	const LABELS: Record<string, string> = {
-		danceable: 'danceable',
-		happy: 'happy',
-		sad: 'sad',
-		party: 'party',
-		relaxed: 'relaxed',
-		aggressive: 'aggressive',
-		acoustic: 'acoustic',
-		electronic: 'electronic',
-		instrumental: 'instrumental',
-		bright: 'bright',
-		tonal: 'tonal'
-	};
-	return Object.entries(LABELS)
-		.map(([key, label]) => ({ label, value: source[key] ?? 0 }))
-		.filter((t) => t.value >= min)
-		.sort((a, b) => b.value - a.value);
-}
 
 // ------------------------------------------------------------------ mixing
 

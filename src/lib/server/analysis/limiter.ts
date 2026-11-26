@@ -1,11 +1,33 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
-import { ServiceBlocked } from './errors.ts';
+
+/**
+ * Pacing for the third-party APIs the analysis reads, through the per-service
+ * token bucket in `external_limiters` (db/sql/post/080_external_limiter.sql).
+ * It lives in Postgres for the reason the Spotify one does: a penalty measured
+ * in minutes must survive a restart and be shared by every process.
+ */
 
 /** Longest we will hold a worker slot waiting for a token. */
 const MAX_INLINE_WAIT_MS = 2000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * The breaker for a third-party service is open, because it asked us to stop.
+ *
+ * Carries the instant it lifts, so a self-chaining job can hand itself back to
+ * the queue with `runAt` set instead of sleeping on it.
+ */
+export class ServiceBlocked extends Error {
+	constructor(
+		readonly service: string,
+		readonly until: Date
+	) {
+		super(`${service} unavailable until ${until.toISOString()}`);
+		this.name = 'ServiceBlocked';
+	}
+}
 
 interface AcquireRow extends Record<string, unknown> {
 	granted: boolean;
@@ -39,23 +61,4 @@ export async function penalize(service: string, seconds: number): Promise<Date> 
 		sql`select spotidata.xrl_penalize(${service}, ${seconds}) as until`
 	);
 	return rows[0]?.until ?? new Date(Date.now() + seconds * 1000);
-}
-
-export interface LimiterRow extends Record<string, unknown> {
-	service: string;
-	blockedUntil: Date | null;
-	requestsTotal: number;
-	refillPerSec: number;
-}
-
-export async function readLimiters(): Promise<LimiterRow[]> {
-	const { rows } = await db.execute<LimiterRow>(sql`
-		select service,
-		       blocked_until   as "blockedUntil",
-		       requests_total  as "requestsTotal",
-		       refill_per_sec  as "refillPerSec"
-		  from external_limiters
-		 order by service
-	`);
-	return rows;
 }

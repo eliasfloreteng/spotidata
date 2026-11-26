@@ -5,9 +5,9 @@ import { query } from '../db/index.ts';
  * The library as Sortify (the iOS playlist sorter) needs it: one row per
  * recording with what the Spotify API cannot tell an app — how often it was
  * really played, when it was first heard, when it was *originally* released,
- * and its MusicBrainz genres and moods — plus the credited artists' genres and
- * country. Sortify owns the live playlist state itself; this is the feature
- * store it ranks and prompts with.
+ * and its tempo — plus the credited artists' Spotify genres. Sortify owns the
+ * live playlist state itself; this is the feature store it ranks and prompts
+ * with.
  *
  * Postgres builds the whole document, so it crosses into JS as one string and
  * is never parsed here. Keys are omitted rather than sent as null, which keeps
@@ -27,32 +27,24 @@ import { query } from '../db/index.ts';
  *   original. Remixes, live and acoustic versions keep their own key
  *   (`spotidata.song_title_key`). An empty normalised title falls back to the
  *   recording id rather than fusing every untitled track of an artist.
- * - `year` — the earlier of Spotify's earliest release and MusicBrainz's first
- *   release, so a 2011 remaster of a 1973 song still says 1973.
+ * - `year` — the earliest release of any Spotify copy of the recording
+ *   (`canonical_tracks.earliest_release_date`), so a 2011 remaster says 1973
+ *   when the 1973 single shares its ISRC.
  * - `plays` / `skips` — completed plays (past 30 s) and skips, from
  *   `canonical_play_stats`.
- * - `moods` — AcousticBrainz classifier labels scoring at least 0.85. They are
- *   evidence, not verdicts (rule 10), which is why only the confident ones go.
+ * - `bpm` — rbxport's measurement of the recording's Deezer preview
+ *   (`track_analysis`).
  */
 export async function sortifyLibrary(): Promise<string> {
 	const rows = await query<{ body: string }>(sql`
 		with lib as (
 		  select lc.canonical_track_id as id, ct.kind, ct.isrc, ct.title, ct.max_popularity,
 		         lc.primary_artist_id,
-		         least(ct.earliest_release_date, te.mb_first_release_date) as released,
-		         te.bpm, te.danceable, te.happy, te.sad, te.relaxed, te.party,
-		         te.aggressive, te.acoustic, te.electronic, te.instrumental
+		         ct.earliest_release_date as released,
+		         ta.bpm
 		    from library_canonical lc
 		    join canonical_tracks ct on ct.id = lc.canonical_track_id
-		    left join spotidata.track_enrichment te on te.canonical_track_id = lc.canonical_track_id
-		), genres as (
-		  -- Set-based rather than track_enrichment.genres, whose per-row function call
-		  -- is most of the cost of reading 9k rows at once. Same genre test, same order.
-		  select tg.canonical_track_id as id,
-		         (array_agg(tg.genre order by tg.votes desc, tg.genre))[1:6] as names
-		    from spotidata.track_genres tg
-		   where tg.canonical_track_id in (select id from lib)
-		   group by 1
+		    left join track_analysis ta on ta.isrc = ct.isrc and ta.status = 'ok'
 		), ids as (
 		  select st.canonical_track_id as id, array_agg(lt.track_id order by lt.track_id) as track_ids
 		    from library_tracks lt
@@ -66,19 +58,6 @@ export async function sortifyLibrary(): Promise<string> {
 		   group by 1
 		), songs as (
 		  select lib.id, nullif(spotidata.song_title_key(lib.title), '') as title_key from lib
-		), moods as (
-		  select lib.id, array_remove(array[
-		           case when lib.happy        >= 0.85 then 'happy' end,
-		           case when lib.sad          >= 0.85 then 'sad' end,
-		           case when lib.relaxed      >= 0.85 then 'relaxed' end,
-		           case when lib.party        >= 0.85 then 'party' end,
-		           case when lib.aggressive   >= 0.85 then 'aggressive' end,
-		           case when lib.acoustic     >= 0.85 then 'acoustic' end,
-		           case when lib.electronic   >= 0.85 then 'electronic' end,
-		           case when lib.instrumental >= 0.85 then 'instrumental' end,
-		           case when lib.danceable    >= 0.85 then 'danceable' end
-		         ], null) as labels
-		    from lib
 		)
 		select json_build_object(
 		  'version', 1,
@@ -95,14 +74,10 @@ export async function sortifyLibrary(): Promise<string> {
 		      'lastPlayed', to_char(cps.last_played_at at time zone 'UTC', 'YYYY-MM-DD'),
 		      'year', extract(year from lib.released)::int,
 		      'popularity', lib.max_popularity,
-		      'genres', genres.names,
-		      'bpm', round(lib.bpm)::int,
-		      'moods', nullif(moods.labels, '{}')
+		      'bpm', round(lib.bpm)::int
 		    )))
 		      from lib
 		      join songs using (id)
-		      join moods using (id)
-		      left join genres using (id)
 		      left join ids using (id)
 		      left join credits using (id)
 		      left join canonical_play_stats cps on cps.canonical_track_id = lib.id
@@ -110,13 +85,9 @@ export async function sortifyLibrary(): Promise<string> {
 		  'artists', coalesce((
 		    select json_object_agg(a.id, json_strip_nulls(json_build_object(
 		      'name', a.name,
-		      'genres', (select array_agg(g order by g) from (
-		                   select ag.genre as g from artist_genres ag where ag.artist_id = a.id
-		                   union
-		                   select unnest(ae.genres[1:5])) x),
-		      'country', ae.country)))
+		      'genres', (select array_agg(ag.genre order by ag.genre)
+		                   from artist_genres ag where ag.artist_id = a.id))))
 		      from artists a
-		      left join spotidata.artist_enrichment ae on ae.artist_id = a.id
 		     where a.id in (select unnest(artist_ids) from credits)
 		  ), '{}')
 		)::text as body

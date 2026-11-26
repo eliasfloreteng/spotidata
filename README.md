@@ -48,9 +48,6 @@ http://127.0.0.1:4173/auth/callback     (preview)
 Spotify rejects `localhost`; the loopback IP literal is the only non-HTTPS
 exception.
 
-Set `MUSICBRAINZ_CONTACT` too — a URL or email. MusicBrainz blocks clients that
-do not identify themselves, and it is the only thing enrichment needs.
-
 ## Scripts
 
 | Command | Purpose |
@@ -144,35 +141,6 @@ must survive that. A 429 halves the rate; `maintenance:rate-recover` ramps it
 back (AIMD). While the breaker is open, Graphile Worker's `forbiddenFlags`
 skips every Spotify job wholesale instead of burning retries.
 
-**MusicBrainz fills in what Spotify deleted.** `/audio-features` is gone, and
-Spotify never had genres per track or an artist's country of origin. MusicBrainz
-has all of it, and AcousticBrainz still serves the BPM and musical key it
-collected before submissions closed in 2022. The seam between the two catalogs
-is the **ISRC** — the only identifier they genuinely share — so
-`isrc_recordings` maps it to a recording MBID and every enrichment hangs off
-that, never off the derived `canonical_tracks.id` that a regrouping would
-invalidate.
-
-The shape is dictated by the rate limit: one request per second per IP, no
-batch lookup, no way to buy more. So it is one self-chaining job that does a
-bounded slice and re-enqueues itself, ordered by play count so the music you
-actually listen to gets its genres in the first hour rather than the twentieth.
-Two things keep it affordable — every ISRC lookup returns the recording's full
-artist credit, so `match_artists_by_credit()` links thousands of artists in one
-SQL statement and no requests at all; and every miss is *recorded*, so a
-recording MusicBrainz has never heard of costs one request ever, not one per
-pass. Progress, per-stage coverage and the controls live at `/enrich`.
-
-OAuth is supported and unnecessary: the web service is open, and a grant does
-not raise the rate limit. It is there for a future write path.
-
-**A genre belongs to a recording, and only MusicBrainz says so.** Spotify tags
-the *artist*, so every song by a band inherits one career-long label — a
-drum-and-bass remix filed under "swedish pop". `spotidata.track_genres` reads
-MusicBrainz's recording tags alone, filtered to its curated genre vocabulary so
-"seen live" and "80s" stay out. The price is coverage: 42% of this library has
-a genre today, and it rises as `/enrich` crawls.
-
 **`/automations` fills a playlist instead of owning one.** An automation is a
 set of source playlists and one destination, and it only ever *appends*: it
 issues `POST /playlists/{id}/tracks` and nothing else — no `PUT`, no `DELETE`.
@@ -210,23 +178,26 @@ completed sync, and inline when the button is pressed.
 rbxport measured a tempo and a key for (below). Browse it by a Camelot wheel and a
 tempo strip that each count under every filter but their own, pick a record
 to start a set, and every suggestion after that is ranked against the last
-track: how safe the key move is, how little pitching it takes, then shared
-MusicBrainz genres, AcousticBrainz feel and, lightly, whether you play it.
-Key and tempo are gates as well as weights (±3/6/10%, harmonic or with the
-+2/+7 energy moves); the rest only rank. Tempo is matched with octaves folded,
-because thirty seconds of an 87 BPM record can read as 174 and a DJ mixes
-across that anyway.
+track: how safe the key move is, how little pitching it takes, then, lightly,
+whether you play it. Key and tempo are gates as well as weights (±3/6/10%,
+harmonic or with the +2/+7 energy moves); play count only ranks. Tempo is
+matched with octaves folded, because thirty seconds of an 87 BPM record can
+read as 174 and a DJ mixes across that anyway.
 
-**rbxport measures the whole library.** AcousticBrainz covered about 5k of 9k
-recordings and will never cover more, so tempo and key come from
-[rbxport](https://github.com/eliasfloreteng/rbxport)'s analysis instead — the
-same crates, at the same rev, that Deckhand analyses the stick with.
+**rbxport measures the whole library.** Spotify withdrew `/audio-features`, so
+tempo and key come from [rbxport](https://github.com/eliasfloreteng/rbxport)'s
+analysis — the same crates, at the same rev, that Deckhand analyses the stick
+with.
 `analyser/` is a small Rust binary around them (`rbx-analyse <file>…`, JSON
 lines out), built into the image. The audio is Deezer's 30-second preview,
 found by ISRC (else by title, first artist and length, strictly), downloaded,
 measured and thrown away; `track_analysis` keeps the numbers, keyed by ISRC.
-`analyse:tick` is a self-chaining job beside the MusicBrainz crawl, paced at
-four Deezer requests a second, and shows as a stage on `/enrich`.
+`analyse:tick` is a self-chaining job paced at four Deezer requests a second,
+through a token bucket in Postgres (`external_limiters`) like Spotify's. It
+keeps no bookkeeping of its own: `/sync` reads its progress off
+`track_analysis`, the limiter and the queued job, so the page cannot disagree
+with what was measured, and offers a retry for the recordings Deezer had no
+preview of.
 
 Against rekordbox's analysis of the full files, on 49 tracks: the preview's
 tempo agrees within 1 BPM for 86% (94% with octaves folded), and its key
@@ -292,9 +263,10 @@ claude mcp add --transport http spotidata http://127.0.0.1:5173/api/mcp
 **`/api/sortify/library` feeds [Sortify](https://github.com/eliasfloreteng/sortify)**,
 the iOS app that sorts liked songs into playlists. Spotify's API cannot tell an
 app how often a song was played, when it was first heard, when it was
-*originally* released, or what genre the recording is, and those are exactly
-what decide whether a song deserves a playlist and which one. The endpoint
-hands over one row per library recording with all of it, plus a `song` key one
+*originally* released (the earliest release of any copy sharing its ISRC) or
+its tempo, and those are much of what decides whether a song deserves a
+playlist and which one. The endpoint hands over one row per library recording
+with all of it and the credited artists' Spotify genres, plus a `song` key one
 level looser than the ISRC (`spotidata.song_title_key`: the same title by the
 same artist once remaster / radio-edit / feat. qualifiers are gone), so a
 playlist holding the 2011 remaster is not offered the original. Sortify keeps
@@ -374,12 +346,12 @@ db/migrations/     committed drizzle output
 db/sql/pre/        extensions + parse_release_date (migrations depend on them)
 db/sql/post/       fallback_key, rate limiter, refresh_canonical, refresh_library,
                    refresh_album_groups, refresh_plays, mcp_role,
-                   external_limiter, enrichment
-src/lib/server/    db/ spotify/ musicbrainz/ ingest/ import/ queue/ stats/
-                   entities/ mcp/
+                   external_limiter, analysis
+src/lib/server/    db/ spotify/ analysis/ ingest/ import/ queue/ stats/
+                   entities/ playlists/ export/ mcp/
 src/lib/charts/    d3 computes, Svelte renders — no d3-selection
 src/routes/        dashboard, entity pages, /history, /dj, /automations, /sync,
-                   /enrich, /settings, /api
+                   /settings, /api
 scripts/           probe-api, apply-sql, check-migration, check-sql-conventions,
                    backup, restore-auth, spike-worker
 ```

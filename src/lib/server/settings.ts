@@ -24,24 +24,11 @@ export interface Settings {
 	'history.pollRecentlyPlayed': boolean;
 
 	/**
-	 * Crawl MusicBrainz for what Spotify never returns — genres, origins,
-	 * labels — and AcousticBrainz for BPM and key.
-	 *
-	 * MusicBrainz allows one request per second and has no batch lookup, so a
-	 * first pass over this library is measured in hours. It runs at the lowest
-	 * priority, against a different API, and can be switched off per stage: the
-	 * recordings stage is the cheap one that unlocks the rest, while artists
-	 * and albums each cost roughly a request per entity.
+	 * Measure each library recording's tempo and key with rbxport, from
+	 * Deezer's 30-second preview — a download and a decode per recording, at
+	 * the lowest priority. The DJ tab reads it.
 	 */
-	'enrich.enabled': boolean;
-	'enrich.audioFeatures': boolean;
-	/**
-	 * rbxport's tempo and key, measured from Deezer's previews — a download and
-	 * a decode per recording, beside the MusicBrainz crawl rather than in it.
-	 */
-	'enrich.rbxport': boolean;
-	'enrich.artists': boolean;
-	'enrich.albums': boolean;
+	'analysis.enabled': boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -53,11 +40,7 @@ export const DEFAULT_SETTINGS: Settings = {
 	'sync.hydrateAlbumTracks': true,
 	'history.resolvePlayedTracks': true,
 	'history.pollRecentlyPlayed': true,
-	'enrich.enabled': true,
-	'enrich.audioFeatures': true,
-	'enrich.rbxport': true,
-	'enrich.artists': true,
-	'enrich.albums': true
+	'analysis.enabled': true
 };
 
 export async function loadSettings(): Promise<Settings> {

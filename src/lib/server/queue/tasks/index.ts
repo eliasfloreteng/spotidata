@@ -39,7 +39,6 @@ import {
 } from './history.ts';
 import { ondemandEntity } from './ondemand.ts';
 import { runAllAutomations, runAutomationTask } from './automations.ts';
-import { enrichTick, enrichRetryMisses } from './enrich.ts';
 import { analyseTick } from './analyse.ts';
 
 /**
@@ -123,11 +122,7 @@ export const taskList: TaskList = {
 	// On-demand page fetches; run at priority -1000 so they preempt a sync.
 	'ondemand:entity': ondemandEntity,
 
-	// MusicBrainz / AcousticBrainz. One self-chaining job, paced at 1 req/s.
-	'enrich:tick': enrichTick,
-	'enrich:retry-misses': enrichRetryMisses,
-
-	// rbxport's tempo and key from Deezer previews. Its own chain, paced by Deezer's limit.
+	// rbxport's tempo and key from Deezer previews. One self-chaining job, paced by Deezer's limit.
 	'analyse:tick': analyseTick,
 
 	// Automations: append what the source playlists gained to a normal playlist.

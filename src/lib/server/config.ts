@@ -9,7 +9,6 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { APP_NAME, APP_VERSION } from '../version.ts';
 
 /**
  * Load `.env` into process.env if the host has not already done it.
@@ -100,39 +99,6 @@ export const config = {
 			'user-read-playback-state',
 			'user-modify-playback-state'
 		] as const
-	},
-
-	/**
-	 * MusicBrainz supplies what Spotify never has: genres straight off the
-	 * recording, artist origins and life-spans, release labels and barcodes —
-	 * and, through AcousticBrainz, the BPM and musical key of the recording.
-	 *
-	 * The read-only web service takes no credentials at all. What it does
-	 * enforce is a descriptive User-Agent naming the application, its version
-	 * and a way to reach whoever runs it; anonymous or generic agents get
-	 * blocked. OAuth below is optional and only widens what a future write path
-	 * (tags, ratings, collections) could do — enrichment never needs it.
-	 */
-	musicbrainz: {
-		userAgent: `${APP_NAME}/${APP_VERSION} ( ${process.env.MUSICBRAINZ_CONTACT ?? 'https://github.com/spotidata'} )`,
-		/** One request per second is the documented anonymous ceiling. Do not raise. */
-		requestsPerSecond: Number(process.env.MUSICBRAINZ_RPS ?? '1'),
-		oauth: {
-			clientId: process.env.MUSICBRAINZ_CLIENT_ID ?? '',
-			clientSecret: process.env.MUSICBRAINZ_CLIENT_SECRET ?? '',
-			redirectUri: process.env.MUSICBRAINZ_REDIRECT_URI ?? ''
-		}
-	},
-
-	/**
-	 * AcousticBrainz stopped accepting submissions in 2022 but still serves the
-	 * ~7.5M recordings it collected, keyed by MusicBrainz recording MBID. It is
-	 * the only free source of per-recording BPM and key now that Spotify has
-	 * withdrawn /audio-features.
-	 */
-	acousticbrainz: {
-		baseUrl: process.env.ACOUSTICBRAINZ_URL ?? 'https://acousticbrainz.org',
-		requestsPerSecond: Number(process.env.ACOUSTICBRAINZ_RPS ?? '2')
 	},
 
 	/**

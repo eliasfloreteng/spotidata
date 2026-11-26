@@ -1,6 +1,5 @@
 import { config } from '../config.ts';
-import { ServiceBlocked } from '../musicbrainz/errors.ts';
-import { pace, penalize } from '../musicbrainz/limiter.ts';
+import { pace, penalize, ServiceBlocked } from './limiter.ts';
 
 /**
  * Deezer's public API, for one thing: the 30-second preview of a recording,

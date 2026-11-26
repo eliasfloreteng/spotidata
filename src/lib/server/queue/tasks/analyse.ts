@@ -6,20 +6,19 @@ import { sql } from 'drizzle-orm';
 import { db, query } from '../../db/index.ts';
 import { trackAnalysis } from '../../db/schema/index.ts';
 import { loadSettings } from '../../settings.ts';
-import { ServiceBlocked } from '../../musicbrainz/errors.ts';
 import { downloadPreview, findPreview, type Preview, type Wanted } from '../../analysis/deezer.ts';
+import { ServiceBlocked } from '../../analysis/limiter.ts';
 import { analyse, analyserVersion } from '../../analysis/rbxport.ts';
-import { PRIORITY_ENRICH } from '../constants.ts';
-import { ANALYSE_JOB_KEY, markStage, NOTHING, type StageResult } from './enrich.ts';
+import { ANALYSE_JOB_KEY, PRIORITY_ANALYSE } from '../constants.ts';
 
 /**
  * rbxport's tempo and key for every recording in the library, measured from
  * Deezer's 30-second previews, as one self-chaining job.
  *
- * The same shape as the MusicBrainz chain (`enrich.ts`) and beside it rather
- * than inside it: the two talk to different services under different limits,
- * so neither should wait for the other. It shares the chain's master switch
- * and reports as the `rbxport` stage on the enrichment page.
+ * One job does a bounded batch and re-enqueues itself while there is work; a
+ * cron entry restarts the chain when a sync brings new music. It keeps no
+ * bookkeeping of its own: `/sync` reads its progress off `track_analysis`, the
+ * Deezer limiter and the queued job (`analysis/status.ts`).
  *
  * Against rekordbox's analysis of the full files, a preview's tempo agrees to
  * within 1 BPM for 86% of tracks (94% counting a doubled or halved tempo,
@@ -30,7 +29,7 @@ import { ANALYSE_JOB_KEY, markStage, NOTHING, type StageResult } from './enrich.
 /** A tick is a minute or less: four lookups a second, then the analysis. */
 const BATCH = 40;
 
-/** Separate from the enrichment chain's lock, so the two run side by side. */
+/** Only one chain may run at a time; see `withLock`. */
 const LOCK_KEY = 0x5e17c5;
 
 interface Candidate extends Wanted {
@@ -67,8 +66,10 @@ async function save(rows: Row[]): Promise<void> {
  * One batch: find each preview, download it, then measure them all in one
  * run of the analyser. A rate-limit block part way through still saves what
  * was measured before it, then hands the block to the chain.
+ *
+ * Returns how many recordings it looked at; zero means the library is done.
  */
-async function analyseBatch(): Promise<StageResult> {
+async function analyseBatch(): Promise<number> {
 	const pending = await query<Candidate>(sql`
 		select c.isrc, c.title, c.artist, c.duration_ms as "durationMs", c.plays
 		  from spotidata.analyse_candidates c
@@ -77,11 +78,10 @@ async function analyseBatch(): Promise<StageResult> {
 		 order by c.plays desc, c.isrc
 		 limit ${BATCH}
 	`);
-	if (pending.length === 0) return NOTHING;
+	if (pending.length === 0) return 0;
 
 	const analyser = await analyserVersion();
 	const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'spotidata-rbx-'));
-	const result: StageResult = { ...NOTHING, processed: pending.length };
 	const rows: Row[] = [];
 	const downloaded = new Map<string, { c: Candidate; preview: Preview }>();
 	let blocked: ServiceBlocked | null = null;
@@ -91,7 +91,6 @@ async function analyseBatch(): Promise<StageResult> {
 			let preview: Preview | null;
 			try {
 				preview = await findPreview(c);
-				result.requests += preview?.matchedBy === 'search' ? 2 : 1;
 			} catch (err) {
 				if (err instanceof ServiceBlocked) {
 					blocked = err;
@@ -143,15 +142,15 @@ async function analyseBatch(): Promise<StageResult> {
 	}
 
 	await save(rows);
-	result.done = rows.filter((r) => r.status === 'ok').length;
-	result.missed = rows.length - result.done;
-	if (blocked) {
-		await markStage('rbxport', 'running', result);
-		throw blocked;
-	}
-	return result;
+	if (blocked) throw blocked;
+	return pending.length;
 }
 
+/**
+ * The cron kickstarter and a chained job can otherwise overlap and spend the
+ * same second's requests twice. A session advisory lock on a dedicated
+ * connection dies with the connection, so a crashed worker cannot wedge it.
+ */
 async function withLock<T>(fn: () => Promise<T>): Promise<T | null> {
 	const client = await db.$client.connect();
 	try {
@@ -171,26 +170,16 @@ async function withLock<T>(fn: () => Promise<T>): Promise<T | null> {
 
 export const analyseTick: Task = async (_payload, helpers) => {
 	const settings = await loadSettings();
-	if (!settings['enrich.enabled'] || !settings['enrich.rbxport']) {
-		await markStage('rbxport', 'idle');
-		return;
-	}
+	if (!settings['analysis.enabled']) return;
 
+	// A rate-limit block reschedules the chain for when it lifts. Anything else
+	// is thrown: Graphile Worker retries it with backoff and keeps the error on
+	// the job, which is where `/sync` reads it from.
 	const outcome = await withLock(async (): Promise<{ next: Date | null } | 'done'> => {
 		try {
-			const result = await analyseBatch();
-			if (result.processed === 0) {
-				await markStage('rbxport', 'complete');
-				return 'done';
-			}
-			await markStage('rbxport', 'running', result);
-			return { next: null };
+			return (await analyseBatch()) === 0 ? 'done' : { next: null };
 		} catch (err) {
-			if (err instanceof ServiceBlocked) {
-				await markStage('rbxport', 'blocked', NOTHING, err.message);
-				return { next: err.until };
-			}
-			await markStage('rbxport', 'error', NOTHING, String(err).slice(0, 500));
+			if (err instanceof ServiceBlocked) return { next: err.until };
 			throw err;
 		}
 	});
@@ -206,7 +195,7 @@ export const analyseTick: Task = async (_payload, helpers) => {
 			jobKey: ANALYSE_JOB_KEY,
 			jobKeyMode: 'replace',
 			runAt: outcome.next ?? undefined,
-			priority: PRIORITY_ENRICH,
+			priority: PRIORITY_ANALYSE,
 			maxAttempts: 5
 		}
 	);

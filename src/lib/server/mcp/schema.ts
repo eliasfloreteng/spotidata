@@ -9,7 +9,7 @@ import { query } from '../db/index.ts';
  */
 
 /** Not readable by the MCP role (db/sql/post/070); listing them invites errors. */
-const HIDDEN = new Set(['auth_tokens', 'auth_states', 'external_tokens']);
+const HIDDEN = new Set(['auth_tokens', 'auth_states']);
 
 /**
  * Tables in the order someone should meet them. Anything not named here still
@@ -42,20 +42,8 @@ const SECTIONS: { title: string; tables: string[] }[] = [
 		tables: ['plays', 'canonical_play_stats', 'play_imports']
 	},
 	{
-		title: 'MusicBrainz enrichment — genres, BPM, key, origins, labels',
-		tables: [
-			'isrc_recordings',
-			'mb_recordings',
-			'audio_features',
-			'mb_tags',
-			'mb_genres',
-			'artist_musicbrainz',
-			'mb_artists',
-			'mb_recording_artists',
-			'album_musicbrainz',
-			'mb_releases',
-			'mb_release_groups'
-		]
+		title: 'Tempo and key — rbxport, from Deezer previews',
+		tables: ['track_analysis']
 	},
 	{
 		title: 'Playlists',
@@ -78,7 +66,6 @@ const SECTIONS: { title: string; tables: string[] }[] = [
 			'ingest_raw',
 			'settings',
 			'spotify_users',
-			'enrich_stages',
 			'external_limiters'
 		]
 	}
@@ -285,33 +272,17 @@ export async function tableInventory(): Promise<string> {
 }
 
 /** Which optional subsystems have actually landed, for the rules text. */
-export async function features(): Promise<{
-	plays: boolean;
-	playStats: boolean;
-	enrichment: boolean;
-}> {
+export async function features(): Promise<{ plays: boolean; playStats: boolean }> {
 	const rows = await query<{ name: string }>(sql`
 		select relname as name
 		  from pg_class c
 		  join pg_namespace n on n.oid = c.relnamespace
 		 where n.nspname = 'public'
-		   and c.relname in ('plays', 'canonical_play_stats', 'isrc_recordings')
+		   and c.relname in ('plays', 'canonical_play_stats')
 	`);
 	const present = new Set(rows.map((r) => r.name));
-
-	// The enrichment tables exist from the migration onward but stay empty for
-	// hours while the crawl runs. Telling a model about a table with nothing in
-	// it just invites queries that return no rows, so the feature is "has data",
-	// not "has table".
-	const [{ n } = { n: 0 }] = present.has('isrc_recordings')
-		? await query<{ n: number }>(
-				sql`select count(*)::int as n from isrc_recordings where recording_mbid is not null`
-			)
-		: [];
-
 	return {
 		plays: present.has('plays'),
-		playStats: present.has('canonical_play_stats'),
-		enrichment: n > 0
+		playStats: present.has('canonical_play_stats')
 	};
 }

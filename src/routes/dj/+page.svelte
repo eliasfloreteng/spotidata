@@ -7,7 +7,6 @@
 	import Cover from '$lib/components/Cover.svelte';
 	import Pager from '$lib/components/Pager.svelte';
 	import SearchBox from '$lib/components/SearchBox.svelte';
-	import SelectFilter from '$lib/components/SelectFilter.svelte';
 	import SortTh from '$lib/components/SortTh.svelte';
 	import SpotifyLink from '$lib/components/SpotifyLink.svelte';
 	import { duration, num, pct, trackTime } from '$lib/utils/format.ts';
@@ -138,16 +137,6 @@
 					<a class="clear" href={withParams(page.url, { min: null, max: null, page: null })}>Any tempo</a>
 				{/if}
 			</form>
-
-			<div class="genre-pick">
-				<SelectFilter
-					param="genre"
-					label="Genre"
-					value={data.genre ?? ''}
-					anyLabel="Any genre"
-					options={shape.genres.map((g) => ({ value: g.genre, label: `${g.genre} (${num(g.tracks)})` }))}
-				/>
-			</div>
 		</section>
 	</div>
 
@@ -159,9 +148,8 @@
 				{#if f.bpmMin != null || f.bpmMax != null}
 					<span class="faint"> · {f.bpmMin ?? '…'}–{f.bpmMax ?? '…'} BPM</span>
 				{/if}
-				{#if data.genre}<span class="faint"> · {data.genre}</span>{/if}
 			</h2>
-			{#if f.camelot || f.bpmMin != null || f.bpmMax != null || data.genre || data.q}
+			{#if f.camelot || f.bpmMin != null || f.bpmMax != null || data.q}
 				<a class="clear" href="/dj">Clear all</a>
 			{/if}
 		</header>
@@ -172,8 +160,6 @@
 						<th>Recording</th>
 						<SortTh key="bpm" label="BPM" active={data.sort} dir={data.dir} initial="asc" right />
 						<SortTh key="key" label="Key" active={data.sort} dir={data.dir} initial="asc" />
-						<th>Genres</th>
-						<SortTh key="dance" label="Dance" active={data.sort} dir={data.dir} right />
 						<SortTh key="plays" label="Plays" active={data.sort} dir={data.dir} right />
 						<th class="r"><span class="sr">Start a set</span></th>
 					</tr>
@@ -202,19 +188,13 @@
 							<td class="nowrap">
 								<a class="code" href={withParams(page.url, { key: t.camelot, page: null })} title={keyForCamelot(t.camelot) ?? ''}>{t.camelot}</a>
 							</td>
-							<td class="genres">
-								{#each (t.genres ?? []).slice(0, 2) as g (g)}
-									<Chip>{g}</Chip>
-								{/each}
-							</td>
-							<td class="r num muted">{t.danceable != null ? pct(t.danceable) : '—'}</td>
 							<td class="r num" class:faint={t.plays === 0}>{t.plays || '—'}</td>
 							<td class="r">
 								<a class="btn small" href="/dj?s={encodeURIComponent(t.canonicalTrackId)}">Start set</a>
 							</td>
 						</tr>
 					{:else}
-						<tr><td colspan="7" class="empty faint">Nothing in the pool matches those filters.</td></tr>
+						<tr><td colspan="5" class="empty faint">Nothing in the pool matches those filters.</td></tr>
 					{/each}
 				</tbody>
 			</table>
@@ -233,7 +213,7 @@
 			<p class="muted">
 				{set.length} track{set.length === 1 ? '' : 's'} · {duration(runtime / 1000)}. Each suggestion
 				is ranked against the last track: key move first, then how little pitching it takes, then
-				shared genres and feel.
+				how much you play it.
 			</p>
 		</div>
 		<a class="btn" href="/dj">New set</a>
@@ -347,14 +327,6 @@
 							>{m.label}</a>
 						{/each}
 					</div>
-					{#if seed.genres?.length || data.genre}
-						<div class="group">
-							<span class="lbl">Stay in</span>
-							{#each [...new Set([...(data.genre ? [data.genre] : []), ...(seed.genres ?? []).slice(0, 5)])] as g (g)}
-								<a class="pill" class:on={data.genre === g} href={withParams(page.url, { genre: data.genre === g ? null : g })}>{g}</a>
-							{/each}
-						</div>
-					{/if}
 					<SearchBox value={data.q} placeholder="Where would a track fit?" />
 				</div>
 
@@ -382,9 +354,6 @@
 									<Chip title="{bpm(t.bpm)} BPM, pitched {tempoShift(t.tempoPct)} to match">
 										{bpm(t.bpm)} BPM · {tempoShift(t.tempoPct)}{#if factorLabel(t.tempoFactor)}&nbsp;({factorLabel(t.tempoFactor)}){/if}
 									</Chip>
-									{#each t.sharedGenres.slice(0, 2) as g (g)}
-										<Chip tone="accent">{g}</Chip>
-									{/each}
 									{#if t.plays > 0}<span class="faint xs">{num(t.plays)} plays</span>{/if}
 								</div>
 							</div>
@@ -401,8 +370,8 @@
 							{#if data.q}
 								Nothing in the pool matches “{data.q}”.
 							{:else}
-								Nothing follows within ±{data.tolerance}% in these keys. Widen the pitch, allow
-								energy moves, or drop the genre.
+								Nothing follows within ±{data.tolerance}% in these keys. Widen the pitch, or allow
+								energy moves.
 							{/if}
 						</li>
 					{/each}
@@ -533,9 +502,6 @@
 	.range input {
 		width: 76px;
 	}
-	.genre-pick {
-		margin-top: 14px;
-	}
 	.lbl {
 		font-size: 0.72rem;
 		text-transform: uppercase;
@@ -610,9 +576,6 @@
 	.heart {
 		color: var(--accent-2);
 		font-size: 0.78rem;
-		margin-left: 4px;
-	}
-	td.genres :global(.chip + .chip) {
 		margin-left: 4px;
 	}
 	.code {

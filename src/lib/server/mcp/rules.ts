@@ -23,9 +23,9 @@ export const KEY_RULES = `Rules that decide whether an answer is right:
 - Bucket dates AT TIME ZONE the user's timezone, never in UTC.
 - Filter removed_at is null on saved_tracks, saved_albums, followed_artists
   and playlists unless the question is about removals.
-- Genres, BPM and musical key are MusicBrainz/AcousticBrainz enrichment, read
-  through spotidata.track_enrichment / artist_enrichment / album_enrichment.
-  Coverage is partial by nature — a NULL means "not known", never zero.
+- Tempo and key are rbxport's measurement of each library recording's Deezer
+  preview, in track_analysis: join canonical_tracks.isrc and keep
+  status = 'ok'. A recording without a row is "not measured", never zero.
 Call describe_schema for columns; call get_business_rules for the full version.`;
 
 /** Repeated on the `spotify_api` tool and in the server instructions. */
@@ -49,12 +49,7 @@ Spotify-owned playlists (radios, editorial playlists, Discover Weekly) are
 hidden from this app: search returns null in their place and fetching one by
 id is a 404. For a song's radio, use \`song_radio\` instead.`;
 
-function coreRules(
-	timezone: string,
-	plays: boolean,
-	playStats: boolean,
-	enrichment: boolean
-): string {
+function coreRules(timezone: string, plays: boolean, playStats: boolean): string {
 	return `# Spotidata
 
 A single-user archive of one Spotify account in Postgres: the catalog, the
@@ -169,16 +164,8 @@ page complete. For exactly one artist per track, filter
 \`library_canonical.primary_artist_id\`.
 
 Genres belong to artists (\`artist_genres\`), not to tracks; Spotify no longer
-returns track-level genres.${
-		enrichment
-			? ' MusicBrainz does — see rule 10, which is the better source for both.'
-			: ''
-	}
-
-For a genre *of a track*, read \`spotidata.track_genres\`: one row per
-\`(canonical_track_id, genre)\` from MusicBrainz's recording tags, which is
-what "tracks in genre X" means here. Its coverage is the enrichment crawl's,
-not the library's — say what fraction an answer rests on.
+returns track-level genres, and this archive has no other source of them. A
+"genre of a track" is its artists' genres, and should be worded that way.
 
 The user-authored tables are the playlist automations:
 \`playlist_automations\` (one destination playlist each),
@@ -195,43 +182,17 @@ inside another response and lacks \`isrc\`, \`popularity\` and genres. It is not
 error and not a data-quality problem worth reporting; exclude those rows when a
 query depends on those columns.
 
-## 10. MusicBrainz & AcousticBrainz${enrichment ? '' : ' (not populated)'}
+## 10. Tempo and key
 
-${
-	enrichment
-		? `Genres, BPM, musical key, artist origins and release labels come from
-MusicBrainz, joined to this catalog by **ISRC** — the one identifier the two
-share. Read them through the views, which own the join path:
-
-- \`spotidata.track_enrichment\` — keyed \`canonical_track_id\`. \`genres\` (a
-  \`text[]\`, MusicBrainz tags filtered to its curated genre list), \`bpm\`,
-  \`key_key\`/\`key_scale\`, and the 0–1 classifier probabilities
-  (\`danceable\`, \`happy\`, \`sad\`, \`party\`, \`relaxed\`, \`aggressive\`,
-  \`acoustic\`, \`electronic\`, \`instrumental\`). \`rbx_bpm\`,
-  \`rbx_bpm_confidence\`, \`rbx_key\` and \`rbx_camelot\` are rbxport's own
-  measurement of each library recording's 30-second Deezer preview: they
-  cover nearly the whole library, where AcousticBrainz's \`bpm\` covers about
-  half. Prefer them for tempo and key; either can read an octave out.
-- \`spotidata.artist_enrichment\` — keyed \`artist_id\` (the Spotify id).
-  \`country\`, \`area_name\`, \`begin_area_name\` (where they are *from*),
-  \`begin_date\`/\`end_date\`, \`type\` ('Person' | 'Group' | …), \`genres\`.
-- \`spotidata.album_enrichment\` — keyed \`album_id\`. \`label_name\`,
-  \`barcode\`, \`primary_type\`/\`secondary_types\`, \`genres\`.
-
-**Coverage is partial and that is normal.** The crawl runs at one request per
-second for hours, and AcousticBrainz stopped accepting submissions in 2022, so
-roughly half of any library has no BPM at all. Treat a NULL as "not looked up
-or not known", never as zero, and say what fraction an answer is based on when
-it matters — \`spotidata.enrichment_coverage\` gives the per-stage totals.
-
-The mood and genre classifiers are two-class models run over the audio, so a
-track can score high on both \`happy\` and \`sad\`. They are evidence, not
-verdicts; do not sum them into a profile.`
-		: `The tables exist (\`isrc_recordings\`, \`mb_recordings\`, \`audio_features\`,
-\`mb_tags\`, …) but nothing has been crawled yet, so there are no genres, no
-BPM and no keys to query. Say so rather than returning empty results as if
-they were an answer.`
-}
+\`track_analysis\` is rbxport's measurement of each library recording's
+30-second Deezer preview, keyed by **ISRC**: join
+\`canonical_tracks.isrc = track_analysis.isrc\` and keep \`status = 'ok'\`
+(\`missing\` is a recording Deezer has no preview of, \`failed\` one rbxport
+could not read). \`bpm\` comes with \`bpm_confidence\` (0–1; a low value is
+where the misses are), the key as \`key_name\` ('Ebm') and \`camelot\` ('2A').
+Thirty seconds can read a tempo an octave out, so 87 and 174 BPM may be the
+same record. Coverage is nearly the whole library but never all of it — say
+what fraction an answer rests on when it matters.
 
 ## 11. Text search
 
@@ -255,8 +216,8 @@ rule 7 — and a value you read back is not in the user's day.`;
 
 /** The `instructions` field of the initialize result. */
 export async function serverInstructions(timezone: string): Promise<string> {
-	const { plays, playStats, enrichment } = await features();
-	const rules = coreRules(timezone, plays, playStats, enrichment);
+	const { plays, playStats } = await features();
+	const rules = coreRules(timezone, plays, playStats);
 	const liveApi = `# The live account: spotify_api\n\n${SPOTIFY_API_RULES}`;
 
 	try {
@@ -269,6 +230,6 @@ export async function serverInstructions(timezone: string): Promise<string> {
 
 /** Same text, as a tool — clients that ignore `instructions` can still ask. */
 export async function businessRules(timezone: string): Promise<string> {
-	const { plays, playStats, enrichment } = await features();
-	return coreRules(timezone, plays, playStats, enrichment);
+	const { plays, playStats } = await features();
+	return coreRules(timezone, plays, playStats);
 }

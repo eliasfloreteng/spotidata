@@ -46,7 +46,6 @@ function bpmParam(url: URL, name: string): number | null {
 export const load: PageServerLoad = async ({ url }) => {
 	const ids = setIds(url.searchParams.getAll('s'));
 	const q = searchParam(url);
-	const genre = url.searchParams.get('genre')?.trim().slice(0, 120) || null;
 
 	const tolRaw = Number(url.searchParams.get('tol'));
 	const tolerance: TempoTolerance = (TEMPO_TOLERANCES as readonly number[]).includes(tolRaw)
@@ -63,7 +62,6 @@ export const load: PageServerLoad = async ({ url }) => {
 				? await nextTracks(seed.canonicalTrackId, {
 						tolerance,
 						keyMode,
-						genre,
 						q,
 						exclude: set.map((t) => t.canonicalTrackId),
 						limit: SUGGESTIONS
@@ -75,7 +73,6 @@ export const load: PageServerLoad = async ({ url }) => {
 			seed,
 			next,
 			q,
-			genre,
 			tolerance,
 			keyMode,
 			maxSet: MAX_SET,
@@ -83,7 +80,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		};
 	}
 
-	// Browsing: the pool, narrowed by tempo, key and genre.
+	// Browsing: the pool, narrowed by tempo and key.
 	let bpmMin = bpmParam(url, 'min');
 	let bpmMax = bpmParam(url, 'max');
 	if (bpmMin != null && bpmMax != null && bpmMin > bpmMax) [bpmMin, bpmMax] = [bpmMax, bpmMin];
@@ -92,7 +89,6 @@ export const load: PageServerLoad = async ({ url }) => {
 		bpmMin,
 		bpmMax,
 		camelot: parseCamelot(code) ? code : null,
-		genre,
 		q
 	};
 
@@ -122,8 +118,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		sort,
 		dir,
 		bin: BIN,
-		q,
-		genre
+		q
 	};
 };
 
