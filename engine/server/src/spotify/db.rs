@@ -236,6 +236,26 @@ pub async fn set_file(store: &Store, id: &str, file: Option<&str>, hash: Option<
     Ok(())
 }
 
+/// The files recordings were found in by their title and artist, by key.
+pub async fn found(store: &Store) -> Result<std::collections::HashMap<String, String>> {
+    let rows: Vec<(String, String)> =
+        sqlx::query_as("select key, file from spotify_found").fetch_all(store.pool()).await?;
+    Ok(rows.into_iter().collect())
+}
+
+/// Remembers the file a recording was found in by its title and artist.
+pub async fn set_found(store: &Store, key: &str, file: &str) -> Result<()> {
+    sqlx::query(
+        "insert into spotify_found(key, file) values($1, $2)
+         on conflict(key) do update set file = $2, found_at = now() where spotify_found.file <> $2",
+    )
+    .bind(key)
+    .bind(file)
+    .execute(store.pool())
+    .await?;
+    Ok(())
+}
+
 /// The download last started for a recording.
 pub async fn link(store: &Store, key: &str) -> Result<Option<i64>> {
     Ok(sqlx::query_scalar("select download from spotify_links where key = $1")
@@ -482,6 +502,17 @@ pub mod tests {
         set_seen(&store, "a", "a", "s1", &["spotify:t2".to_owned()]).await.unwrap();
         let row = get(&store, "a").await.unwrap().unwrap();
         assert_eq!((row.seen_snapshot.as_deref(), row.seen_tracks.len()), (Some("s1"), 1));
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn name_matches_are_remembered(_: PgPoolOptions, options: PgConnectOptions) {
+        let store = crate::store::tests::store(options).await;
+        set_found(&store, "isrc:GBARL1800368", "One Kiss (with Dua Lipa) - Calvin Harris.flac").await.unwrap();
+        set_found(&store, "isrc:GBARL1800368", "One Kiss (with Dua Lipa) - Calvin Harris.flac").await.unwrap();
+        set_found(&store, "spotify:t1", "a.flac").await.unwrap();
+        let found = found(&store).await.unwrap();
+        assert_eq!(found.len(), 2);
+        assert_eq!(found["isrc:GBARL1800368"], "One Kiss (with Dua Lipa) - Calvin Harris.flac");
     }
 
     #[sqlx::test(migrations = false)]

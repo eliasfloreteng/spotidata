@@ -509,7 +509,9 @@ snapshot gate, so a quiet check is a handful of requests and a track added in
 the afternoon is on the stick that evening. Then, against the folder:
 
 1. each track is found by ISRC, else by title and first artist, else by the
-   download that got it;
+   download that got it. A match by name is remembered (`spotify_found`):
+   Spotify names some tracks differently by endpoint, and the name Spotidata
+   holds can change under a file that was found by it;
 2. a track the folder lacks is queued as a download, as Spotify knows it; a
    failed one is tried again after a day, one you stopped is left alone;
 3. the playlist is written as `<Name>.m3u8` in Spotify's order with the

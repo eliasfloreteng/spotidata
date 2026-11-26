@@ -7,8 +7,9 @@
 //! the tracks read again of each kept one whose snapshot moved) and reads
 //! them from there (`db.rs`). Then, against the folder:
 //!
-//! 1. each track is found by ISRC, else by title and first artist, else by
-//!    the download that got it;
+//! 1. each track is found by ISRC, else by title and first artist (and that
+//!    match is remembered, `spotify_found`, so a rename doesn't undo it), else
+//!    by the download that got it;
 //! 2. a track the folder lacks is queued as a download, as Spotify knows it
 //!    (the sources are asked by its ISRC); one that failed is tried again a
 //!    day later; one you stopped is left alone;
@@ -88,6 +89,8 @@ struct Index {
     files: HashSet<String>,
     isrcs: HashMap<String, String>,
     names: LibraryNames,
+    /// Files recordings were found in by their name before (`db::found`).
+    found: HashMap<String, String>,
 }
 
 /// Where one Spotify track stands.
@@ -461,7 +464,7 @@ impl Spotify {
             let source: rbl_export::SourceTrack = serde_json::from_str(row.source.as_deref()?).ok()?;
             Some((row.name, source.title, source.artist))
         }));
-        let index = Arc::new(Index { files, isrcs: store.isrcs().await?, names });
+        let index = Arc::new(Index { files, isrcs: store.isrcs().await?, names, found: db::found(store).await? });
         *lock(&self.inner.index) = Some((version, index.clone()));
         Ok(index)
     }
@@ -471,7 +474,15 @@ impl Spotify {
         if let Some(file) = t.isrc.as_ref().and_then(|isrc| index.isrcs.get(isrc)) {
             return Ok(here(file.clone()));
         }
+        // Found by its name before: the name Spotidata holds may have changed
+        // since (Spotify names some tracks differently by endpoint).
+        if let Some(file) = t.key().and_then(|key| index.found.get(&key)).filter(|file| index.files.contains(*file)) {
+            return Ok(here(file.clone()));
+        }
         if let Some(file) = index.names.find(&t.title, &t.artists) {
+            if let Some(key) = t.key().filter(|key| index.found.get(key) != Some(&file)) {
+                db::set_found(&self.inner.store, &key, &file).await?;
+            }
             return Ok(here(file));
         }
         let Some(key) = t.key().filter(|_| t.id.is_some()) else {
