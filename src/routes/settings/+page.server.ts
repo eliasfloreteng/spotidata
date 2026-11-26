@@ -69,8 +69,6 @@ export const actions: Actions = {
 		await setSetting('history.pollRecentlyPlayed', form.get('pollRecent') === 'on');
 		await setSetting('history.resolvePlayedTracks', form.get('resolvePlayed') === 'on');
 
-		await setSetting('analysis.enabled', form.get('analysis') === 'on');
-
 		// The hooks cache is 5s; drop it so the change is visible immediately.
 		invalidateSettingsCache();
 		return { saved: true };

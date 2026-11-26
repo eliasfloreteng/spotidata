@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { query } from '../db/index.ts';
 import { eligiblePlaylists, type CatalogPlaylist } from './catalog.ts';
 import { currentVersion } from './version.ts';
+import { recordings as downloaded } from '../engine/recordings.ts';
 
 /**
  * The objective half of sorting: what a song is, what each playlist holds, how
@@ -130,6 +131,8 @@ interface RecordingRow {
 }
 
 export async function loadLibrary(options: EngineOptions = DEFAULT_ENGINE): Promise<LibraryData> {
+	// Tempo only where Deckhand has the file and analysed it (engine/recordings.ts).
+	const rec = await downloaded();
 	const [recordingRows, artistRows, likedRows, memberRows, playlists] = await Promise.all([
 		query<RecordingRow>(sql`
 			select ct.id,
@@ -137,7 +140,7 @@ export async function loadLibrary(options: EngineOptions = DEFAULT_ENGINE): Prom
 			       ct.title,
 			       extract(year from ct.earliest_release_date)::int as year,
 			       ct.max_popularity::int as popularity,
-			       round(ta.bpm)::int as bpm,
+			       round(r.bpm)::int as bpm,
 			       coalesce(cps.completed_plays, 0)::int as plays,
 			       coalesce(cps.skips, 0)::int as skips,
 			       extract(year from cps.first_played_at at time zone 'UTC')::int as first_heard,
@@ -148,7 +151,7 @@ export async function loadLibrary(options: EngineOptions = DEFAULT_ENGINE): Prom
 			         where cta.canonical_track_id = ct.id) as artists
 			  from library_canonical lc
 			  join canonical_tracks ct on ct.id = lc.canonical_track_id
-			  left join track_analysis ta on ta.isrc = ct.isrc and ta.status = 'ok'
+			  left join ${rec} r on r.isrc = upper(ct.isrc)
 			  left join canonical_play_stats cps on cps.canonical_track_id = ct.id
 		`),
 		query<{ id: string; name: string; genres: string[] | null }>(sql`

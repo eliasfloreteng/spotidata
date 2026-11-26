@@ -6,6 +6,7 @@
 	import StatTile from '$lib/components/StatTile.svelte';
 	import { AreaChart, CATEGORICAL } from '$lib/charts/index.ts';
 	import { longDuration, num, shortDate, trackTime, streamTime, relativeTime } from '$lib/utils/format.ts';
+	import { keyForCamelot } from '$lib/utils/music.ts';
 
 	let { data } = $props();
 
@@ -27,6 +28,10 @@
 	/** Withdrawn and local tracks reach the catalog with an empty name. */
 	const title = $derived(t.title || '(untitled)');
 	const plural = (n: number, one: string, many = one + 's') => (n === 1 ? one : many);
+	/** Deckhand's file of the recording, when it has one. */
+	const file = $derived(data.file);
+	const ANALYSIS = { rekordbox: "rekordbox's analysis", rbxport: "rbxport's analysis" } as const;
+	const megabytes = (bytes: number) => `${(bytes / 1e6).toFixed(bytes < 1e7 ? 1 : 0)} MB`;
 </script>
 
 <svelte:head><title>{title} · Spotidata</title></svelte:head>
@@ -60,6 +65,7 @@
 			{/if}
 			{#if t.liked}<Chip tone="good">Liked {t.likedAt ? relativeTime(t.likedAt) : ''}</Chip>{/if}
 			{#if t.copyCount > 1}<Chip tone="accent">{t.copyCount} Spotify copies</Chip>{/if}
+			{#if file}<Chip tone="good">Downloaded</Chip>{/if}
 		</div>
 
 		<div class="actions">
@@ -94,7 +100,29 @@
 		trend={playTrend}
 		muted={p.plays === 0}
 	/>
+	<StatTile
+		label="Tempo · key"
+		value={file?.bpm != null && file.camelot
+			? `${Math.round(file.bpm * 10) / 10} · ${file.camelot}`
+			: '—'}
+		sub={!file
+			? 'not downloaded'
+			: file.state === 'pending'
+				? 'downloaded; not analysed yet'
+				: file.bpm == null || !file.camelot
+					? 'the analysis found none'
+					: `${keyForCamelot(file.camelot) ?? file.camelot} · ${file.analysis ? ANALYSIS[file.analysis] : 'the file'}`}
+		accent={CATEGORICAL[5]}
+		muted={file?.bpm == null}
+	/>
 </section>
+
+{#if file}
+	<p class="file faint small">
+		Deckhand's file: <span class="name">{file.file}</span> · {megabytes(file.sizeBytes)}, in the music
+		folder since {shortDate(file.downloadedAt)}{#if file.state === 'failed'}; its analysis failed{/if}.
+	</p>
+{/if}
 
 {#if p.plays > 0}
 	<section class="card">
@@ -321,6 +349,14 @@
 		margin: 0 0 var(--gap);
 		max-width: 70ch;
 		font-size: 0.82rem;
+	}
+	.file {
+		margin: calc(var(--gap) * -0.5) 0 var(--gap);
+		font-size: 0.82rem;
+		overflow-wrap: anywhere;
+	}
+	.file .name {
+		color: var(--text);
 	}
 	.tiles {
 		display: grid;

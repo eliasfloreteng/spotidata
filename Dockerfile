@@ -1,27 +1,40 @@
 # syntax=docker/dockerfile:1
 
-# rbxport's analysis, as the `rbx-analyse` binary the analysis chain runs. Its
-# own stage, fed only analyser/, so a change to the app never rebuilds it. The
-# same Debian as oven/bun:1 (trixie), so the binary finds the glibc it was
-# linked against.
-FROM rust:1-trixie AS analyser
+# Two images from one file. The default target is the app (SvelteKit, its
+# Graphile Worker and the migrations). `--target engine` is Deckhand's engine
+# (engine/), the stack's second service. The engine's stages read only
+# engine/, so a change to the app never rebuilds it.
+
+# ------------------------------------------------------------------- engine
+
+FROM rust:1-bookworm AS engine-build
 WORKDIR /src
-COPY analyser/ ./
+COPY engine/ ./
 # The Pi has little memory to spare: two jobs, and caches between builds.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/src/target \
-    CARGO_BUILD_JOBS=2 cargo build --release --locked \
-    && cp target/release/rbx-analyse /rbx-analyse
+    CARGO_BUILD_JOBS=2 cargo build --release --locked -p deckhand-server \
+    && cp target/release/deckhand-server /deckhand-server
+
+FROM debian:bookworm-slim AS engine
+# ffmpeg decrypts Amazon's encrypted MP4 downloads into FLAC.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=engine-build /deckhand-server /usr/local/bin/deckhand-server
+ENV DECKHAND_MUSIC=/music DECKHAND_DATA=/data DECKHAND_BIND=0.0.0.0:8080
+EXPOSE 8080
+HEALTHCHECK --interval=60s --timeout=5s CMD curl -fsS http://127.0.0.1:8080/api/health || exit 1
+CMD ["deckhand-server"]
+
+# ---------------------------------------------------------------------- app
 
 # Bun runs both the build and the adapter-node server. Dev dependencies stay in
 # the final image on purpose: drizzle-kit owns the migrations that run on every
 # container start, and it is a devDependency.
-FROM oven/bun:1
+FROM oven/bun:1 AS app
 
 WORKDIR /app
-
-COPY --from=analyser /rbx-analyse /usr/local/bin/rbx-analyse
 
 # `prepare` runs svelte-kit sync, which needs the source tree — skip it here and
 # run it explicitly once the source is in place.

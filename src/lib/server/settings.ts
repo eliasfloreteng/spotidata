@@ -24,13 +24,6 @@ export interface Settings {
 	'history.pollRecentlyPlayed': boolean;
 
 	/**
-	 * Measure each library recording's tempo and key with rbxport, from
-	 * Deezer's 30-second preview — a download and a decode per recording, at
-	 * the lowest priority. The DJ tab reads it.
-	 */
-	'analysis.enabled': boolean;
-
-	/**
 	 * Sortify's OpenRouter models: the feed card's quick suggestions, the sort
 	 * mode's verdicts, and the larger call that proposes new playlists. See
 	 * Sortify's README for how these were chosen.
@@ -49,7 +42,6 @@ export const DEFAULT_SETTINGS: Settings = {
 	'sync.hydrateAlbumTracks': true,
 	'history.resolvePlayedTracks': true,
 	'history.pollRecentlyPlayed': true,
-	'analysis.enabled': true,
 	'sortify.cardModel': 'openai/gpt-6-luna',
 	'sortify.sortModel': 'openai/gpt-6-luna',
 	'sortify.ideasModel': 'openai/gpt-6.1-terra'

@@ -1,6 +1,7 @@
 import { error, redirect } from '@sveltejs/kit';
 import {
 	getCanonicalTrack,
+	getRecordingFile,
 	getTrackCopies,
 	getTrackPlaylists
 } from '$lib/server/entities/track.ts';
@@ -26,14 +27,15 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		error(404, 'No recording with that id. It may have been regrouped by a newer sync.');
 	}
 
-	const [copies, playlists, plays, playsByMonth, recentPlays] = await Promise.all([
+	const [copies, playlists, plays, playsByMonth, recentPlays, file] = await Promise.all([
 		getTrackCopies(id),
 		getTrackPlaylists(id),
 		trackPlaySummary(id),
 		trackPlaysByMonth(id, locals.settings['ui.timezone']),
 		// Six rows is what stands level with the chart beside it; the full log
 		// lives at /history/log and this is a glance, not a list.
-		recentPlaysFor(id, 6)
+		recentPlaysFor(id, 6),
+		getRecordingFile(track.isrc)
 	]);
-	return { track, copies, playlists, plays, playsByMonth, recentPlays };
+	return { track, copies, playlists, plays, playsByMonth, recentPlays, file };
 };

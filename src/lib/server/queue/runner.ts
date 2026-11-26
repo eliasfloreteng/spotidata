@@ -63,11 +63,6 @@ export async function startWorker(): Promise<void> {
 				// recover a gap that overruns it, so this polls far more often
 				// than a sync runs — one request each time.
 				'*/20 * * * * history:poll-recent ?jobKey=poll-recent',
-				// Restarts rbxport's analysis of the previews if its chain ever
-				// stops — after a deploy, after a rate-limit block, or simply because
-				// a sync added music it has not measured. The chain keeps itself
-				// going while there is work, so this mostly fires into a no-op.
-				'*/15 * * * * analyse:tick ?jobKey=analyse-tick',
 				// Playlist automations, hourly because the input is somebody
 				// dropping a song into a folder — which no sync run is waiting to
 				// hear about.

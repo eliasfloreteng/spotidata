@@ -12,6 +12,15 @@ import { query } from '../db/index.ts';
 const HIDDEN = new Set(['auth_tokens', 'auth_states']);
 
 /**
+ * Deckhand's engine keeps its own schema in this database, and grants the MCP
+ * role what describes the music (engine/server/migrations/): not the phones it
+ * notifies, nor `meta`, which holds the download sources' passes. Its tables
+ * are listed by their qualified name, `deckhand.files`, which is also how a
+ * query names them.
+ */
+const ENGINE_SCHEMA = 'deckhand';
+
+/**
  * Tables in the order someone should meet them. Anything not named here still
  * appears, under "other" — a new table is never silently hidden.
  */
@@ -42,8 +51,18 @@ const SECTIONS: { title: string; tables: string[] }[] = [
 		tables: ['plays', 'canonical_play_stats', 'play_imports']
 	},
 	{
-		title: 'Tempo and key — rbxport, from Deezer previews',
-		tables: ['track_analysis']
+		title: "Deckhand — the DJ stick's music folder: downloaded files, their tempo and key",
+		tables: [
+			'deckhand.recordings',
+			'deckhand.files',
+			'deckhand.downloads',
+			'deckhand.spotify_playlists',
+			'deckhand.spotify_activity',
+			'deckhand.spotify_links',
+			'deckhand.rekordbox',
+			'deckhand.tombstones',
+			'deckhand.endpoints'
+		]
 	},
 	{
 		title: 'Playlists',
@@ -78,8 +97,7 @@ const SECTIONS: { title: string; tables: string[] }[] = [
 			'api_call_stats',
 			'ingest_raw',
 			'settings',
-			'spotify_users',
-			'external_limiters'
+			'spotify_users'
 		]
 	}
 ];
@@ -110,8 +128,12 @@ interface Table {
 	constraints: ConstraintRow[];
 }
 
+/** `files` → "files", `deckhand.files` → "deckhand"."files". */
 function quoteIdent(name: string): string {
-	return `"${name.replaceAll('"', '""')}"`;
+	return name
+		.split('.')
+		.map((part) => `"${part.replaceAll('"', '""')}"`)
+		.join('.');
 }
 
 function quoteLiteral(value: string): string {
@@ -140,6 +162,17 @@ async function countRows(names: string[]): Promise<Map<string, number>> {
  * Short-lived so a migration applied mid-session shows up without a restart.
  */
 let cache: { at: number; tables: Map<string, Table> } | null = null;
+
+/** A relation's name as a query writes it: bare in `public`, qualified elsewhere. */
+const QUALIFIED_ALIAS = (c: string) =>
+	`case when n.nspname = 'public' then ${c}.relname else n.nspname || '.' || ${c}.relname end`;
+/** `public`, and what the MCP role may read of the engine's schema. */
+const READABLE_ALIAS = (c: string) =>
+	`(n.nspname = 'public' or (n.nspname = '${ENGINE_SCHEMA}'
+	   and pg_has_role(current_user, 'spotidata_mcp', 'member')
+	   and has_table_privilege('spotidata_mcp', ${c}.oid, 'SELECT')))`;
+const QUALIFIED = sql.raw(QUALIFIED_ALIAS('c'));
+const READABLE = sql.raw(READABLE_ALIAS('c'));
 const CACHE_MS = 60_000;
 
 async function readCatalog(): Promise<Map<string, Table>> {
@@ -147,7 +180,7 @@ async function readCatalog(): Promise<Map<string, Table>> {
 
 	const [columns, constraints] = await Promise.all([
 		query<ColumnRow>(sql`
-			select c.relname                             as tbl,
+			select ${QUALIFIED}                          as tbl,
 			       c.relkind::text                       as kind,
 			       a.attname                             as col,
 			       format_type(a.atttypid, a.atttypmod)  as typ,
@@ -158,20 +191,20 @@ async function readCatalog(): Promise<Map<string, Table>> {
 			  join pg_namespace n on n.oid = c.relnamespace
 			  join pg_attribute a on a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped
 			  left join pg_attrdef d on d.adrelid = c.oid and d.adnum = a.attnum
-			 where n.nspname = 'public'
+			 where ${READABLE}
 			   and c.relkind in ('r', 'p', 'v', 'm')
-			 order by c.relname, a.attnum
+			 order by n.nspname <> 'public', c.relname, a.attnum
 		`),
 		query<ConstraintRow>(sql`
-			select c.conrelid::regclass::text as tbl,
+			select ${sql.raw(QUALIFIED_ALIAS('t'))} as tbl,
 			       c.contype::text            as kind,
 			       pg_get_constraintdef(c.oid) as def
 			  from pg_constraint c
 			  join pg_class t on t.oid = c.conrelid
 			  join pg_namespace n on n.oid = t.relnamespace
-			 where n.nspname = 'public'
+			 where ${sql.raw(READABLE_ALIAS('t'))}
 			   and c.contype in ('p', 'f', 'u', 'c')
-			 order by c.conrelid::regclass::text, c.contype, c.conname
+			 order by 1, c.contype, c.conname
 		`)
 	]);
 

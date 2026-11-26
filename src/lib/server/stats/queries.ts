@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { query } from '../db/index.ts';
+import { recordings } from '../engine/recordings.ts';
 import { iso, thumb, type ArtistRef } from '../entities/shared.ts';
 import type { Range } from './range.ts';
 
@@ -33,6 +34,8 @@ const realAlbum = (alias: string) =>
 
 export interface Totals {
 	recordings: number;
+	/** Recordings Deckhand has a file of, in its music folder (and so on the DJ stick). */
+	downloaded: number;
 	copies: number;
 	durationMs: number;
 	artists: number;
@@ -46,23 +49,27 @@ export interface Totals {
 export async function totals(r: Range): Promise<Totals> {
 	const rows = await query<Totals>(sql`
 		select count(*)::int                                    as recordings,
-		       coalesce(sum(copy_count_in_library), 0)::int     as copies,
-		       coalesce(sum(duration_ms), 0)::bigint            as "durationMs",
+		       count(f.isrc)::int                               as downloaded,
+		       coalesce(sum(lc.copy_count_in_library), 0)::int  as copies,
+		       coalesce(sum(lc.duration_ms), 0)::bigint         as "durationMs",
 		       count(distinct lc.primary_artist_id)::int        as artists,
 		       count(distinct al.id)::int                       as albums,
-		       avg(case when liked then 1.0 else 0.0 end)       as "likedShare",
-		       avg(case when explicit then 1.0 else 0.0 end)    as "explicitShare",
-		       min(first_added_at)::text                        as "firstAdded",
-		       max(first_added_at)::text                        as "lastAdded"
+		       avg(case when lc.liked then 1.0 else 0.0 end)    as "likedShare",
+		       avg(case when lc.explicit then 1.0 else 0.0 end) as "explicitShare",
+		       min(lc.first_added_at)::text                     as "firstAdded",
+		       max(lc.first_added_at)::text                     as "lastAdded"
 		  from library_canonical lc
 		  -- Joined rather than filtered: a track whose only release is a
 		  -- compilation still counts as a recording, it just adds no album.
 		  left join albums al on al.id = lc.primary_album_id and ${realAlbum('al')}
+		  left join canonical_tracks ct on ct.id = lc.canonical_track_id
+		  left join ${await recordings()} f on f.isrc = upper(ct.isrc)
 		 where lc.${win(r)}
 	`);
 	return (
 		rows[0] ?? {
 			recordings: 0,
+			downloaded: 0,
 			copies: 0,
 			durationMs: 0,
 			artists: 0,

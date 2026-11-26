@@ -175,24 +175,6 @@
 		{/if}
 	</section>
 
-	<section class="card">
-		<h2>Tempo and key</h2>
-		<div class="fields">
-			<label class="check">
-				<input type="checkbox" name="analysis" checked={data.settings['analysis.enabled']} />
-				<span>
-					Measure tempo and key with rbxport
-					<em class="faint small">
-						Deezer's 30-second preview of each recording in the library, measured with the
-						analysis Deckhand uses — a download and a decode each, at the lowest priority,
-						never in a sync's way. The DJ tab reads it. Off means nothing new is measured;
-						what was measured stays. <a href="/sync">Progress →</a>
-					</em>
-				</span>
-			</label>
-		</div>
-	</section>
-
 	<button class="btn btn-primary" type="submit">Save settings</button>
 </form>
 

@@ -23,9 +23,11 @@ export const KEY_RULES = `Rules that decide whether an answer is right:
 - Bucket dates AT TIME ZONE the user's timezone, never in UTC.
 - Filter removed_at is null on saved_tracks, saved_albums, followed_artists
   and playlists unless the question is about removals.
-- Tempo and key are rbxport's measurement of each library recording's Deezer
-  preview, in track_analysis: join canonical_tracks.isrc and keep
-  status = 'ok'. A recording without a row is "not measured", never zero.
+- Tempo and key come only from the real audio files Deckhand downloaded, in
+  deckhand.recordings (one row per ISRC): join it on
+  upper(canonical_tracks.isrc), since it stores ISRCs upper-cased. A
+  recording without a row is "not downloaded"; a null bpm is "not analysed",
+  never zero.
 Call describe_schema for columns; call get_business_rules for the full version.`;
 
 /** Repeated on the `spotify_api` tool and in the server instructions. */
@@ -196,17 +198,33 @@ inside another response and lacks \`isrc\`, \`popularity\` and genres. It is not
 error and not a data-quality problem worth reporting; exclude those rows when a
 query depends on those columns.
 
-## 10. Tempo and key
+## 10. Downloaded music, tempo and key (the \`deckhand\` schema)
 
-\`track_analysis\` is rbxport's measurement of each library recording's
-30-second Deezer preview, keyed by **ISRC**: join
-\`canonical_tracks.isrc = track_analysis.isrc\` and keep \`status = 'ok'\`
-(\`missing\` is a recording Deezer has no preview of, \`failed\` one rbxport
-could not read). \`bpm\` comes with \`bpm_confidence\` (0–1; a low value is
-where the misses are), the key as \`key_name\` ('Ebm') and \`camelot\` ('2A').
-Thirty seconds can read a tempo an octave out, so 87 and 174 BPM may be the
-same record. Coverage is nearly the whole library but never all of it — say
-what fraction an answer rests on when it matters.
+Deckhand keeps a lossless copy of part of the library as files, in a music
+folder that is synced to a DJ stick. Its engine runs beside this database and
+keeps its state in the schema \`deckhand\`, readable here by its qualified
+names. Tempo and key come only from those files: there is no estimate for a
+recording that was not downloaded.
+
+\`deckhand.recordings\` is the one to use: one row per **ISRC** with the
+\`file\` that holds it (of two files of one recording, the one the engine
+itself uses), its \`state\` (\`pending\` until analysed, \`ready\`, \`failed\`),
+and once ready its \`bpm\`, \`musical_key\` as the analysis wrote it, \`camelot\`
+('8A', the code a DJ sorts by) and \`analysis\`: \`rekordbox\` (rekordbox's own
+analysis, sent from the Mac) or \`rbxport\` (the engine's). Join
+\`deckhand.recordings.isrc = upper(canonical_tracks.isrc)\` — the engine stores
+ISRCs upper-cased and Spotify hands out a few hundred in lower case; a library recording
+without a row is not downloaded — say what fraction of the library an answer
+rests on, since it is never all of it. An analysis can read a tempo an octave
+out, so 87 and 174 BPM may be the same record.
+
+\`deckhand.files\` is every file of the folder (also the \`.m3u8\` playlists,
+state \`other\`) with its tags and analysis as JSON (\`source\`).
+\`deckhand.downloads\` is every track asked for — in the app, or because a
+kept Spotify playlist lacked it (\`playlist\`) — and how it went;
+\`deckhand.spotify_playlists\` the playlists kept (\`selected\`) with
+\`deckhand.spotify_activity\` what keeping them did. The engine's phones and its
+download sources' passes are not readable.
 
 ## 11. Text search
 

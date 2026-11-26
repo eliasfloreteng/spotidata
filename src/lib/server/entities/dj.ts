@@ -1,17 +1,18 @@
 import { sql, type SQL } from 'drizzle-orm';
 import { anyOf, notIn } from '../db/arrays.ts';
 import { query } from '../db/index.ts';
+import { recordings } from '../engine/recordings.ts';
 import { movesFrom, type KeyMode, type KeyMove } from '../../utils/music.ts';
 import { like, thumb, total, type ArtistRef } from './shared.ts';
 
 /**
  * Finding the next record to play.
  *
- * The pool is every library recording rbxport measured a tempo and a key for,
- * from Deezer's 30-second preview (`queue/tasks/analyse.ts`) — the whole
- * library but the few recordings Deezer has no preview of. A track outside the
- * pool can still sit in a set, it just cannot be matched against, so it shows
- * its numbers as unknown.
+ * The pool is every library recording Deckhand has downloaded and analysed:
+ * the tempo and the key of the real file (`deckhand.recordings`, from
+ * rekordbox's analysis where the Mac sent it, else rbxport's). A track outside
+ * the pool can still sit in a set, it just cannot be matched against, so it
+ * shows its numbers as unknown.
  *
  * Which keys may follow which is decided in TypeScript (`movesFrom` in
  * utils/music.ts) and handed to Postgres as a table, so the suggestion list and
@@ -20,32 +21,32 @@ import { like, thumb, total, type ArtistRef } from './shared.ts';
  */
 
 /**
- * One row per library recording with a tempo and key rbxport measured.
+ * One row per library recording with a downloaded file whose tempo and key are
+ * known.
  *
  * The display columns are left out on purpose and fetched for the rows that
  * survive the filters instead: the selective parts of every query here (a key,
  * a tempo window) run before anything needs them.
  */
-const POOL = sql`
+const POOL = (rec: SQL) => sql`
 	select lc.canonical_track_id as id,
-	       ta.bpm,
-	       ta.camelot as code,
-	       ta.bpm_confidence,
+	       r.bpm::real as bpm,
+	       r.camelot as code,
 	       lc.liked,
 	       lc.first_added_at,
 	       coalesce(cps.plays, 0) as plays
 	  from library_canonical lc
 	  join canonical_tracks ct on ct.id = lc.canonical_track_id
-	  join track_analysis ta on ta.isrc = ct.isrc and ta.status = 'ok'
+	  join ${rec} r on r.isrc = upper(ct.isrc)
 	  left join canonical_play_stats cps on cps.canonical_track_id = lc.canonical_track_id
-	 where ta.bpm is not null and ta.camelot is not null`;
+	 where r.bpm is not null and r.camelot is not null`;
 
 /**
  * The pitch needed to match `next` to `playing`, with octaves folded.
  *
- * A tempo can read an octave out — rbxport measures within 70–180 BPM, so an
- * 87 BPM record and a 174 BPM one look alike to it in thirty seconds — and a
- * DJ beat-matches across that anyway, so the nearest of ½×, 1× and 2× wins. A lateral, because `pct` is wanted alongside
+ * A tempo can read an octave out — an analysis measures within a range, so an
+ * 87 BPM record and a 174 BPM one can look alike to it — and a DJ beat-matches
+ * across that anyway, so the nearest of ½×, 1× and 2× wins. A lateral, because `pct` is wanted alongside
  * the factor that produced it.
  */
 const TEMPO_FOLD = (playing: SQL, next: SQL) => sql`lateral (
@@ -92,8 +93,6 @@ interface Display {
 export interface DjTrack extends Display {
 	bpm: number;
 	camelot: string;
-	/** rbxport's 0–1 confidence in the tempo; low means it may be off. */
-	bpmConfidence: number | null;
 	liked: boolean;
 	plays: number;
 }
@@ -151,10 +150,10 @@ export async function browseTracks(opts: {
 		[...DJ_SORTS[opts.sort].map((c) => `${c} ${opts.dir} nulls last`), 'p.bpm', 'p.id'].join(', ')
 	);
 	return query(sql`
-		with p as (${POOL})
+		with p as (${POOL(await recordings())})
 		select ${total},
 		       p.id as "canonicalTrackId",
-		       p.bpm, p.code as camelot, p.bpm_confidence as "bpmConfidence",
+		       p.bpm, p.code as camelot,
 		       p.liked, p.plays,
 		       ${DISPLAY}
 		  from p
@@ -168,6 +167,8 @@ export async function browseTracks(opts: {
 export interface PoolShape {
 	/** Recordings in the library with a tempo and key — the pool. */
 	pool: number;
+	/** Recordings in the library with a downloaded file, analysed or not. */
+	downloaded: number;
 	library: number;
 	/** Per Camelot code, under every filter but the key. */
 	keys: { code: string; tracks: number }[];
@@ -189,11 +190,12 @@ export const BIN_MAX = 200;
  * GROUPING SETS with a FILTER per aggregate is that, without three scans.
  */
 export async function poolShape(filters: BrowseFilters): Promise<PoolShape> {
+	const rec = await recordings();
 	const [shape, library] = await Promise.all([
 		query<{ code: string | null; bin: number | null; byKey: number; byTempo: number; pool: number }>(sql`
 			with p as (
 			  select p.*, greatest(${BIN_MIN}, least(${BIN_MAX - BIN}, floor(p.bpm / ${BIN}) * ${BIN}))::int as bin
-			    from (${POOL}) p
+			    from (${POOL(rec)}) p
 			)
 			select p.code, p.bin,
 			       count(*) filter (where ${allOf(browseParts(filters, 'key'))})::int as "byKey",
@@ -202,10 +204,16 @@ export async function poolShape(filters: BrowseFilters): Promise<PoolShape> {
 			  from p
 			 group by grouping sets ((p.code), (p.bin), ())
 		`),
-		query<{ n: number }>(sql`select count(*)::int as n from library_canonical`)
+		query<{ n: number; downloaded: number }>(sql`
+			select count(*)::int as n, count(r.isrc)::int as downloaded
+			  from library_canonical lc
+			  join canonical_tracks ct on ct.id = lc.canonical_track_id
+			  left join ${rec} r on r.isrc = upper(ct.isrc)
+		`)
 	]);
 	return {
 		pool: shape.find((r) => r.code == null && r.bin == null)?.pool ?? 0,
+		downloaded: library[0]?.downloaded ?? 0,
 		library: library[0]?.n ?? 0,
 		keys: shape
 			.filter((r) => r.code != null)
@@ -237,17 +245,18 @@ export interface SetTrack extends Display {
  */
 export async function setTracks(ids: string[]): Promise<SetTrack[]> {
 	if (ids.length === 0) return [];
+	const rec = await recordings();
 	return query<SetTrack>(sql`
 		with s as (
 		  select s.id, s.ord::int as ord
 		    from jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb) with ordinality as s(id, ord)
 		),
 		r as (
-		  select s.ord, ct.id, ta.bpm, ta.camelot as code,
-		         lag(ta.bpm) over (order by s.ord) as prev_bpm
+		  select s.ord, ct.id, r.bpm::real as bpm, r.camelot as code,
+		         lag(r.bpm::real) over (order by s.ord) as prev_bpm
 		    from s
 		    join canonical_tracks ct on ct.id = s.id
-		    left join track_analysis ta on ta.isrc = ct.isrc and ta.status = 'ok'
+		    left join ${rec} r on r.isrc = upper(ct.isrc) and r.camelot is not null
 		)
 		select r.ord as position,
 		       r.id as "canonicalTrackId",
@@ -292,8 +301,9 @@ export interface NextOptions {
  * little of its tempo score.
  */
 export async function nextTracks(seed: string, opts: NextOptions): Promise<NextTrack[]> {
+	const pool = POOL(await recordings());
 	const [s] = await query<{ code: string }>(sql`
-		with p as (${POOL}) select p.code from p where p.id = ${seed}
+		with p as (${pool}) select p.code from p where p.id = ${seed}
 	`);
 	if (!s) return [];
 
@@ -314,7 +324,7 @@ export async function nextTracks(seed: string, opts: NextOptions): Promise<NextT
 	// Gate first, then score what is left: a harmonic ±6% window is a few
 	// hundred rows of nine thousand.
 	return query<NextTrack>(sql`
-		with p as materialized (${POOL}),
+		with p as materialized (${pool}),
 		seed as materialized (select p.* from p where p.id = ${seed}),
 		m as (
 		  select * from jsonb_to_recordset(${JSON.stringify(moves)}::jsonb)
@@ -347,7 +357,7 @@ export async function nextTracks(seed: string, opts: NextOptions): Promise<NextT
 		   order by ${SONG('ct')}, score desc, sc.id
 		)
 		select r.id as "canonicalTrackId",
-		       r.bpm, r.code as camelot, r.bpm_confidence as "bpmConfidence",
+		       r.bpm, r.code as camelot,
 		       r.liked, r.plays,
 		       r.move, r.pct as "tempoPct", r.factor as "tempoFactor",
 		       r.score,

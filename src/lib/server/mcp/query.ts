@@ -100,7 +100,7 @@ function explain(err: unknown, statement: string): string {
 		return `Cannot run a write: this endpoint executes every statement in a READ ONLY transaction as a role granted SELECT only. (${e.message})`;
 	}
 	if (e.code === '42501') {
-		return `Permission denied. The MCP role can read the library tables but not the OAuth tables, and cannot write anything. (${e.message})`;
+		return `Permission denied. The MCP role can read the library tables but not the OAuth tables, nor the engine's deckhand.devices and deckhand.meta, and cannot write anything. (${e.message})`;
 	}
 	if (e.code === '42704' && /role .* does not exist/i.test(e.message)) {
 		return `The read-only role is missing — run \`bun run db:sql\` to apply db/sql/post/070_mcp_role.sql. (${e.message})`;

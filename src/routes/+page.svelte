@@ -155,6 +155,13 @@
 		accent={CATEGORICAL[3]}
 	/>
 	<StatTile
+		label="Downloaded"
+		value={t.recordings > 0 ? pct(t.downloaded / t.recordings, 0) : '—'}
+		sub="{num(t.downloaded)} of {num(t.recordings)} as files, for the DJ stick"
+		accent={CATEGORICAL[7]}
+		muted={t.downloaded === 0}
+	/>
+	<StatTile
 		label="Longest streak"
 		value="{data.streaks.longest} days"
 		sub="{num(data.streaks.activeDays)} active days"

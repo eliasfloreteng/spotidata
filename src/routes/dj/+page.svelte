@@ -63,9 +63,10 @@
 		<div>
 			<h1>DJ</h1>
 			<p class="muted">
-				Find what mixes. {num(shape.pool)} of {num(shape.library)} recordings have a tempo and a key
-				measured by rbxport from their 30-second preview. Narrow by key and tempo, pick a record to start a set, and every
-				next one is ranked by how well it blends out of the last.
+				Find what mixes. {num(shape.pool)} of {num(shape.library)} recordings are downloaded with a
+				tempo and a key from the file itself ({num(shape.downloaded)} downloaded in all). Narrow by key
+				and tempo, pick a record to start a set, and every next one is ranked by how well it blends out
+				of the last.
 			</p>
 		</div>
 		<SearchBox value={data.q} placeholder="Search tracks to start from" />
@@ -180,9 +181,6 @@
 								</div>
 							</td>
 							<td class="r num">
-								{#if t.bpmConfidence != null && t.bpmConfidence < 0.45}
-									<span class="faint xs" title="rbxport is only {pct(t.bpmConfidence)} confident in this tempo">?</span>
-								{/if}
 								{bpm(t.bpm)}
 							</td>
 							<td class="nowrap">
@@ -304,8 +302,8 @@
 
 			{#if !seed || seed.bpm == null || !seed.camelot}
 				<p class="empty faint">
-					rbxport has not measured the last track — Deezer has no preview of it, or the analysis has
-					not reached it yet — so there is nothing to match it against.
+					The last track has no tempo and key yet — Deckhand has not downloaded it, or not
+					analysed the file yet — so there is nothing to match it against.
 					Remove it, or pick what follows from <a href="/dj">the pool</a>.
 				</p>
 			{:else}

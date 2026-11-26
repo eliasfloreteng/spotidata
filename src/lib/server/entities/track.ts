@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { query } from '../db/index.ts';
+import { recordings, type AnalysisSource } from '../engine/recordings.ts';
 import { cover, iso, trackArtistsJson, type ArtistRef } from './shared.ts';
 
 export interface CanonicalTrackView {
@@ -163,4 +164,33 @@ export async function canonicalIdForSpotifyTrack(id: string): Promise<string | n
 		select canonical_track_id as "canonicalTrackId" from spotify_tracks where id = ${id}
 	`);
 	return rows[0]?.canonicalTrackId ?? null;
+}
+
+/** The recording's file in Deckhand's music folder, when it has been downloaded. */
+export interface RecordingFile {
+	file: string;
+	sizeBytes: number;
+	downloadedAt: string;
+	/** pending: waiting for the engine's analysis; failed: the analysis did not work. */
+	state: 'pending' | 'ready' | 'failed';
+	bpm: number | null;
+	camelot: string | null;
+	/** Whose analysis the tempo and key are. */
+	analysis: AnalysisSource | null;
+}
+
+export async function getRecordingFile(isrc: string | null): Promise<RecordingFile | null> {
+	if (!isrc) return null;
+	const rows = await query<RecordingFile>(sql`
+		select r.file,
+		       r.size::float8                 as "sizeBytes",
+		       ${iso('r.first_seen')}         as "downloadedAt",
+		       r.state,
+		       r.bpm::float8                  as bpm,
+		       r.camelot,
+		       r.analysis
+		  from ${await recordings()} r
+		 where r.isrc = upper(${isrc})
+	`);
+	return rows[0] ?? null;
 }

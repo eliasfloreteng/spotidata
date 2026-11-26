@@ -39,7 +39,6 @@ import {
 } from './history.ts';
 import { ondemandEntity } from './ondemand.ts';
 import { runAllAutomations, runAutomationTask } from './automations.ts';
-import { analyseTick } from './analyse.ts';
 
 /**
  * Album-track overflow is seeded implicitly: `sync:albums-batch` enqueues a
@@ -121,9 +120,6 @@ export const taskList: TaskList = {
 
 	// On-demand page fetches; run at priority -1000 so they preempt a sync.
 	'ondemand:entity': ondemandEntity,
-
-	// rbxport's tempo and key from Deezer previews. One self-chaining job, paced by Deezer's limit.
-	'analyse:tick': analyseTick,
 
 	// Automations: append what the source playlists gained to a normal playlist.
 	'automation:run': runAutomationTask,
