@@ -21,7 +21,7 @@
 		type KeyMode,
 		type KeyMove
 	} from '$lib/utils/music.ts';
-	import { genreHref, trackHref, withParams } from '$lib/utils/qs.ts';
+	import { trackHref, withParams } from '$lib/utils/qs.ts';
 	import { spotifyLink } from '$lib/utils/spotify-uri.ts';
 
 	let { data, form } = $props();
@@ -204,7 +204,7 @@
 							</td>
 							<td class="genres">
 								{#each (t.genres ?? []).slice(0, 2) as g (g)}
-									<a href={genreHref(g)}><Chip>{g}</Chip></a>
+									<Chip>{g}</Chip>
 								{/each}
 							</td>
 							<td class="r num muted">{t.danceable != null ? pct(t.danceable) : '—'}</td>
@@ -612,7 +612,7 @@
 		font-size: 0.78rem;
 		margin-left: 4px;
 	}
-	td.genres a + a {
+	td.genres :global(.chip + .chip) {
 		margin-left: 4px;
 	}
 	.code {

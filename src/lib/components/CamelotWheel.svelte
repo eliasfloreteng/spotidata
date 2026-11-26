@@ -60,8 +60,8 @@
 					path: sector(n, r0, r1),
 					lx,
 					ly,
-					// Square root, as the genre chips do: the busiest key holds ten
-					// times the quietest, and linear would leave half the wheel black.
+					// Square root: the busiest key holds ten times the quietest, and
+					// linear would leave half the wheel black.
 					fill: tracks ? 0.12 + 0.7 * Math.sqrt(tracks / most) : 0.03,
 					move: neighbours.get(code) ?? null
 				};

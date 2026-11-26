@@ -8,7 +8,7 @@
 -- has tagged, ~42% of this library, and it grows as /enrich runs.
 --
 -- Keyed on `canonical_tracks.id` over the whole catalog rather than the
--- library, so a genre collection and an MCP client can each restrict it their
+-- library, so the DJ tab and an MCP client can each restrict it their
 -- own way; joining `library_canonical` costs one hash join over 8.8k rows.
 
 DROP VIEW IF EXISTS spotidata.track_genres CASCADE;

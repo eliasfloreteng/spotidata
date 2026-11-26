@@ -20,17 +20,15 @@ import {
 	PAGE,
 	PLAYLIST_ITEMS_PER_REQUEST
 } from '../spotify/endpoints.ts';
+import { PlaylistScopeError } from '../spotify/errors.ts';
 import { spotifyLink } from '../../utils/spotify-uri.ts';
-import { PlaylistScopeError } from './sync.ts';
 
 /**
  * Running an automation: collect what the sources have gained, append it to the
  * destination, write down what was appended.
  *
- * This is the append-only counterpart to `syncCollection`, and the contrast is
- * the whole point. A genre collection OWNS its playlist and rewrites it with
- * `PUT`, so anything added by hand is gone at the next sync. An automation only
- * ever calls `POST /playlists/{id}/tracks`. It issues no PUT and no DELETE, so:
+ * Append-only is the whole point. An automation only ever calls
+ * `POST /playlists/{id}/tracks`. It issues no PUT and no DELETE, so:
  *
  *   - nothing it did not add can ever be removed;
  *   - the destination stays a perfectly ordinary playlist — add to it in

@@ -1,17 +1,15 @@
 import type { Task } from 'graphile-worker';
 import { autoRunAutomationIds, runAutomation } from '../../playlists/automations.ts';
-import { PlaylistScopeError } from '../../playlists/sync.ts';
-import { SpotifyAuthExpired, SpotifyRateLimited } from '../../spotify/errors.ts';
+import { PlaylistScopeError, SpotifyAuthExpired, SpotifyRateLimited } from '../../spotify/errors.ts';
 import { SPOTIFY_FLAG } from '../constants.ts';
 
 /**
  * Running playlist automations in the background.
  *
- * Same contract as the generated-playlist jobs next door: one job per
- * automation so a failing one leaves the others alone, and `SPOTIFY_FLAG` so an
- * open rate-limit breaker skips them wholesale instead of burning retries. An
- * automation that is an hour late has cost nobody anything; a 429 that stalls
- * the sync has.
+ * One job per automation so a failing one leaves the others alone, and
+ * `SPOTIFY_FLAG` like every other Spotify job so an open rate-limit breaker
+ * skips them wholesale instead of burning retries. An automation that is an
+ * hour late has cost nobody anything; a 429 that stalls the sync has.
  */
 
 /** Fans out to one job per auto-running automation. */

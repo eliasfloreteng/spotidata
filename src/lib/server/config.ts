@@ -85,8 +85,8 @@ export const config = {
 			// grant does not carry it — the app compares this list against the
 			// stored scope and asks for a re-authorization when they diverge.
 			'user-read-recently-played',
-			// The only write scopes the app itself uses: a genre collection pushes its tracks into a
-			// real playlist and rewrites it as the library changes. Both are
+			// The only write scopes the app itself uses: an automation appends
+			// to a playlist, and the DJ tab saves a set as a new one. Both are
 			// needed because the playlist's visibility is the user's choice and
 			// Spotify scopes the two cases separately.
 			'playlist-modify-private',

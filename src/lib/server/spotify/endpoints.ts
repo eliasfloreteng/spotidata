@@ -130,10 +130,10 @@ export const getArtistTopTracks = (id: string) =>
 
 // ------------------------------------------------------------ playlist writes
 //
-// The only endpoints in this file that change anything on Spotify. All three
-// need `playlist-modify-public`/`playlist-modify-private`, which a grant made
-// before genre collections existed does not carry — the app compares the
-// stored scope against the configured one and asks for a re-authorization.
+// The only endpoints in this file that change anything on Spotify. Both need
+// `playlist-modify-public`/`playlist-modify-private`, which an early grant does
+// not carry — the app compares the stored scope against the configured one and
+// asks for a re-authorization.
 
 /** Both write endpoints take at most 100 uris per request. */
 export const PLAYLIST_ITEMS_PER_REQUEST = 100;
@@ -145,23 +145,6 @@ export const createPlaylist = (
 	spotifyGet<SimplifiedPlaylist>(`/users/${userId}/playlists`, {
 		method: 'POST',
 		body
-	});
-
-export const changePlaylistDetails = (
-	id: string,
-	body: { name?: string; description?: string; public?: boolean }
-) => spotifyFetch<null>(`/playlists/${id}`, { method: 'PUT', body });
-
-/**
- * Replaces the playlist's contents with up to 100 uris — pass none to empty
- * it. This is the only call that *removes* anything, so a rewrite is always
- * "replace with the first 100, then append the rest": no diffing, no
- * remove-by-position, and no way for a half-finished push to leave duplicates.
- */
-export const replacePlaylistItems = (id: string, uris: string[]) =>
-	spotifyGet<{ snapshot_id: string }>(`/playlists/${id}/tracks`, {
-		method: 'PUT',
-		body: { uris }
 	});
 
 /** Appends up to 100 uris to the end. */

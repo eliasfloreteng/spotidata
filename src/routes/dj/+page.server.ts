@@ -10,9 +10,8 @@ import {
 } from '$lib/server/entities/dj.ts';
 import { INDEX_PAGE_SIZE, pageParam, paged, searchParam } from '$lib/server/entities/shared.ts';
 import { saveSetAsPlaylist } from '$lib/server/playlists/dj.ts';
-import { PlaylistScopeError } from '$lib/server/playlists/sync.ts';
 import { canWritePlaylists, readAuthState } from '$lib/server/spotify/auth.ts';
-import { SpotifyRateLimited } from '$lib/server/spotify/errors.ts';
+import { PlaylistScopeError, SpotifyRateLimited } from '$lib/server/spotify/errors.ts';
 import {
 	KEY_MODES,
 	parseCamelot,
@@ -27,10 +26,10 @@ const MAX_SET = 60;
 const SUGGESTIONS = 40;
 
 /**
- * The set lives in the URL as repeated `?s=`, in play order — like the genre
- * builder's `?g=`, so adding a track is a plain link, the back button is undo,
- * and a half-built set can be bookmarked. Repeats are dropped: the same record
- * twice in one set is a mistake, never a plan.
+ * The set lives in the URL as repeated `?s=`, in play order, so adding a
+ * track is a plain link, the back button is undo, and a half-built set can be
+ * bookmarked. Repeats are dropped: the same record twice in one set is a
+ * mistake, never a plan.
  */
 function setIds(values: unknown[]): string[] {
 	const ids = values
@@ -130,7 +129,7 @@ export const load: PageServerLoad = async ({ url }) => {
 
 export const actions: Actions = {
 	/**
-	 * Inline, like a collection's sync button: a handful of requests, and the
+	 * Inline, not queued: a handful of requests, and the
 	 * person who pressed it should see a missing scope or a rate limit now.
 	 */
 	save: async ({ request }) => {

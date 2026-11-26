@@ -6,19 +6,18 @@ import { table, ts, tsNow } from './_shared.ts';
  * Playlist automations: a set of source playlists, and the playlist their
  * tracks are copied into.
  *
- * The other write path in this app (genre collections) OWNS its playlist and
- * rewrites it wholesale. This one does the opposite and the difference is the
- * whole design: an automation only ever APPENDS. It never issues a PUT, never
- * removes an item, and never touches anything it did not put there — so the
- * destination stays an ordinary playlist that can be edited, reordered and
- * added to in Spotify, and the automation keeps feeding it regardless.
+ * The whole design is that an automation only ever APPENDS. It never issues a
+ * PUT, never removes an item, and never touches anything it did not put there
+ * — so the destination stays an ordinary playlist that can be edited,
+ * reordered and added to in Spotify, and the automation keeps feeding it
+ * regardless.
  *
- * Which means there is no fingerprint here and no snapshot to compare. What a
- * rewrite gets from recomputing the whole list, this gets from remembering:
- * `automation_added_tracks` is every track the automation has contributed, and
- * a track in there is never offered again. That is what makes a manual removal
- * stick — delete a song from the destination and it stays deleted, because the
- * automation's question is "have I ever added this", not "is it there now".
+ * Which means there is no fingerprint here and no snapshot to compare: it
+ * works by remembering. `automation_added_tracks` is every track the
+ * automation has contributed, and a track in there is never offered again.
+ * That is what makes a manual removal stick — delete a song from the
+ * destination and it stays deleted, because the automation's question is
+ * "have I ever added this", not "is it there now".
  *
  * Spotify's API has no concept of a folder: `GET /me/playlists` is flat, and
  * nothing exposes the tree the desktop app shows. So a "folder" here is the set
@@ -36,9 +35,10 @@ export const playlistAutomations = table(
 		/** Null until the destination playlist has been created; a plain id, deliberately not a FK. */
 		spotifyPlaylistId: text(),
 		/**
-		 * No FK to `playlists`, for the same reason genre collections have none:
-		 * that table mirrors what the *sync* has seen, and a playlist created here
-		 * exists on Spotify for hours before the next sync ingests it.
+		 * No FK to `playlists`: that table mirrors what the *sync* has seen, and a
+		 * playlist created here exists on Spotify for hours before the next sync
+		 * ingests it. A constraint would make the write path depend on the read
+		 * path having run.
 		 */
 		playlistPublic: boolean().notNull().default(false),
 		/** Whether the background job runs this automation on its own. */

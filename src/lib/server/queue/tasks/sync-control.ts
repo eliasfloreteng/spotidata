@@ -233,13 +233,6 @@ export const finalize: Task = async (payload, helpers) => {
 	await finishRun(runId, 'completed');
 	await logEvent(runId, 'info', 'Sync complete', stats);
 
-	// The library just moved, so anything generated from it is stale. Fanning
-	// out from here rather than waiting for the hourly cron is what makes a
-	// genre playlist reflect a track saved five minutes ago.
-	await helpers.addJob('playlist:sync-all', {}, {
-		jobKey: 'playlist-sync-all',
-		jobKeyMode: 'preserve_run_at'
-	});
 	// The sync has just re-read every playlist, so an automation running now
 	// finds its sources' snapshots already current and spends nothing on them.
 	await helpers.addJob('automation:run-all', {}, {

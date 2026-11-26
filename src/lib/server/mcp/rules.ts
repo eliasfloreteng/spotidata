@@ -177,13 +177,10 @@ returns track-level genres.${
 
 For a genre *of a track*, read \`spotidata.track_genres\`: one row per
 \`(canonical_track_id, genre)\` from MusicBrainz's recording tags, which is
-what "tracks in genre X" means here and what the /genres collections are built
-from. Its coverage is the enrichment crawl's, not the library's — say what
-fraction an answer rests on. \`genre_collections\` and
-\`genre_collection_genres\` hold the saved sets; their track lists are
-recomputed from the genres, never stored.
+what "tracks in genre X" means here. Its coverage is the enrichment crawl's,
+not the library's — say what fraction an answer rests on.
 
-The other user-authored tables are the playlist automations:
+The user-authored tables are the playlist automations:
 \`playlist_automations\` (one destination playlist each),
 \`automation_sources\` (the playlists it collects from) and
 \`automation_added_tracks\` (every track it has contributed, \`origin = 'added'\`,

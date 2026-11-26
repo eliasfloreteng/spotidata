@@ -33,8 +33,8 @@ Then open `/auth/login` and approve. Trigger the first sync from `/sync`, and
 drop a Spotify export on `/history/import` for the listening history. Scopes
 are only ever granted once, so a grant made before a feature existed does not
 carry its scope — `user-read-recently-played` for the history, and
-`playlist-modify-private`/`-public` for the playlists `/genres` and
-`/automations` write. Every page that needs one checks the stored scope and
+`playlist-modify-private`/`-public` for the playlists `/automations` and `/dj`
+write. Every page that needs one checks the stored scope and
 links to a re-authorization when it is missing; re-authorizing keeps every row
 you have already ingested.
 
@@ -173,58 +173,6 @@ MusicBrainz's recording tags alone, filtered to its curated genre vocabulary so
 "seen live" and "80s" stay out. The price is coverage: 42% of this library has
 a genre today, and it rises as `/enrich` crawls.
 
-**`/genres` builds playlists Spotify cannot.** A *collection* is a saved set of
-genres plus a match mode — any of them, or all of them at once — and Spotidata
-keeps a real Spotify playlist holding exactly what it resolves to. The write
-path is the app's only one, and the two `playlist-modify-*` scopes are the only
-write access it asks for; a grant made before this feature does not carry them,
-so the page checks the stored scope and asks for a re-authorization rather than
-failing with a 403 that explains nothing.
-
-A collection stores **genres, never tracks**. The track list is recomputed on
-every read and every push, so a recording that MusicBrainz tags tomorrow joins
-the playlist tomorrow with nobody editing anything — and it is also why a
-collection's genres live in Postgres rather than the query string, which ran out
-of room at around forty genres.
-
-**The page is a builder, not a picker.** Staging a genre is an ordinary link
-that appends `?g=`, so the count, the artists, the runtime and the first twenty
-tracks of the set are answered by the same load function whether or not JS ran,
-the back button walks the selection, and a half-built set can be pasted to
-someone. "All four of these at once" is usually eleven tracks, and the whole
-point is finding that out *before* a collection exists rather than by creating
-one and looking at it. A staged set is capped at 24 genres — it is the thing
-being assembled, and the thing being kept is the collection.
-
-The chips are sized by the square root of whatever they are ranked by: `pop`
-holds fifty times what `italo disco` does, and a linear scale makes one
-unreadable to keep the other legible.
-
-**`/genre/<name>` is the genre itself** — recordings, listening time, the
-artists it means in this library, and the genres tagged on the same recordings.
-Related genres rank by Jaccard overlap rather than raw shared count, which is
-the difference between "club is what house *is*" and answering "pop" for
-everything. Its track list runs through `resolveTracks`, the same function a
-collection resolves through, so what the page shows and what a playlist built
-from that genre would hold cannot drift apart.
-
-The push is a **rewrite, not a diff**: `PUT /playlists/{id}/tracks` replaces the
-first 100, `POST` appends the rest. No reconciliation, no way for a crash
-halfway to leave duplicates, and removals fall out for free — at the cost that
-anything added to the playlist by hand is gone at the next sync, which is what
-`autoSync` off is for. A rewrite that would produce the same list is skipped on
-an md5 of the id order, unless Spotify's `snapshot_id` moved underneath it,
-which means somebody edited the playlist and the fingerprint alone would
-wrongly conclude there was nothing to do.
-
-Syncing runs from two places and shares one function: the button on the
-collection page runs it inline so a failure is visible while you are looking at
-it, and `playlist:sync` runs it from the queue — carrying `SPOTIFY_FLAG` like
-every other API job, so an open rate-limit breaker skips it wholesale. A
-completed sync fans out to every auto-syncing collection, and an hourly cron
-catches the other input the sync knows nothing about: the enrichment crawl
-giving a recording its first genre.
-
 **`/automations` fills a playlist instead of owning one.** An automation is a
 set of source playlists and one destination, and it only ever *appends*: it
 issues `POST /playlists/{id}/tracks` and nothing else — no `PUT`, no `DELETE`.
@@ -233,11 +181,11 @@ it, delete from it, rename it, and the automation carries on around you. Its
 description is written once, when it creates the playlist, and never touched
 again; it can equally be pointed at a playlist you already keep by hand.
 
-Which leaves the question a rewrite answers for free: what has already been
-added? `automation_added_tracks` is the answer — every track the automation has
-contributed, kept forever. A track in the ledger is never offered again, so
-deleting a song from the destination makes it stay deleted: the run asks "have
-I added this", not "is this still there". The ledger carries the canonical id
+Which leaves the question an append-only design has to answer: what has
+already been added? `automation_added_tracks` is the answer — every track the
+automation has contributed, kept forever. A track in the ledger is never
+offered again, so deleting a song from the destination makes it stay deleted:
+the run asks "have I added this", not "is this still there". The ledger carries the canonical id
 alongside the Spotify one, or a song added last week as a single would come
 back this week as the album cut. Anything found already in the playlist at run
 time is recorded rather than re-added, which is how a track you put there
@@ -288,7 +236,7 @@ where the misses are, and the DJ tab marks it.
 Which keys may follow which is defined once, in TypeScript (`movesFrom` in
 `utils/music.ts`), and handed to Postgres as a table — so the suggestions and
 the set's transition labels cannot disagree. The set lives in the URL as
-repeated `?s=`, like the genre builder: adding is a link, back is undo.
+repeated `?s=`: adding is a link, back is undo.
 Suggestions collapse to one per *song* (`song_title_key`), so the radio edit
 and the extended mix are not both offered, nor either once the other is in
 the set. "Save to Spotify" writes the set as a new private playlist, which is
@@ -430,8 +378,8 @@ db/sql/post/       fallback_key, rate limiter, refresh_canonical, refresh_librar
 src/lib/server/    db/ spotify/ musicbrainz/ ingest/ import/ queue/ stats/
                    entities/ mcp/
 src/lib/charts/    d3 computes, Svelte renders — no d3-selection
-src/routes/        dashboard, entity pages, /history, /genres, /dj, /automations,
-                   /sync, /enrich, /settings, /api
+src/routes/        dashboard, entity pages, /history, /dj, /automations, /sync,
+                   /enrich, /settings, /api
 scripts/           probe-api, apply-sql, check-migration, check-sql-conventions,
                    backup, restore-auth, spike-worker
 ```

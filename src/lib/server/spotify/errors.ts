@@ -49,3 +49,17 @@ export class SpotifyApiError extends Error {
 		this.name = 'SpotifyApiError';
 	}
 }
+
+/**
+ * The stored grant cannot write playlists: it predates the `playlist-modify-*`
+ * scopes, or the user never granted them. Raised before any request is spent,
+ * so the page can link to a re-authorization instead of showing a bare 403.
+ */
+export class PlaylistScopeError extends Error {
+	constructor() {
+		super(
+			'This Spotify authorization cannot modify playlists. Re-authorize to grant playlist access.'
+		);
+		this.name = 'PlaylistScopeError';
+	}
+}

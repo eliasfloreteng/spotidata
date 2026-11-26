@@ -3,15 +3,15 @@ import { query } from '../db/index.ts';
 import { getMe } from '../ingest/upsert-users.ts';
 import { canWritePlaylists, readAuthState } from '../spotify/auth.ts';
 import { addPlaylistItems, createPlaylist, PLAYLIST_ITEMS_PER_REQUEST } from '../spotify/endpoints.ts';
+import { PlaylistScopeError } from '../spotify/errors.ts';
 import { spotifyLink } from '../../utils/spotify-uri.ts';
-import { PlaylistScopeError } from './sync.ts';
 
 /**
  * A set from the DJ tab, written out as a new Spotify playlist — which is also
  * how it reaches the DJ stick: Deckhand copies any playlist it is pointed at.
  *
- * Fire and forget, unlike a genre collection: a set is a one-off, so nothing
- * is stored here and nothing keeps it in sync. Saving the same set twice makes
+ * Fire and forget: a set is a one-off, so nothing is stored here and nothing
+ * keeps it in sync. Saving the same set twice makes
  * two playlists, which is what pressing the button twice should mean.
  */
 export interface SavedSet {

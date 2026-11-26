@@ -16,9 +16,8 @@ import {
 import { PAGE_SIZE, pageParam, paged, searchParam } from '$lib/server/entities/shared.ts';
 import { ensureEntity } from '$lib/server/ingest/ensure.ts';
 import { runAutomation } from '$lib/server/playlists/automations.ts';
-import { PlaylistScopeError } from '$lib/server/playlists/sync.ts';
 import { canWritePlaylists, readAuthState } from '$lib/server/spotify/auth.ts';
-import { SpotifyRateLimited } from '$lib/server/spotify/errors.ts';
+import { PlaylistScopeError, SpotifyRateLimited } from '$lib/server/spotify/errors.ts';
 import { parseSpotifyId } from '$lib/utils/spotify-uri.ts';
 import type { Actions, PageServerLoad } from './$types';
 

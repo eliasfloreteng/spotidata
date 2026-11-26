@@ -38,7 +38,6 @@ import {
 	playsResolveBatch
 } from './history.ts';
 import { ondemandEntity } from './ondemand.ts';
-import { syncAllPlaylists, syncPlaylist } from './playlists.ts';
 import { runAllAutomations, runAutomationTask } from './automations.ts';
 import { enrichTick, enrichRetryMisses } from './enrich.ts';
 import { analyseTick } from './analyse.ts';
@@ -130,10 +129,6 @@ export const taskList: TaskList = {
 
 	// rbxport's tempo and key from Deezer previews. Its own chain, paced by Deezer's limit.
 	'analyse:tick': analyseTick,
-
-	// Generated playlists: push a genre collection into Spotify and keep it there.
-	'playlist:sync': syncPlaylist,
-	'playlist:sync-all': syncAllPlaylists,
 
 	// Automations: append what the source playlists gained to a normal playlist.
 	'automation:run': runAutomationTask,

@@ -41,5 +41,3 @@ export function toggleValue(url: URL, name: string, value: string): string {
 export const trackHref = (canonicalId: string): string =>
 	`/track/${encodeURIComponent(canonicalId)}`;
 
-/** Genres are their own name — spaces, slashes and ampersands included. */
-export const genreHref = (genre: string): string => `/genre/${encodeURIComponent(genre)}`;

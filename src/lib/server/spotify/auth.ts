@@ -152,7 +152,7 @@ export function missingScopes(granted: string | null | undefined): string[] {
 
 export const PLAYLIST_WRITE_SCOPES = ['playlist-modify-private', 'playlist-modify-public'] as const;
 
-/** Can this grant write playlists? The genre collections' precondition. */
+/** Can this grant write playlists? What an automation and a saved DJ set need. */
 export function canWritePlaylists(granted: string | null | undefined): boolean {
 	const held = new Set((granted ?? '').split(/\s+/).filter(Boolean));
 	return PLAYLIST_WRITE_SCOPES.every((s) => held.has(s));

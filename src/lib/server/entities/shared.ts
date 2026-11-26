@@ -56,7 +56,7 @@ export const trackArtistsJson = (ref: string) =>
 // -------------------------------------------------------------------- ids
 
 /** The tables whose rows are named by the user and keyed by a slug of that name. */
-type SluggedTable = 'genre_collections' | 'playlist_automations';
+type SluggedTable = 'playlist_automations';
 
 /**
  * A readable, stable id for a user-authored row.
