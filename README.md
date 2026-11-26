@@ -22,7 +22,7 @@ everything once and keeps it.
 ## Quick start
 
 ```bash
-cp .env.example .env          # fill in SPOTIFY_CLIENT_ID / SECRET
+cp .env.example .env          # fill in SPOTIFY_CLIENT_ID / SECRET (+ OPENROUTER_API_KEY for Sortify)
 bun install
 bun run db:up                 # postgres:18-trixie via docker compose
 bun run db:migrate            # extensions → drizzle migrations → SQL functions → seed
@@ -32,10 +32,11 @@ bun run dev                   # http://127.0.0.1:5173
 Then open `/auth/login` and approve. Trigger the first sync from `/sync`, and
 drop a Spotify export on `/history/import` for the listening history. Scopes
 are only ever granted once, so a grant made before a feature existed does not
-carry its scope — `user-read-recently-played` for the history, and
-`playlist-modify-private`/`-public` for the playlists `/automations` and `/dj`
-write. Every page that needs one checks the stored scope and
-links to a re-authorization when it is missing; re-authorizing keeps every row
+carry its scope — `user-read-recently-played` for the history,
+`playlist-modify-private`/`-public` for the playlists `/automations`, `/dj` and
+Sortify write, and `user-read-playback-state`/`user-modify-playback-state` for
+Sortify's playback. Every page and API that needs one checks the stored scope
+and links to a re-authorization when it is missing; re-authorizing keeps every row
 you have already ingested.
 
 **Redirect URIs** must be registered on the Spotify app exactly as:
@@ -57,6 +58,7 @@ exception.
 | `bun run db:reset` | Backs up the OAuth grant, recreates the DB, restores it |
 | `bun run db:backup -- --full` | `pg_dump` alongside the grant |
 | `bun run db:generate` | New migration + guard against touching the queue schema |
+| `bun scripts/sortify-recall.ts [--model]` | Sortify's held-out recall test |
 
 ## Design decisions worth knowing
 
@@ -260,18 +262,106 @@ destructive.
 claude mcp add --transport http spotidata http://127.0.0.1:5173/api/mcp
 ```
 
-**`/api/sortify/library` feeds [Sortify](https://github.com/eliasfloreteng/sortify)**,
-the iOS app that sorts liked songs into playlists. Spotify's API cannot tell an
-app how often a song was played, when it was first heard, when it was
-*originally* released (the earliest release of any copy sharing its ISRC) or
-its tempo, and those are much of what decides whether a song deserves a
-playlist and which one. The endpoint hands over one row per library recording
-with all of it and the credited artists' Spotify genres, plus a `song` key one
-level looser than the ISRC (`spotidata.song_title_key`: the same title by the
-same artist once remaster / radio-edit / feat. qualifiers are gone), so a
-playlist holding the 2011 remaster is not offered the original. Sortify keeps
-the live playlist state itself; this is only the feature store. Postgres builds
-the whole JSON document, and the route gzips it and answers `If-None-Match`.
+**`/api/sortify` is [Sortify](https://github.com/eliasfloreteng/sortify)'s
+backend**, the iOS app that sorts liked songs into playlists one full-screen
+card at a time. The app has no Spotify sign-in and no model key of its own: it
+draws what these routes hand it and sends back what the user decided. Like
+everything here they are unauthenticated, because the host is tailnet-only.
+
+| Route | What it does |
+|---|---|
+| `GET /api/sortify` | The account, whether the grant covers playlist writes and playback (with the re-authorization link if not), the last sync, the model settings and spend |
+| `POST /api/sortify/refresh` | An incremental sync, unless one ran in the last half hour, so a song liked in Spotify reaches the feed |
+| `GET /api/sortify/feed?source=` | The songs to go through: `unsorted` (liked, in no eligible playlist, newest first), `liked`, or `playlist:<id>` — gzipped, with an ETag |
+| `GET /api/sortify/playlists` | Every playlist, with `eligible`, the default `exclusion` and the user's `override` |
+| `PUT /api/sortify/playlists/{id}/eligibility` | `{eligible}`: sort into it or not |
+| `POST /api/sortify/playlists` | `{name, description, tracks, idea}`: a new private playlist |
+| `POST`/`DELETE /api/sortify/playlists/{id}/tracks` | `{tracks}`: add the recordings not there yet / remove every copy of them |
+| `GET /api/sortify/artists/{id}/tracks?source=` | Every liked song by an artist (plus the playlist being gone through), for bulk sorting |
+| `POST`/`DELETE /api/sortify/suggestions` | The feed card's suggestions for `{tracks}`, asking the model about the uncached ones / forget them all |
+| `GET`/`PUT /api/sortify/settings` | The three OpenRouter models |
+| `GET /api/sortify/sort?min_plays=&limit=` | The sort queue: songs played at least `min_plays` times, not yet reviewed, best first, each with suggestions and what to tick |
+| `POST /api/sortify/sort/judge` | `{songs}`: ask the model about these songs, answer with them updated |
+| `POST /api/sortify/sort/apply` | `{rows: [{song, playlists}]}`: add, turn down the unticked suggestions, mark reviewed |
+| `DELETE /api/sortify/sort/reviewed`, `…/sort/verdicts` | Bring the reviewed songs back / forget the model's verdicts |
+| `GET /api/sortify/sort/playlists[/{id}]` | Every eligible playlist with how many songs wait for it / the best candidates for one |
+| `POST /api/sortify/sort/playlists/{id}/judge`, `…/dismissals` | The model judges thirty candidates for one playlist / `{song}` "not here" |
+| `GET`/`POST /api/sortify/sort/ideas`, `DELETE …/ideas/{id}` | Proposed new playlists for the songs that fit nowhere / propose more / dismiss one |
+| `GET /api/sortify/player[/devices]` | Spotify Connect: what is playing, and where it could |
+| `PUT /api/sortify/player/play\|pause\|resume\|seek` | `{track, position_ms, device}` |
+| `GET /api/sortify/player/wake?redirect=` | The link that starts Spotify on the phone (below) |
+
+Errors are JSON with a stable `error` code: `reauthorize` (a scope is
+missing; `reauthorize_url` fixes it), `signed_out`, `rate_limited` (503 with
+`Retry-After`), `no_device`, `model`.
+
+**The playlists Sortify sorts into** are the owned ones, less three kinds left
+out by default: monthly playlists ("Oktober", "Dreamy December - 2018") are a
+record of what was on repeat, Spotify-made ones (Your Top Songs, Playlist in a
+Bottle, Liked from Radio) are not the user's sorting, and one with nothing
+added in two years is a snapshot rather than a playlist being filled. A
+left-out playlist does not make a song "sorted" and is never suggested. Any
+playlist can be switched in or out; `sortify_playlist_overrides` stores the
+choice only where it differs from the default it was made against, so a
+playlist that goes idle later still drops out on its own.
+
+**Sortify's memory is keyed on the song, not the recording.**
+`spotidata.sortify_song_key` hashes `song_title_key` — the title without
+featured artists and remaster / radio-edit qualifiers — with the primary
+artist's id, so the remaster, the radio edit and the feat. version share one
+key: a "no" for one is a "no" for all, and a playlist holding one is never
+offered another. It is built from names rather than from a canonical id, so a
+regrouping cannot orphan the verdicts (`sortify_verdicts`), the turned-down
+suggestions (`sortify_dismissals`) or the reviewed songs keyed on it.
+
+**Suggestions are the data's match plus the model's verdict.** The data side
+(`sortify/engine.ts`) profiles every eligible playlist — its artists, its
+artists' Spotify genres TF-IDF weighted across the library, its release years
+(and whether they are a rule: an era playlist), when its songs were first heard
+— and scores each liked song against it: shared artists and genre similarity,
+plus or minus for an era, and a lift where the playlist's name reads like one
+of the song's genres, for playlists too young to have a profile. It is built in
+one pass, about a second, and kept in memory until a sync lands or a write
+moves it. The model (OpenRouter, `openai/gpt-6-luna` by default) gets the
+playlist catalog — kept byte-identical between requests so the providers bill
+it at the cache rate — and a page of songs with the data's matches as hints,
+and rates each fit 1–3. A playlist it saw and passed over is marked down. Every
+verdict is stored, so nothing is asked twice, and every request is logged with
+its cost (`sortify_ai_requests`).
+
+Spotify's artist genres are the only genre data left, and they earn their
+place. On Sortify's held-out test — 80 liked songs that sit in playlists are
+taken out of them, and each method has to find them again —
+`bun scripts/sortify-recall.ts --model` measures recall within the top three:
+
+| Method | Recall@3 | Was (MusicBrainz) |
+|---|---|---|
+| Data only, as the app ranks it | 0.59 | 0.55 |
+| Data only, without artist genres | 0.56 | |
+| `openai/gpt-6-luna` + data hints | 0.71 | 0.60 |
+| `openai/gpt-6-luna` + data hints, without artist genres | 0.64 | |
+
+Across six samples the genres add four to six points every time. The model run
+spends about $0.03 for the 160 songs.
+
+**A write lands in the mirror at once.** Adding to a playlist appends the rows
+to `playlist_tracks` as soon as Spotify accepts them, so the feed never offers
+a song that was just sorted. What it does not do is claim the playlist is
+synced: `items_synced_snapshot_id` stays at what the last sync read, so the
+next one sees Spotify's snapshot moved, re-reads that playlist and replaces the
+rows with Spotify's own — picking up anything else changed in it meanwhile.
+
+**Playback stays on the phone; control does not.** Sortify plays the song on
+screen in the phone's Spotify app through Spotify Connect, driven from here
+with the stored grant and the same rate-limit bucket as the sync, which needs
+`user-read-playback-state` and `user-modify-playback-state`. A song is played
+inside its album with an offset, because the iOS app accepts a bare track and
+then plays nothing. When Spotify is not running on the phone there is no
+device to play on, so `/player/wake` builds Spotify's app-based authorize link
+for this app's client id: opening it starts Spotify, which registers as a
+device, and bounces straight back to Sortify's URL scheme. That redirect
+(`reelsforspotify://callback`) must be registered on the Spotify app; the code
+it carries is thrown away.
 
 **`/api/playlists` and `/api/playlists/{id}` feed
 [Deckhand](https://github.com/eliasfloreteng/deckhand)**, which keeps a lossless
@@ -346,9 +436,9 @@ db/migrations/     committed drizzle output
 db/sql/pre/        extensions + parse_release_date (migrations depend on them)
 db/sql/post/       fallback_key, rate limiter, refresh_canonical, refresh_library,
                    refresh_album_groups, refresh_plays, mcp_role,
-                   external_limiter, analysis
+                   external_limiter, analysis, sortify
 src/lib/server/    db/ spotify/ analysis/ ingest/ import/ queue/ stats/
-                   entities/ playlists/ export/ mcp/
+                   entities/ playlists/ export/ mcp/ sortify/
 src/lib/charts/    d3 computes, Svelte renders — no d3-selection
 src/routes/        dashboard, entity pages, /history, /dj, /automations, /sync,
                    /settings, /api
