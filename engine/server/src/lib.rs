@@ -1,6 +1,6 @@
 //! Deckhand's server: watches the music folder, analyses new tracks, gets
 //! music, and serves the library to the apps that sync the DJ stick. It runs
-//! on the home server (`main.rs`).
+//! on the home server (`main.rs`), with its state in Postgres (`store.rs`).
 
 mod analyse;
 mod api;
@@ -32,6 +32,15 @@ pub struct Config {
     pub analysis_threads: usize,
     /// Spotidata's address, which Spotify is read through.
     pub spotidata: String,
+    /// The Postgres database whose `deckhand` schema holds the server's state.
+    pub database: String,
+}
+
+/// Connects to the database and brings its `deckhand` schema up to date,
+/// as `Server::start` does first.
+pub async fn migrate(database: &str) -> Result<()> {
+    store::Store::connect(database).await?;
+    Ok(())
 }
 
 /// How often the music folder is looked at for changes.
@@ -44,32 +53,35 @@ pub struct Server {
 }
 
 impl Server {
-    /// Opens the store and starts the scanner, the analysis workers, the
-    /// download queue and the Spotify sync. Call it inside a tokio runtime,
-    /// which keeps them running.
-    pub fn start(config: Config) -> Result<Self> {
-        let Config { music, data, analysis_threads, spotidata } = config;
+    /// Connects to the database (migrating its `deckhand` schema) and starts
+    /// the scanner, the analysis workers, the download queue and the Spotify
+    /// sync, as tasks of the current tokio runtime, which keeps them running.
+    pub async fn start(config: Config) -> Result<Self> {
+        let Config { music, data, analysis_threads, spotidata, database } = config;
         std::fs::create_dir_all(&data)?;
         std::fs::create_dir_all(&music)?;
 
-        let store = store::Store::open(&data.join("deckhand.db"))?;
+        let store = store::Store::connect(&database).await?;
+        store.requeue_old_analysis().await?;
         let blobs = blobs::Blobs::new(data.join("blobs"))?;
 
         // Counts the music folder's changes, for waking the phone.
         let changes = Arc::new(AtomicU64::new(0));
         {
             let (music, store, changes) = (music.clone(), store.clone(), changes.clone());
-            std::thread::Builder::new().name("scan".into()).spawn(move || loop {
-                match scan::scan(&music, &store) {
-                    Ok(true) => {
-                        info!("music folder changed");
-                        changes.fetch_add(1, Ordering::Relaxed);
+            tokio::spawn(async move {
+                loop {
+                    match scan::scan(&music, &store).await {
+                        Ok(true) => {
+                            info!("music folder changed");
+                            changes.fetch_add(1, Ordering::Relaxed);
+                        }
+                        Ok(false) => {}
+                        Err(e) => warn!(error = %e, "scan failed"),
                     }
-                    Ok(false) => {}
-                    Err(e) => warn!(error = %e, "scan failed"),
+                    tokio::time::sleep(SCAN_EVERY).await;
                 }
-                std::thread::sleep(SCAN_EVERY);
-            })?;
+            });
         }
         worker::spawn(analysis_threads, music.clone(), store.clone(), blobs.clone());
 
@@ -92,9 +104,9 @@ impl Server {
                 }
             });
         }
-        let downloads = downloads::Service::new(store.clone(), music.clone(), &data, push.clone())?;
+        let downloads = downloads::Service::new(store.clone(), music.clone(), &data, push.clone()).await?;
         downloads.spawn();
-        let spotify = spotify::Spotify::new(store.clone(), music.clone(), downloads.clone(), &spotidata)?;
+        let spotify = spotify::Spotify::new(store.clone(), music.clone(), downloads.clone(), &spotidata).await?;
         spotify.spawn();
 
         Ok(Self {

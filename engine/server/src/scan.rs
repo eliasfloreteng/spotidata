@@ -1,6 +1,6 @@
 //! Keeps the store in step with the music folder.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
@@ -12,12 +12,74 @@ use tracing::{info, warn};
 use crate::analyse;
 use crate::store::{State, Store};
 
+/// What a pass over the folder found to record.
+enum Change {
+    /// Only the stat changed: the content is the same.
+    Touched {
+        name: String,
+        size: u64,
+        mtime_ms: i64,
+    },
+    /// A new file, or new content under an old name.
+    Changed {
+        name: String,
+        size: u64,
+        mtime_ms: i64,
+        hash: String,
+        state: State,
+        source: Option<String>,
+    },
+    Removed {
+        name: String,
+        size: u64,
+    },
+}
+
 /// One pass over the folder. Returns whether anything changed.
-pub fn scan(music: &Path, store: &Store) -> Result<bool> {
+pub async fn scan(music: &Path, store: &Store) -> Result<bool> {
     let known: HashMap<String, (u64, i64, String)> =
-        store.all()?.into_iter().map(|r| (r.name, (r.size, r.mtime_ms, r.hash))).collect();
-    let mut seen = std::collections::HashSet::new();
-    let mut changed = false;
+        store.all().await?.into_iter().map(|r| (r.name, (r.size, r.mtime_ms, r.hash))).collect();
+    let folder = music.to_owned();
+    let changes = tokio::task::spawn_blocking(move || look(&folder, &known)).await??;
+    let changed = !changes.is_empty();
+    for change in changes {
+        match change {
+            Change::Touched { name, size, mtime_ms } => store.touch(&name, size, mtime_ms).await?,
+            Change::Changed { name, size, mtime_ms, hash, state, source } => {
+                store.upsert(&name, size, mtime_ms, &hash, state, source.as_deref()).await?;
+            }
+            Change::Removed { name, size } => {
+                info!(%name, "removed");
+                store.remove(&name, size).await?;
+            }
+        }
+    }
+    // Which recording each file holds, so a search can say it is already here.
+    let unread = store.isrc_unread().await?;
+    if !unread.is_empty() {
+        let folder = music.to_owned();
+        let read: Vec<(String, Option<String>)> = tokio::task::spawn_blocking(move || {
+            unread
+                .into_iter()
+                .map(|name| {
+                    let isrc = crate::tags::isrc(&folder.join(&name));
+                    (name, isrc)
+                })
+                .collect()
+        })
+        .await?;
+        for (name, isrc) in read {
+            store.set_isrc(&name, isrc.as_deref()).await?;
+        }
+    }
+    Ok(changed)
+}
+
+/// Compares the folder with what the store knows, reading and hashing what
+/// changed.
+fn look(music: &Path, known: &HashMap<String, (u64, i64, String)>) -> Result<Vec<Change>> {
+    let mut seen = HashSet::new();
+    let mut changes = Vec::new();
     for entry in std::fs::read_dir(music)? {
         let entry = entry?;
         let Ok(name) = entry.file_name().into_string() else {
@@ -61,12 +123,11 @@ pub fn scan(music: &Path, store: &Store) -> Result<bool> {
         };
         if let Some((_, _, old)) = known.get(&name) {
             if *old == hash {
-                store.touch(&name, size, mtime_ms)?;
-                changed = true;
+                changes.push(Change::Touched { name, size, mtime_ms });
                 continue;
             }
         }
-        if is_audio(&name) {
+        let (state, source) = if is_audio(&name) {
             let source = match analyse::source_from_tags(&path) {
                 Ok(source) => serde_json::to_string(&source).ok(),
                 Err(e) => {
@@ -75,25 +136,18 @@ pub fn scan(music: &Path, store: &Store) -> Result<bool> {
                 }
             };
             info!(%name, "new or changed track");
-            store.upsert(&name, size, mtime_ms, &hash, State::Pending, source.as_deref())?;
+            (State::Pending, source)
         } else {
-            store.upsert(&name, size, mtime_ms, &hash, State::Other, None)?;
-        }
-        changed = true;
+            (State::Other, None)
+        };
+        changes.push(Change::Changed { name, size, mtime_ms, hash, state, source });
     }
-    for (name, (size, _, _)) in &known {
+    for (name, (size, _, _)) in known {
         if !seen.contains(name) {
-            info!(%name, "removed");
-            store.remove(name, *size)?;
-            changed = true;
+            changes.push(Change::Removed { name: name.clone(), size: *size });
         }
     }
-    // Which recording each file holds, so a search can say it is already here.
-    for name in store.isrc_unread()? {
-        let isrc = crate::tags::isrc(&music.join(&name)).unwrap_or_default();
-        store.set_isrc(&name, &isrc)?;
-    }
-    Ok(changed)
+    Ok(changes)
 }
 
 pub fn hash_file(path: &Path) -> std::io::Result<String> {

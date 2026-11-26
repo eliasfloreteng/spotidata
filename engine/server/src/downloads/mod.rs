@@ -8,7 +8,7 @@
 
 mod aiff;
 pub mod catalog;
-mod db;
+pub(crate) mod db;
 mod decrypt;
 mod fetch;
 pub mod health;
@@ -133,7 +133,7 @@ struct Inner {
     /// When each gate last sent a notification.
     nagged: Mutex<HashMap<String, Instant>>,
     /// Held while a file from the phone is checked and filed.
-    importing: Mutex<()>,
+    importing: tokio::sync::Mutex<()>,
 }
 
 /// Every source left that has the track sits behind a check only a person
@@ -150,7 +150,8 @@ impl std::fmt::Display for NeedsYou {
 impl std::error::Error for NeedsYou {}
 
 impl Service {
-    pub fn new(store: Store, music: PathBuf, data: &Path, push: Push) -> Result<Self> {
+    pub async fn new(store: Store, music: PathBuf, data: &Path, push: Push) -> Result<Self> {
+        db::requeue_interrupted(&store).await?;
         let staging = data.join("downloads");
         // Leftovers of downloads a restart cut short.
         let _ = std::fs::remove_dir_all(&staging);
@@ -159,13 +160,13 @@ impl Service {
             .user_agent(concat!("Mozilla/5.0 (deckhand/", env!("CARGO_PKG_VERSION"), ")"))
             .connect_timeout(Duration::from_secs(10))
             .build()?;
-        let health = Registry::load(store.clone())?;
+        let health = Registry::load(store.clone()).await?;
         let ffmpeg = decrypt::have_ffmpeg();
         if !ffmpeg {
             warn!("ffmpeg is missing; the Amazon source is off");
         }
-        let (sources, gates) = sources::all(&store, ffmpeg);
-        let aiff = store.meta(AIFF_KEY)?.as_deref() == Some("1");
+        let (sources, gates) = sources::all(&store, ffmpeg).await;
+        let aiff = store.meta(AIFF_KEY).await?.unwrap_or(false);
         Ok(Self {
             inner: Arc::new(Inner {
                 sources,
@@ -181,7 +182,7 @@ impl Service {
                 wake: Notify::new(),
                 running: Mutex::default(),
                 nagged: Mutex::default(),
-                importing: Mutex::default(),
+                importing: tokio::sync::Mutex::default(),
             }),
         })
     }
@@ -222,28 +223,30 @@ impl Service {
     // MARK: API
 
     pub async fn search(&self, query: &str, limit: usize) -> Result<Vec<CatalogTrack>> {
-        let store = self.inner.store.clone();
-        let (isrcs, names) = tokio::task::spawn_blocking(move || -> Result<_> {
-            let names = catalog::LibraryNames::new(store.all()?.into_iter().filter_map(|row| {
+        let store = &self.inner.store;
+        let rows = store.all().await?;
+        let isrcs = store.isrcs().await?;
+        let names = tokio::task::spawn_blocking(move || {
+            catalog::LibraryNames::new(rows.into_iter().filter_map(|row| {
                 let source: rbl_export::SourceTrack = serde_json::from_str(row.source.as_deref()?).ok()?;
                 Some((row.name, source.title, source.artist))
-            }));
-            Ok((store.isrcs()?, names))
+            }))
         })
-        .await??;
+        .await?;
         catalog::search(&self.inner.http, query, limit, &isrcs, &names).await
     }
 
-    pub fn list(&self) -> Result<Downloads> {
-        let mut downloads = db::list(&self.inner.store)?;
-        let running = self.running();
-        for d in &mut downloads {
-            if let Some((_, live)) = running.get(&d.id) {
-                (d.received, d.total) = live.get();
+    pub async fn list(&self) -> Result<Downloads> {
+        let mut downloads = db::list(&self.inner.store).await?;
+        {
+            let running = self.running();
+            for d in &mut downloads {
+                if let Some((_, live)) = running.get(&d.id) {
+                    (d.received, d.total) = live.get();
+                }
             }
         }
-        drop(running);
-        let waiting = db::count_waiting(&self.inner.store)?;
+        let waiting = db::count_waiting(&self.inner.store).await?;
         Ok(Downloads {
             downloads,
             sources: self.inner.health.report(self.endpoints()),
@@ -257,9 +260,9 @@ impl Service {
     }
 
     /// Applies to what is filed from now on; the folder is left as it is.
-    pub fn set_settings(&self, settings: Settings) -> Result<Settings> {
+    pub async fn set_settings(&self, settings: Settings) -> Result<Settings> {
         if self.inner.aiff.swap(settings.aiff, Ordering::Relaxed) != settings.aiff {
-            self.inner.store.set_meta(AIFF_KEY, if settings.aiff { "1" } else { "0" })?;
+            self.inner.store.set_meta(AIFF_KEY, &settings.aiff).await?;
             info!(aiff = settings.aiff, "download format");
         }
         Ok(self.settings())
@@ -290,7 +293,7 @@ impl Service {
         if result.is_ok() {
             info!(gate = gate.id(), "check solved");
             self.nagged().remove(gate.id());
-            let n = db::requeue_waiting(&self.inner.store)?;
+            let n = db::requeue_waiting(&self.inner.store).await?;
             if n > 0 {
                 info!(n, "downloads waiting for the check go again");
             }
@@ -331,23 +334,23 @@ impl Service {
     }
 
     /// Queues a track, unless it is already queued.
-    pub fn add(&self, track: &CatalogTrack) -> Result<Download> {
-        self.add_for(track, None)
+    pub async fn add(&self, track: &CatalogTrack) -> Result<Download> {
+        self.add_for(track, None).await
     }
 
     /// Queues a track a Spotify playlist wants, unless it is already queued.
-    pub fn add_for(&self, track: &CatalogTrack, playlist: Option<&str>) -> Result<Download> {
-        if let Some(existing) = db::active_for(&self.inner.store, &track.id)? {
+    pub async fn add_for(&self, track: &CatalogTrack, playlist: Option<&str>) -> Result<Download> {
+        if let Some(existing) = db::active_for(&self.inner.store, &track.id).await? {
             return Ok(existing);
         }
-        let download = db::insert(&self.inner.store, track, playlist)?;
+        let download = db::insert(&self.inner.store, track, playlist).await?;
         info!(id = download.id, title = %track.title, playlist, "download queued");
         self.inner.wake.notify_one();
         Ok(download)
     }
 
-    pub fn get(&self, id: i64) -> Result<Option<Download>> {
-        db::get(&self.inner.store, id)
+    pub async fn get(&self, id: i64) -> Result<Option<Download>> {
+        db::get(&self.inner.store, id).await
     }
 
     /// The catalog's track for a recording, when it has it.
@@ -355,26 +358,26 @@ impl Service {
         catalog::by_isrc(&self.inner.http, isrc).await
     }
 
-    pub fn retry(&self, id: i64) -> Result<Option<Download>> {
-        if db::requeue(&self.inner.store, id)? {
+    pub async fn retry(&self, id: i64) -> Result<Option<Download>> {
+        if db::requeue(&self.inner.store, id).await? {
             self.inner.wake.notify_one();
         }
-        db::get(&self.inner.store, id)
+        db::get(&self.inner.store, id).await
     }
 
     /// Stops a running download, or forgets a finished one.
-    pub fn remove(&self, id: i64) -> Result<bool> {
-        let Some(download) = db::get(&self.inner.store, id)? else {
+    pub async fn remove(&self, id: i64) -> Result<bool> {
+        let Some(download) = db::get(&self.inner.store, id).await? else {
             return Ok(false);
         };
         if download.state.is_active() {
             if let Some((cancel, _)) = self.running().get(&id) {
                 cancel.cancel();
             }
-            db::set_state(&self.inner.store, id, State::Cancelled, None)?;
+            db::set_state(&self.inner.store, id, State::Cancelled, None).await?;
             Ok(true)
         } else {
-            db::delete(&self.inner.store, id)
+            db::delete(&self.inner.store, id).await
         }
     }
 
@@ -387,7 +390,7 @@ impl Service {
                 if running.len() >= CONCURRENT {
                     break;
                 }
-                match db::next_queued(&self.inner.store, &running) {
+                match db::next_queued(&self.inner.store, &running).await {
                     Ok(Some(id)) => {
                         self.running().insert(id, (CancellationToken::new(), Live::default()));
                         let this = self.clone();
@@ -416,7 +419,7 @@ impl Service {
         let Some((cancel, live)) = self.running().get(&id).cloned() else {
             return;
         };
-        let download = match db::get(store, id) {
+        let download = match db::get(store, id).await {
             Ok(Some(d)) if d.state == State::Queued => d,
             _ => return,
         };
@@ -427,20 +430,21 @@ impl Service {
         let saved = match result {
             Ok(Got { file, source, quality }) => {
                 info!(id, %file, %source, "downloaded");
-                db::done(store, id, &file, &source, quality.as_deref())
+                db::done(store, id, &file, &source, quality.as_deref()).await
             }
             Err(e) => match e.downcast_ref::<NeedsYou>() {
                 Some(needs) => {
                     info!(id, title = %download.track.title, "download waits for a check");
                     let sites: Vec<String> = needs.0.iter().map(|g| self.site(g)).collect();
                     let saved =
-                        db::waiting(store, id, &format!("Waiting for you to solve {}'s check.", sites.join(" and ")));
+                        db::waiting(store, id, &format!("Waiting for you to solve {}'s check.", sites.join(" and ")))
+                            .await;
                     self.nag(&needs.0, &download.track.title).await;
                     saved
                 }
                 None => {
                     warn!(id, title = %download.track.title, error = %e, "download failed");
-                    db::failed(store, id, &e.to_string())
+                    db::failed(store, id, &e.to_string()).await
                 }
             },
         };
@@ -451,11 +455,11 @@ impl Service {
 
     async fn acquire(&self, download: &Download, cancel: &CancellationToken, live: &Live) -> Result<Got> {
         let (store, id) = (&self.inner.store, download.id);
-        db::set_state(store, id, State::Searching, None)?;
+        db::set_state(store, id, State::Searching, None).await?;
 
         // The folder may have it already, from a playlist sync or by hand.
         if let Some(isrc) = &download.track.isrc {
-            if let Some(file) = store.isrcs()?.get(isrc) {
+            if let Some(file) = store.isrcs().await?.get(isrc) {
                 return Ok(Got { file: file.clone(), source: "library".to_owned(), quality: None });
             }
         }
@@ -469,7 +473,7 @@ impl Service {
         let staged = self.inner.staging.join(format!("{id}.part"));
         let mut attempts: Vec<Attempt> = Vec::new();
         let result = self.try_sources(id, &want, &staged, cancel, live, &mut attempts).await;
-        let _ = db::set_attempts(store, id, &attempts);
+        let _ = db::set_attempts(store, id, &attempts).await;
         let (source, probe, ext) = match result {
             Ok(found) => found,
             Err(e) => {
@@ -478,7 +482,7 @@ impl Service {
             }
         };
 
-        db::set_state(store, id, State::Finishing, None)?;
+        db::set_state(store, id, State::Finishing, None).await?;
         let mut meta = want.meta.clone();
         meta.title.clone_from(&want.title);
         meta.artists.clone_from(&want.artists);
@@ -567,7 +571,7 @@ impl Service {
                 // charge for (a token, a solved check).
                 let found = match found {
                     Ok(found) => {
-                        health.record(&endpoint, Event::Answered { latency_ms });
+                        health.record(&endpoint, Event::Answered { latency_ms }).await;
                         match tokio::time::timeout(LOOKUP_TIMEOUT, source.resolve(&self.inner.http, found, want)).await
                         {
                             Ok(resolved) => resolved,
@@ -575,7 +579,7 @@ impl Service {
                         }
                     }
                     Err(e @ (LookupError::NotFound(_) | LookupError::NeedsYou(_))) => {
-                        health.record(&endpoint, Event::Answered { latency_ms });
+                        health.record(&endpoint, Event::Answered { latency_ms }).await;
                         Err(e)
                     }
                     Err(e) => Err(e),
@@ -601,18 +605,18 @@ impl Service {
                         break;
                     }
                     Err(LookupError::Unavailable(why)) => {
-                        health.record(&endpoint, Event::Failed { error: why.clone() });
+                        health.record(&endpoint, Event::Failed { error: why.clone() }).await;
                         attempts.push(attempt(&endpoint, Outcome::Unavailable, why, started));
                         continue;
                     }
                     Err(LookupError::RateLimited(secs)) => {
-                        health.record(&endpoint, Event::RateLimited { secs });
+                        health.record(&endpoint, Event::RateLimited { secs }).await;
                         attempts.push(attempt(&endpoint, Outcome::Unavailable, "rate limited".to_owned(), started));
                         continue;
                     }
                 };
 
-                db::set_state(&self.inner.store, id, State::Downloading, Some(source.name()))?;
+                db::set_state(&self.inner.store, id, State::Downloading, Some(source.name())).await?;
                 let alternatives = i < last || j + 1 < mirrors.len();
                 match fetch::fetch(&self.inner.http, &found.media, staged, live, cancel, alternatives).await {
                     Ok(fetched) => {
@@ -631,13 +635,14 @@ impl Service {
                         match checked {
                             Ok(probe) => {
                                 health
-                                    .record(&endpoint, Event::Downloaded { bytes: fetched.bytes, secs: fetched.secs });
+                                    .record(&endpoint, Event::Downloaded { bytes: fetched.bytes, secs: fetched.secs })
+                                    .await;
                                 attempts.push(attempt(&endpoint, Outcome::Ok, probe.quality(), started));
                                 return Ok((source.name().to_owned(), probe, found.ext));
                             }
                             Err(why) => {
                                 let why = format!("{why:#}");
-                                health.record(&endpoint, Event::BadFile { error: why.clone() });
+                                health.record(&endpoint, Event::BadFile { error: why.clone() }).await;
                                 attempts.push(attempt(&endpoint, Outcome::BadFile, why, started));
                             }
                         }
@@ -645,28 +650,28 @@ impl Service {
                     Err(FetchError::Cancelled) => anyhow::bail!("cancelled"),
                     Err(FetchError::NotOffered(why)) => {
                         // The mirror works; the service will not hand this one out.
-                        health.record(&endpoint, Event::Answered { latency_ms });
+                        health.record(&endpoint, Event::Answered { latency_ms }).await;
                         attempts.push(attempt(&endpoint, Outcome::NotFound, why, started));
                         not_found += 1;
-                        db::set_state(&self.inner.store, id, State::Searching, None)?;
+                        db::set_state(&self.inner.store, id, State::Searching, None).await?;
                         break;
                     }
                     Err(FetchError::Slow { kbps }) => {
                         let why = format!("too slow ({kbps:.0} kB/s)");
-                        health.record(&endpoint, Event::Slow { kbps, error: why.clone() });
+                        health.record(&endpoint, Event::Slow { kbps, error: why.clone() }).await;
                         attempts.push(attempt(&endpoint, Outcome::Unavailable, why, started));
                     }
                     Err(FetchError::Unavailable(why)) => {
-                        health.record(&endpoint, Event::Failed { error: why.clone() });
+                        health.record(&endpoint, Event::Failed { error: why.clone() }).await;
                         attempts.push(attempt(&endpoint, Outcome::Unavailable, why, started));
                     }
                     Err(FetchError::RateLimited(secs)) => {
-                        health.record(&endpoint, Event::RateLimited { secs });
+                        health.record(&endpoint, Event::RateLimited { secs }).await;
                         attempts.push(attempt(&endpoint, Outcome::Unavailable, "rate limited".to_owned(), started));
                     }
                 }
-                db::set_state(&self.inner.store, id, State::Searching, None)?;
-                let _ = db::set_attempts(&self.inner.store, id, attempts);
+                db::set_state(&self.inner.store, id, State::Searching, None).await?;
+                let _ = db::set_attempts(&self.inner.store, id, attempts).await;
             }
         }
         for handle in early.into_values() {
@@ -721,16 +726,16 @@ impl Service {
                             let (result, latency_ms) = lookup(&*source, &http, &mirror, &want).await;
                             match result {
                                 Ok(_) | Err(LookupError::NotFound(_) | LookupError::NeedsYou(_)) => {
-                                    health.record(&endpoint, Event::Answered { latency_ms });
+                                    health.record(&endpoint, Event::Answered { latency_ms }).await;
                                 }
                                 Err(LookupError::Unavailable(error)) => {
-                                    health.record(&endpoint, Event::Failed { error })
+                                    health.record(&endpoint, Event::Failed { error }).await
                                 }
                                 Err(LookupError::RateLimited(secs)) => {
-                                    health.record(&endpoint, Event::RateLimited { secs });
+                                    health.record(&endpoint, Event::RateLimited { secs }).await;
                                 }
                             }
-                            health.probed(&endpoint);
+                            health.probed(&endpoint).await;
                         });
                     }
                 }

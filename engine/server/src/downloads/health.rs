@@ -11,11 +11,18 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use chrono::{DateTime, Utc};
 use deckhand_model::downloads::SourceHealth;
-use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
-use crate::store::{now_ms, Store};
+use crate::store::{at_ms, ms, now_ms, to_i64, to_u64, Store};
+
+/// The columns of `endpoints` but its id, as a `Record` reads and `save` writes them.
+macro_rules! columns {
+    () => {
+        "reliability, speed_kbps, latency_ms, downloads, failures_in_row, resting_until, last_error, last_ok, last_probe"
+    };
+}
 
 /// Weight of the newest observation in the running averages.
 const ALPHA: f64 = 0.3;
@@ -119,18 +126,10 @@ pub struct Registry {
 }
 
 impl Registry {
-    pub fn load(store: Store) -> anyhow::Result<Self> {
-        let map = {
-            let conn = store.conn();
-            let mut stmt = conn.prepare("select id, health from endpoints")?;
-            let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
-            let mut map = HashMap::new();
-            for row in rows {
-                let (id, json) = row?;
-                map.insert(id, serde_json::from_str(&json).unwrap_or_default());
-            }
-            map
-        };
+    pub async fn load(store: Store) -> anyhow::Result<Self> {
+        let rows: Vec<Record> =
+            sqlx::query_as(concat!("select id, ", columns!(), " from endpoints")).fetch_all(store.pool()).await?;
+        let map = rows.into_iter().map(|r| (r.id.clone(), Health::from(r))).collect();
         Ok(Self { store, map: Arc::new(Mutex::new(map)) })
     }
 
@@ -142,7 +141,7 @@ impl Registry {
         self.lock().get(id).cloned().unwrap_or_default()
     }
 
-    pub fn record(&self, id: &str, event: Event) {
+    pub async fn record(&self, id: &str, event: Event) {
         let health = {
             let mut map = self.lock();
             let health = map.entry(id.to_owned()).or_default();
@@ -172,28 +171,21 @@ impl Registry {
             }
             health.clone()
         };
-        self.save(id, &health);
+        self.save(id, &health).await;
     }
 
-    pub fn probed(&self, id: &str) {
+    pub async fn probed(&self, id: &str) {
         let health = {
             let mut map = self.lock();
             let health = map.entry(id.to_owned()).or_default();
             health.last_probe_ms = Some(now_ms());
             health.clone()
         };
-        self.save(id, &health);
+        self.save(id, &health).await;
     }
 
-    fn save(&self, id: &str, health: &Health) {
-        let Ok(json) = serde_json::to_string(health) else {
-            return;
-        };
-        let result = self.store.conn().execute(
-            "insert into endpoints(id, health) values(?1, ?2) on conflict(id) do update set health = ?2",
-            params![id, json],
-        );
-        if let Err(e) = result {
+    async fn save(&self, id: &str, health: &Health) {
+        if let Err(e) = save(self.store.pool(), id, health).await {
             tracing::warn!(error = %e, "could not save a source's health");
         }
     }
@@ -234,26 +226,87 @@ impl Registry {
     }
 }
 
+/// A row of `endpoints` as stored.
+#[derive(sqlx::FromRow)]
+pub struct Record {
+    pub id: String,
+    pub reliability: f64,
+    pub speed_kbps: Option<f64>,
+    pub latency_ms: f64,
+    pub downloads: i64,
+    pub failures_in_row: i32,
+    pub resting_until: Option<DateTime<Utc>>,
+    pub last_error: Option<String>,
+    pub last_ok: Option<DateTime<Utc>>,
+    pub last_probe: Option<DateTime<Utc>>,
+}
+
+impl From<Record> for Health {
+    fn from(r: Record) -> Self {
+        Self {
+            reliability: r.reliability,
+            speed_kbps: r.speed_kbps,
+            latency_ms: r.latency_ms,
+            downloads: to_u64(r.downloads),
+            failures_in_row: u32::try_from(r.failures_in_row).unwrap_or(0),
+            resting_until_ms: r.resting_until.map(ms),
+            last_error: r.last_error,
+            last_ok_ms: r.last_ok.map(ms),
+            last_probe_ms: r.last_probe.map(ms),
+        }
+    }
+}
+
+/// Writes a mirror's health; with `executor` the import's transaction.
+pub async fn save<'e, E: sqlx::PgExecutor<'e>>(executor: E, id: &str, health: &Health) -> sqlx::Result<()> {
+    sqlx::query(concat!(
+        "insert into endpoints(id, ",
+        columns!(),
+        ") values($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         on conflict(id) do update set reliability = $2, speed_kbps = $3, latency_ms = $4, downloads = $5,
+             failures_in_row = $6, resting_until = $7, last_error = $8, last_ok = $9, last_probe = $10"
+    ))
+    .bind(id)
+    .bind(health.reliability)
+    .bind(health.speed_kbps)
+    .bind(health.latency_ms)
+    .bind(to_i64(health.downloads))
+    .bind(i32::try_from(health.failures_in_row).unwrap_or(i32::MAX))
+    .bind(health.resting_until_ms.map(at_ms))
+    .bind(&health.last_error)
+    .bind(health.last_ok_ms.map(at_ms))
+    .bind(health.last_probe_ms.map(at_ms))
+    .execute(executor)
+    .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn failing_mirrors_rest_and_sink() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = Store::open(&dir.path().join("t.db")).unwrap();
-        let reg = Registry::load(store).unwrap();
-        reg.record("a:x", Event::Downloaded { bytes: 30_000_000, secs: 30.0 });
-        reg.record("b:y", Event::Downloaded { bytes: 30_000_000, secs: 10.0 });
+    #[sqlx::test(migrations = false)]
+    async fn failing_mirrors_rest_and_sink(
+        _: sqlx::postgres::PgPoolOptions,
+        options: sqlx::postgres::PgConnectOptions,
+    ) {
+        let store = crate::store::tests::store(options).await;
+        let reg = Registry::load(store.clone()).await.unwrap();
+        reg.record("a:x", Event::Downloaded { bytes: 30_000_000, secs: 30.0 }).await;
+        reg.record("b:y", Event::Downloaded { bytes: 30_000_000, secs: 10.0 }).await;
         let mut ids = vec!["a:x".to_owned(), "b:y".to_owned(), "c:z".to_owned()];
         reg.rank(&mut ids);
         assert_eq!(ids[0], "b:y", "the fastest goes first");
-        reg.record("b:y", Event::Failed { error: "502".into() });
-        reg.record("b:y", Event::Failed { error: "502".into() });
+        reg.record("b:y", Event::Failed { error: "502".into() }).await;
+        reg.record("b:y", Event::Failed { error: "502".into() }).await;
         assert!(reg.get("b:y").is_resting(now_ms()));
         reg.rank(&mut ids);
         assert_eq!(ids[2], "b:y", "a resting mirror goes last");
-        reg.record("b:y", Event::Answered { latency_ms: 300.0 });
+        reg.record("b:y", Event::Answered { latency_ms: 300.0 }).await;
         assert!(!reg.get("b:y").is_resting(now_ms()), "an answer ends the rest");
+        // Kept across a restart.
+        let again = Registry::load(store).await.unwrap();
+        let (was, now) = (reg.get("b:y"), again.get("b:y"));
+        assert_eq!((was.reliability, was.downloads, was.last_ok_ms), (now.reliability, now.downloads, now.last_ok_ms));
     }
 }

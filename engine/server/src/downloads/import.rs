@@ -21,9 +21,16 @@ impl Service {
     /// Files `staged`, which the phone sent as `original`, unless the folder
     /// holds the recording already. The inner error says, for the app, why
     /// the file can't go on the stick.
-    pub fn import(&self, staged: &Path, original: &str) -> Result<Result<Imported, String>> {
+    pub async fn import(&self, staged: &Path, original: &str) -> Result<Result<Imported, String>> {
         let store = &self.inner.store;
-        let Ok(probe) = tags::probe(staged) else {
+        let file = staged.to_owned();
+        let read = tokio::task::spawn_blocking(move || -> Result<_> {
+            let Ok(probe) = tags::probe(&file) else {
+                return Ok(None);
+            };
+            Ok(Some((probe, crate::scan::hash_file(&file)?, tags::isrc(&file))))
+        });
+        let Some((probe, hash, isrc)) = read.await?? else {
             return Ok(Err(format!("Deckhand can't read {original} as audio.")));
         };
         let Some(ext) = extension(probe.file_type) else {
@@ -32,49 +39,58 @@ impl Service {
             )));
         };
 
-        let hash = crate::scan::hash_file(staged)?;
         let id = format!("file:{hash}");
-        let isrc = tags::isrc(staged);
         // One at a time, so the same file sent twice is filed once.
-        let _one = self.inner.importing.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let existing = match store.by_hash(&hash)? {
-            Some(file) => Some(file),
+        let _one = self.inner.importing.lock().await;
+        let mut existing = store.by_hash(&hash).await?;
+        if existing.is_none() {
             // Sent moments ago: filed, but not yet scanned.
-            None => db::files_for(store, &id)?.into_iter().find(|f| self.inner.music.join(f).is_file()),
-        };
-        let existing = existing.or_else(|| isrc.as_ref().and_then(|isrc| store.isrcs().ok()?.remove(isrc)));
+            existing = db::files_for(store, &id).await?.into_iter().find(|f| self.inner.music.join(f).is_file());
+        }
+        if existing.is_none() {
+            if let Some(isrc) = &isrc {
+                existing = store.isrcs().await?.remove(isrc);
+            }
+        }
         if let Some(file) = existing {
             info!(%original, %file, "import already in the folder");
             return Ok(Ok(Imported { file, added: false, download: None }));
         }
 
-        // Untagged, it keeps the name it had: often "Artist - Title".
-        let named = tags::named(staged)?;
-        let stem = original.rsplit_once('.').map_or(original, |(stem, _)| stem);
-        let title = if named.title.is_empty() { stem.trim().to_owned() } else { named.title };
-        let artists: Vec<String> = Some(named.artist).filter(|a| !a.is_empty()).into_iter().collect();
-        let (filed, probe) = self.filed_as(staged, probe)?;
-        let ext = if filed == staged { ext } else { "aiff" };
-        let name = place::file_name(&title, &artists, ext);
-        let placed = place::place(&filed, &self.inner.music, &name);
-        if filed != staged {
-            let _ = std::fs::remove_file(&filed);
-        }
-        let file = placed?;
+        let (this, staged, stem) = (
+            self.clone(),
+            staged.to_owned(),
+            original.rsplit_once('.').map_or(original, |(stem, _)| stem).trim().to_owned(),
+        );
+        let (file, title, artists, album, probe) = tokio::task::spawn_blocking(move || -> Result<_> {
+            // Untagged, it keeps the name it had: often "Artist - Title".
+            let named = tags::named(&staged)?;
+            let title = if named.title.is_empty() { stem } else { named.title };
+            let artists: Vec<String> = Some(named.artist).filter(|a| !a.is_empty()).into_iter().collect();
+            let (filed, probe) = this.filed_as(&staged, probe)?;
+            let ext = if filed == staged { ext } else { "aiff" };
+            let name = place::file_name(&title, &artists, ext);
+            let placed = place::place(&filed, &this.inner.music, &name);
+            if filed != staged {
+                let _ = std::fs::remove_file(&filed);
+            }
+            Ok((placed?, title, artists, named.album, probe))
+        })
+        .await??;
         info!(%original, %file, "imported");
 
         let track = CatalogTrack {
             id,
             title,
             artists,
-            album: named.album,
+            album,
             isrc,
             duration_sec: probe.duration_sec.round() as u32,
             cover: None,
             explicit: false,
             in_library: None,
         };
-        let download = db::insert_done(store, &track, &file, "file", &probe.quality())?;
+        let download = db::insert_done(store, &track, &file, "file", &probe.quality()).await?;
         Ok(Ok(Imported { file, added: true, download: Some(download) }))
     }
 }

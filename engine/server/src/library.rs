@@ -7,12 +7,40 @@ use anyhow::Result;
 use deckhand_model::{is_audio, File, Library, Playlist, RekordboxLibrary, Status, Tombstone, Track, FORMAT};
 use rbl_export::SourceTrack;
 
-use crate::store::{State, Store};
+use crate::store::{Row, State, Store};
 
-pub fn build(music: &Path, store: &Store) -> Result<Library> {
-    let rows = store.all()?;
+/// Reads the store, then the playlist files, on a blocking thread.
+pub async fn build(music: &Path, store: &Store) -> Result<Library> {
+    let rows = store.all().await?;
+    let tombstones: Vec<Tombstone> = store
+        .tombstones()
+        .await?
+        .into_iter()
+        .map(|t| Tombstone { name: t.name, size: t.size, deleted_ms: t.deleted_ms })
+        .collect();
+    let snapshot = store.meta::<String>(crate::rekordbox::SNAPSHOT_KEY).await?;
+    let db_id = store.meta::<u64>(crate::rekordbox::DB_ID_KEY).await?;
+    let cloud_db_id = store.meta::<u32>(crate::rekordbox::CLOUD_DB_ID_KEY).await.ok().flatten();
+    let rekordbox =
+        db_id.filter(|id| *id != 0).map(|db_id| RekordboxLibrary { db_id, cloud_db_id: cloud_db_id.unwrap_or(0) });
+    let status = Status {
+        rekordbox_snapshot_ms: snapshot
+            .and_then(|at| chrono::DateTime::parse_from_rfc3339(&at).ok())
+            .map(|at| at.timestamp_millis()),
+        ..Status::default()
+    };
+    let music = music.to_owned();
+    tokio::task::spawn_blocking(move || assemble(&music, rows, tombstones, status, rekordbox)).await?
+}
+
+fn assemble(
+    music: &Path,
+    rows: Vec<Row>,
+    tombstones: Vec<Tombstone>,
+    mut status: Status,
+    rekordbox: Option<RekordboxLibrary>,
+) -> Result<Library> {
     let audio: HashSet<&str> = rows.iter().filter(|r| is_audio(&r.name)).map(|r| r.name.as_str()).collect();
-    let mut status = Status::default();
     let mut tracks = Vec::new();
     let mut playlists = Vec::new();
     for row in &rows {
@@ -34,11 +62,8 @@ pub fn build(music: &Path, store: &Store) -> Result<Library> {
         if row.analysis.as_ref().is_some_and(|a| a.origin == deckhand_model::Origin::Rekordbox) {
             status.from_rekordbox += 1;
         }
-        let mut source: SourceTrack = row
-            .source
-            .as_deref()
-            .and_then(|s| serde_json::from_str(s).ok())
-            .unwrap_or_else(|| SourceTrack {
+        let mut source: SourceTrack =
+            row.source.as_deref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_else(|| SourceTrack {
                 title: row.name.rsplit_once('.').map_or(row.name.as_str(), |(s, _)| s).to_owned(),
                 cues: Some(Vec::new()),
                 ..SourceTrack::default()
@@ -61,22 +86,6 @@ pub fn build(music: &Path, store: &Store) -> Result<Library> {
     playlists.sort_by(|a, b| natural_cmp(&a.name, &b.name));
     let files: Vec<File> =
         rows.iter().map(|r| File { name: r.name.clone(), size: r.size, mtime_ms: r.mtime_ms }).collect();
-    let tombstones: Vec<Tombstone> = store
-        .tombstones()?
-        .into_iter()
-        .map(|t| Tombstone { name: t.name, size: t.size, deleted_ms: t.deleted_ms })
-        .collect();
-    status.rekordbox_snapshot_ms = store.meta("rekordbox_snapshot_ms")?.and_then(|v| v.parse().ok());
-
-    let rekordbox = store
-        .meta("rekordbox_db_id")?
-        .and_then(|v| v.parse::<u64>().ok())
-        .filter(|id| *id != 0)
-        .map(|db_id| RekordboxLibrary {
-            db_id,
-            cloud_db_id: store.meta("rekordbox_cloud_db_id").ok().flatten().and_then(|v| v.parse().ok()).unwrap_or(0),
-        });
-
     let mut hasher = blake3::Hasher::new();
     hasher.update(serde_json::to_string(&(&files, &tracks, &playlists, &rekordbox))?.as_bytes());
     let generation = hasher.finalize().to_hex()[..16].to_owned();

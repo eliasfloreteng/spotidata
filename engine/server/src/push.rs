@@ -9,7 +9,6 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
-use rusqlite::params;
 use serde_json::{json, Value};
 use tracing::{info, warn};
 
@@ -68,15 +67,18 @@ impl Push {
         self.key.is_some()
     }
 
-    pub fn register(&self, token: &str, environment: &str) -> Result<()> {
+    pub async fn register(&self, token: &str, environment: &str) -> Result<()> {
         let environment = if environment == "production" { "production" } else { "development" };
         let token: String = token.chars().filter(char::is_ascii_hexdigit).collect();
         anyhow::ensure!(token.len() >= 64, "not a device token");
-        self.store.conn().execute(
-            "insert into devices(token, environment, updated_ms) values(?1, ?2, ?3)
-             on conflict(token) do update set environment = ?2, updated_ms = ?3",
-            params![token, environment, now_ms()],
-        )?;
+        sqlx::query(
+            "insert into devices(token, environment) values($1, $2)
+             on conflict(token) do update set environment = $2, updated_at = now()",
+        )
+        .bind(token)
+        .bind(environment)
+        .execute(self.store.pool())
+        .await?;
         Ok(())
     }
 
@@ -113,13 +115,14 @@ impl Push {
 
     async fn send(&self, payload: &Value, kind: &str, priority: &str) {
         let Some(key) = self.key.clone() else { return };
-        let devices: Vec<(String, String)> = {
-            let conn = self.store.conn();
-            let Ok(mut stmt) = conn.prepare("select token, environment from devices") else { return };
-            stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
-                .map(|rows| rows.filter_map(Result::ok).collect())
-                .unwrap_or_default()
-        };
+        let devices: Vec<(String, String)> =
+            match sqlx::query_as("select token, environment from devices").fetch_all(self.store.pool()).await {
+                Ok(devices) => devices,
+                Err(e) => {
+                    warn!(error = %e, "could not read the phones to notify");
+                    return;
+                }
+            };
         if devices.is_empty() {
             return;
         }
@@ -150,7 +153,10 @@ impl Push {
                     warn!(%status, %reason, "APNs refused a notification");
                     // The phone uninstalled the app or the token rotated.
                     if status == reqwest::StatusCode::GONE || reason.contains("BadDeviceToken") {
-                        let _ = self.store.conn().execute("delete from devices where token = ?1", params![device]);
+                        let _ = sqlx::query("delete from devices where token = $1")
+                            .bind(&device)
+                            .execute(self.store.pool())
+                            .await;
                     }
                 }
                 Err(e) => warn!(error = %e, "could not reach APNs"),

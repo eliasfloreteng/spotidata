@@ -1,15 +1,29 @@
-//! What the server knows about the music folder, in SQLite.
+//! What the server knows about the music folder, in Postgres.
+//!
+//! Everything the server keeps lives in one schema, `deckhand`, which it owns
+//! and migrates at startup (`migrations/`); it never touches another schema
+//! of the database it is given. Times are `timestamptz` there and `*_ms` in
+//! the HTTP API, converted here and in the other `db` modules.
 
-use std::path::Path;
+use std::collections::{HashMap, HashSet};
+use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use deckhand_model::{Analysis, Artwork, Origin};
-use rusqlite::{params, Connection, OptionalExtension};
+use serde::de::DeserializeOwned;
+use serde::Serialize;
+use sqlx::postgres::{PgConnectOptions, PgPool, PgPoolOptions};
+use sqlx::types::Json;
+
+/// The schema the server keeps its state in.
+pub const SCHEMA: &str = "deckhand";
 
 /// Bump to analyse every track again (a better analyser, a format fix).
-pub const ANALYSIS_RECIPE: i64 = 1;
+pub const ANALYSIS_RECIPE: i32 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum State {
@@ -21,7 +35,7 @@ pub enum State {
 }
 
 impl State {
-    fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Other => "other",
             Self::Pending => "pending",
@@ -62,94 +76,107 @@ pub struct Tombstone {
     pub deleted_ms: i64,
 }
 
+/// A row of `files` as stored.
+#[derive(sqlx::FromRow)]
+struct FileRecord {
+    name: String,
+    size: i64,
+    mtime: DateTime<Utc>,
+    hash: String,
+    first_seen: DateTime<Utc>,
+    state: String,
+    error: Option<String>,
+    source: Option<String>,
+    origin: Option<String>,
+    dat: Option<String>,
+    ext: Option<String>,
+    two_ex: Option<String>,
+    art_small: Option<String>,
+    art_medium: Option<String>,
+}
+
+impl From<FileRecord> for Row {
+    fn from(r: FileRecord) -> Self {
+        let analysis = match (r.origin.as_deref(), r.dat) {
+            (Some(origin), Some(dat)) => Some(Analysis {
+                origin: if origin == "rekordbox" { Origin::Rekordbox } else { Origin::Rbxport },
+                dat,
+                ext: r.ext,
+                two_ex: r.two_ex,
+            }),
+            _ => None,
+        };
+        let artwork = r.art_small.zip(r.art_medium).map(|(small, medium)| Artwork { small, medium });
+        Self {
+            name: r.name,
+            size: to_u64(r.size),
+            mtime_ms: ms(r.mtime),
+            hash: r.hash,
+            first_seen_ms: ms(r.first_seen),
+            state: State::parse(&r.state),
+            error: r.error,
+            source: r.source,
+            analysis,
+            artwork,
+        }
+    }
+}
+
+/// The columns a `FileRecord` reads.
+macro_rules! file_columns {
+    () => {
+        "name, size, mtime, hash, first_seen, state, error, source::text as source, origin, dat, ext, two_ex, art_small, art_medium"
+    };
+}
+
 #[derive(Clone)]
 pub struct Store {
-    conn: Arc<Mutex<Connection>>,
-    /// Bumped on every write, so the manifest can be cached between them.
+    pool: PgPool,
+    /// Bumped on every write to the folder's files and the settings, so the
+    /// manifest can be cached between them.
     version: Arc<AtomicU64>,
 }
 
 impl Store {
-    pub fn open(path: &Path) -> Result<Self> {
-        let conn = Connection::open(path).with_context(|| format!("opening {}", path.display()))?;
-        conn.execute_batch(
-            "pragma journal_mode = wal;
-             pragma synchronous = normal;
-             create table if not exists files(
-                 name text primary key,
-                 size integer not null,
-                 mtime_ms integer not null,
-                 hash text not null,
-                 first_seen_ms integer not null,
-                 state text not null,
-                 error text,
-                 source text,
-                 origin text,
-                 dat text,
-                 ext text,
-                 two_ex text,
-                 art_small text,
-                 art_medium text,
-                 recipe integer not null default 0
-             );
-             create table if not exists tombstones(
-                 name text primary key,
-                 size integer not null,
-                 deleted_ms integer not null
-             );
-             create table if not exists meta(key text primary key, value text not null);
-             create table if not exists rekordbox(name text primary key, facts text not null);
-             create table if not exists downloads(
-                 id integer primary key autoincrement,
-                 catalog_id text not null,
-                 track text not null,
-                 state text not null,
-                 source text,
-                 quality text,
-                 file text,
-                 error text,
-                 attempts text not null default '[]',
-                 created_ms integer not null,
-                 updated_ms integer not null
-             );
-             create table if not exists endpoints(
-                 id text primary key,
-                 health text not null
-             );
-             create table if not exists devices(
-                 token text primary key,
-                 environment text not null,
-                 updated_ms integer not null
-             );",
-        )?;
-        // Added after the first release: the recording a file holds.
-        let has_isrc = conn.prepare("select 1 from pragma_table_info('files') where name = 'isrc'")?.exists([])?;
-        if !has_isrc {
-            conn.execute("alter table files add column isrc text", [])?;
-        }
-        // Added with Spotify playlists: the playlist a download was for.
-        let has_playlist =
-            conn.prepare("select 1 from pragma_table_info('downloads') where name = 'playlist'")?.exists([])?;
-        if !has_playlist {
-            conn.execute("alter table downloads add column playlist text", [])?;
-        }
-        // Downloads a restart interrupted start over.
-        conn.execute(
-            "update downloads set state = 'queued' where state in ('searching', 'downloading', 'finishing')",
-            [],
-        )?;
-        // A recipe change sends every analysed track back to the queue; the
-        // rekordbox ones keep theirs.
-        conn.execute(
-            "update files set state = 'pending' where state in ('ready', 'failed') and recipe < ?1 and coalesce(origin, '') != 'rekordbox'",
-            params![ANALYSIS_RECIPE],
-        )?;
-        Ok(Self { conn: Arc::new(Mutex::new(conn)), version: Arc::new(AtomicU64::new(1)) })
+    /// Connects to the database at `url` and brings the `deckhand` schema up
+    /// to date.
+    pub async fn connect(url: &str) -> Result<Self> {
+        let options = PgConnectOptions::from_str(url).context("the database URL is not a Postgres URL")?;
+        Self::connect_with(options).await
     }
 
-    fn lock(&self) -> MutexGuard<'_, Connection> {
-        // A panic while holding the lock leaves SQLite consistent; carry on.
-        self.conn.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    pub async fn connect_with(options: PgConnectOptions) -> Result<Self> {
+        // Unqualified names are the server's own tables.
+        let options = options.options([("search_path", SCHEMA)]).application_name("deckhand-server");
+        let pool = PgPoolOptions::new()
+            .max_connections(8)
+            .acquire_timeout(Duration::from_secs(30))
+            .connect_with(options)
+            .await
+            .context("connecting to Postgres")?;
+        let mut migrator = sqlx::migrate!("./migrations");
+        // The migrations' bookkeeping lives in the schema too, not in `public`.
+        migrator.create_schema(SCHEMA);
+        migrator.dangerous_set_table_name(format!("{SCHEMA}._sqlx_migrations"));
+        migrator.run(&pool).await.context("migrating the deckhand schema")?;
+        Ok(Self { pool, version: Arc::new(AtomicU64::new(1)) })
+    }
+
+    pub fn pool(&self) -> &PgPool {
+        &self.pool
+    }
+
+    /// A recipe change sends every analysed track back to the queue; the
+    /// rekordbox ones keep theirs.
+    pub async fn requeue_old_analysis(&self) -> Result<()> {
+        sqlx::query(
+            "update files set state = 'pending'
+             where state in ('ready', 'failed') and recipe < $1 and origin is distinct from 'rekordbox'",
+        )
+        .bind(ANALYSIS_RECIPE)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
     }
 
     fn changed(&self) {
@@ -160,271 +187,272 @@ impl Store {
         self.version.load(Ordering::Relaxed)
     }
 
-    pub fn all(&self) -> Result<Vec<Row>> {
-        let conn = self.lock();
-        let mut stmt = conn.prepare(
-            "select name, size, mtime_ms, hash, first_seen_ms, state, error, source, origin, dat, ext, two_ex, art_small, art_medium
-             from files order by name",
-        )?;
-        let rows = stmt.query_map([], row_of)?.collect::<rusqlite::Result<Vec<_>>>()?;
-        Ok(rows)
+    pub async fn all(&self) -> Result<Vec<Row>> {
+        let rows: Vec<FileRecord> = sqlx::query_as(concat!("select ", file_columns!(), " from files order by name"))
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows.into_iter().map(Row::from).collect())
     }
 
-    pub fn get(&self, name: &str) -> Result<Option<Row>> {
-        let conn = self.lock();
-        Ok(conn
-            .query_row(
-                "select name, size, mtime_ms, hash, first_seen_ms, state, error, source, origin, dat, ext, two_ex, art_small, art_medium
-                 from files where name = ?1",
-                params![name],
-                row_of,
-            )
-            .optional()?)
+    pub async fn get(&self, name: &str) -> Result<Option<Row>> {
+        let row: Option<FileRecord> =
+            sqlx::query_as(concat!("select ", file_columns!(), " from files where name = $1"))
+                .bind(name)
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(row.map(Row::from))
     }
 
     /// Only the stat and hash changed: the content is the same.
-    pub fn touch(&self, name: &str, size: u64, mtime_ms: i64) -> Result<()> {
-        self.lock().execute(
-            "update files set size = ?2, mtime_ms = ?3 where name = ?1",
-            params![name, to_i64(size), mtime_ms],
-        )?;
+    pub async fn touch(&self, name: &str, size: u64, mtime_ms: i64) -> Result<()> {
+        sqlx::query("update files set size = $2, mtime = $3 where name = $1")
+            .bind(name)
+            .bind(to_i64(size))
+            .bind(at_ms(mtime_ms))
+            .execute(&self.pool)
+            .await?;
         self.changed();
         Ok(())
     }
 
     /// A new file, or new content under an old name.
-    pub fn upsert(&self, name: &str, size: u64, mtime_ms: i64, hash: &str, state: State, source: Option<&str>) -> Result<()> {
-        let now = now_ms();
-        let conn = self.lock();
-        conn.execute(
-            "insert into files(name, size, mtime_ms, hash, first_seen_ms, state, source)
-             values(?1, ?2, ?3, ?4, ?5, ?6, ?7)
-             on conflict(name) do update set size = ?2, mtime_ms = ?3, hash = ?4, state = ?6, source = ?7,
-                 error = null, origin = null, dat = null, ext = null, two_ex = null, art_small = null, art_medium = null, recipe = 0,
-                 isrc = null",
-            params![name, to_i64(size), mtime_ms, hash, now, state.as_str(), source],
-        )?;
-        conn.execute("delete from tombstones where name = ?1", params![name])?;
-        drop(conn);
+    pub async fn upsert(
+        &self,
+        name: &str,
+        size: u64,
+        mtime_ms: i64,
+        hash: &str,
+        state: State,
+        source: Option<&str>,
+    ) -> Result<()> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query(
+            "insert into files(name, size, mtime, hash, state, source)
+             values($1, $2, $3, $4, $5, $6::jsonb)
+             on conflict(name) do update set size = $2, mtime = $3, hash = $4, state = $5, source = $6::jsonb,
+                 error = null, origin = null, dat = null, ext = null, two_ex = null, art_small = null,
+                 art_medium = null, recipe = 0, isrc = null, isrc_read = false",
+        )
+        .bind(name)
+        .bind(to_i64(size))
+        .bind(at_ms(mtime_ms))
+        .bind(hash)
+        .bind(state.as_str())
+        .bind(source)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("delete from tombstones where name = $1").bind(name).execute(&mut *tx).await?;
+        tx.commit().await?;
         self.changed();
         Ok(())
     }
 
-    pub fn remove(&self, name: &str, size: u64) -> Result<()> {
-        let conn = self.lock();
-        conn.execute("delete from files where name = ?1", params![name])?;
-        conn.execute(
-            "insert into tombstones(name, size, deleted_ms) values(?1, ?2, ?3)
-             on conflict(name) do update set size = ?2, deleted_ms = ?3",
-            params![name, to_i64(size), now_ms()],
-        )?;
-        drop(conn);
+    pub async fn remove(&self, name: &str, size: u64) -> Result<()> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("delete from files where name = $1").bind(name).execute(&mut *tx).await?;
+        sqlx::query(
+            "insert into tombstones(name, size, deleted_at) values($1, $2, now())
+             on conflict(name) do update set size = $2, deleted_at = now()",
+        )
+        .bind(name)
+        .bind(to_i64(size))
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
         self.changed();
         Ok(())
     }
 
-    pub fn tombstones(&self) -> Result<Vec<Tombstone>> {
-        let conn = self.lock();
-        let mut stmt = conn.prepare("select name, size, deleted_ms from tombstones order by name")?;
-        let rows = stmt
-            .query_map([], |r| {
-                Ok(Tombstone { name: r.get(0)?, size: to_u64(r.get(1)?), deleted_ms: r.get(2)? })
-            })?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        Ok(rows)
+    pub async fn tombstones(&self) -> Result<Vec<Tombstone>> {
+        let rows: Vec<(String, i64, DateTime<Utc>)> =
+            sqlx::query_as("select name, size, deleted_at from tombstones order by name").fetch_all(&self.pool).await?;
+        Ok(rows
+            .into_iter()
+            .map(|(name, size, deleted)| Tombstone { name, size: to_u64(size), deleted_ms: ms(deleted) })
+            .collect())
     }
 
-    /// The next track to analyse, newest first: that is the one about to be played.
-    pub fn next_pending(&self, skip: &std::collections::HashSet<String>) -> Result<Option<Row>> {
-        let conn = self.lock();
-        let mut stmt = conn.prepare(
-            "select name, size, mtime_ms, hash, first_seen_ms, state, error, source, origin, dat, ext, two_ex, art_small, art_medium
-             from files where state = 'pending' order by mtime_ms desc",
-        )?;
-        let mut rows = stmt.query_map([], row_of)?;
-        for row in rows.by_ref() {
-            let row = row?;
-            if !skip.contains(&row.name) {
-                return Ok(Some(row));
-            }
-        }
-        Ok(None)
+    /// The next track to analyse, newest first: that is the one about to be
+    /// played. `skip` are being analysed already.
+    pub async fn next_pending(&self, skip: &HashSet<String>) -> Result<Option<Row>> {
+        let skip: Vec<&str> = skip.iter().map(String::as_str).collect();
+        let row: Option<FileRecord> = sqlx::query_as(concat!(
+            "select ",
+            file_columns!(),
+            " from files where state = 'pending' and name <> all($1) order by mtime desc limit 1"
+        ))
+        .bind(skip)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(Row::from))
     }
 
     /// Records an analysis, unless the file changed while it ran.
-    pub fn analysed(&self, name: &str, hash: &str, source: &str, analysis: &Analysis, artwork: Option<&Artwork>) -> Result<bool> {
-        let n = self.lock().execute(
-            "update files set state = 'ready', error = null, source = ?3, origin = ?4, dat = ?5, ext = ?6, two_ex = ?7,
-                 art_small = ?8, art_medium = ?9, recipe = ?10
-             where name = ?1 and hash = ?2 and state = 'pending'",
-            params![
-                name,
-                hash,
-                source,
-                origin_str(analysis.origin),
-                analysis.dat,
-                analysis.ext,
-                analysis.two_ex,
-                artwork.map(|a| a.small.as_str()),
-                artwork.map(|a| a.medium.as_str()),
-                ANALYSIS_RECIPE,
-            ],
-        )?;
+    pub async fn analysed(
+        &self,
+        name: &str,
+        hash: &str,
+        source: &str,
+        analysis: &Analysis,
+        artwork: Option<&Artwork>,
+    ) -> Result<bool> {
+        let n = sqlx::query(
+            "update files set state = 'ready', error = null, source = $3::jsonb, origin = $4, dat = $5, ext = $6,
+                 two_ex = $7, art_small = $8, art_medium = $9, recipe = $10
+             where name = $1 and hash = $2 and state = 'pending'",
+        )
+        .bind(name)
+        .bind(hash)
+        .bind(source)
+        .bind(origin_str(analysis.origin))
+        .bind(&analysis.dat)
+        .bind(&analysis.ext)
+        .bind(&analysis.two_ex)
+        .bind(artwork.map(|a| a.small.as_str()))
+        .bind(artwork.map(|a| a.medium.as_str()))
+        .bind(ANALYSIS_RECIPE)
+        .execute(&self.pool)
+        .await?
+        .rows_affected();
         self.changed();
         Ok(n > 0)
     }
 
-    pub fn failed(&self, name: &str, hash: &str, error: &str, source: Option<&str>, artwork: Option<&Artwork>) -> Result<()> {
-        self.lock().execute(
-            "update files set state = 'failed', error = ?3, source = coalesce(?4, source), art_small = ?5, art_medium = ?6, recipe = ?7
-             where name = ?1 and hash = ?2",
-            params![
-                name,
-                hash,
-                error,
-                source,
-                artwork.map(|a| a.small.as_str()),
-                artwork.map(|a| a.medium.as_str()),
-                ANALYSIS_RECIPE
-            ],
-        )?;
+    pub async fn failed(
+        &self,
+        name: &str,
+        hash: &str,
+        error: &str,
+        source: Option<&str>,
+        artwork: Option<&Artwork>,
+    ) -> Result<()> {
+        sqlx::query(
+            "update files set state = 'failed', error = $3, source = coalesce($4::jsonb, source), art_small = $5,
+                 art_medium = $6, recipe = $7
+             where name = $1 and hash = $2",
+        )
+        .bind(name)
+        .bind(hash)
+        .bind(error)
+        .bind(source)
+        .bind(artwork.map(|a| a.small.as_str()))
+        .bind(artwork.map(|a| a.medium.as_str()))
+        .bind(ANALYSIS_RECIPE)
+        .execute(&self.pool)
+        .await?;
         self.changed();
         Ok(())
     }
 
-    /// rekordbox's facts about a file name, as JSON.
-    pub fn rekordbox_facts(&self, name: &str) -> Result<Option<String>> {
-        Ok(self
-            .lock()
-            .query_row("select facts from rekordbox where name = ?1", params![name_key(name)], |r| r.get(0))
-            .optional()?)
+    /// rekordbox's facts about a file name.
+    pub async fn rekordbox_facts(&self, name: &str) -> Result<Option<serde_json::Value>> {
+        let facts: Option<Json<serde_json::Value>> = sqlx::query_scalar("select facts from rekordbox where name = $1")
+            .bind(name_key(name))
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(facts.map(|Json(facts)| facts))
     }
 
     /// Replaces what rekordbox says, and queues every track whose analysis
     /// that changes: the worker applies rekordbox's facts before analysing.
-    pub fn replace_rekordbox(&self, facts: &[(String, String)]) -> Result<()> {
-        let mut conn = self.lock();
-        let tx = conn.transaction()?;
-        let old: std::collections::HashMap<String, String> = {
-            let mut stmt = tx.prepare("select name, facts from rekordbox")?;
-            let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
-            rows.collect::<rusqlite::Result<_>>()?
-        };
+    pub async fn replace_rekordbox(&self, facts: &[(String, serde_json::Value)]) -> Result<()> {
+        // By the key rekordbox's names are kept under; the last one wins.
+        let facts: HashMap<String, &serde_json::Value> =
+            facts.iter().map(|(name, facts)| (name_key(name), facts)).collect();
+        let mut tx = self.pool.begin().await?;
+        let old: HashMap<String, serde_json::Value> = sqlx::query_as("select name, facts from rekordbox")
+            .fetch_all(&mut *tx)
+            .await?
+            .into_iter()
+            .map(|(name, Json(facts)): (String, Json<serde_json::Value>)| (name, facts))
+            .collect();
         // The folder's files by the key rekordbox's names are kept under.
-        let files: Vec<(String, Option<String>)> = {
-            let mut stmt = tx.prepare("select name, origin from files where state != 'other'")?;
-            let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
-            rows.collect::<rusqlite::Result<_>>()?
-        };
-        let mut by_key: std::collections::HashMap<String, Vec<&str>> = std::collections::HashMap::new();
+        let files: Vec<(String, Option<String>)> =
+            sqlx::query_as("select name, origin from files where state <> 'other'").fetch_all(&mut *tx).await?;
+        let mut by_key: HashMap<String, Vec<&str>> = HashMap::new();
         for (name, _) in &files {
             by_key.entry(name_key(name)).or_default().push(name);
         }
-        tx.execute("delete from rekordbox", [])?;
-        let mut vouched = std::collections::HashSet::new();
-        for (name, json) in facts {
-            let name = name_key(name);
-            tx.execute("insert or replace into rekordbox(name, facts) values(?1, ?2)", params![name, json])?;
-            if old.get(&name) != Some(json) {
-                for file in by_key.get(&name).into_iter().flatten() {
-                    tx.execute("update files set state = 'pending' where name = ?1", params![file])?;
-                }
+        sqlx::query("delete from rekordbox").execute(&mut *tx).await?;
+        let (names, json): (Vec<&str>, Vec<String>) =
+            facts.iter().map(|(name, facts)| (name.as_str(), facts.to_string())).unzip();
+        sqlx::query("insert into rekordbox(name, facts) select name, facts::jsonb from unnest($1::text[], $2::text[]) as t(name, facts)")
+            .bind(&names)
+            .bind(&json)
+            .execute(&mut *tx)
+            .await?;
+        let mut requeue: Vec<&str> = Vec::new();
+        for (name, json) in &facts {
+            if old.get(name) != Some(*json) {
+                requeue.extend(by_key.get(name).into_iter().flatten());
             }
-            vouched.insert(name);
         }
         // Tracks rekordbox no longer vouches for go back to rbxport.
         for (name, origin) in &files {
-            if origin.as_deref() == Some("rekordbox") && !vouched.contains(&name_key(name)) {
-                tx.execute("update files set state = 'pending' where name = ?1", params![name])?;
+            if origin.as_deref() == Some("rekordbox") && !facts.contains_key(&name_key(name)) {
+                requeue.push(name);
             }
         }
-        tx.commit()?;
-        drop(conn);
+        sqlx::query("update files set state = 'pending' where name = any($1)").bind(&requeue).execute(&mut *tx).await?;
+        tx.commit().await?;
         self.changed();
         Ok(())
     }
 
     /// Audio files whose ISRC has not been read yet.
-    pub fn isrc_unread(&self) -> Result<Vec<String>> {
-        let conn = self.lock();
-        let mut stmt = conn.prepare("select name from files where isrc is null and state != 'other'")?;
-        let rows = stmt.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<Vec<String>>>()?;
-        Ok(rows)
+    pub async fn isrc_unread(&self) -> Result<Vec<String>> {
+        Ok(sqlx::query_scalar("select name from files where not isrc_read and state <> 'other'")
+            .fetch_all(&self.pool)
+            .await?)
     }
 
-    /// Records a file's ISRC; empty when it has none.
-    pub fn set_isrc(&self, name: &str, isrc: &str) -> Result<()> {
-        self.lock().execute("update files set isrc = ?2 where name = ?1", params![name, isrc])?;
+    /// Records a file's ISRC; `None` when it has none.
+    pub async fn set_isrc(&self, name: &str, isrc: Option<&str>) -> Result<()> {
+        let isrc = isrc.map(str::trim).filter(|s| !s.is_empty()).map(str::to_ascii_uppercase);
+        sqlx::query("update files set isrc = $2, isrc_read = true where name = $1")
+            .bind(name)
+            .bind(isrc)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
-    /// Every file that holds a known recording, by ISRC.
     /// The file whose content has this hash, if the folder holds one.
-    pub fn by_hash(&self, hash: &str) -> Result<Option<String>> {
-        Ok(self
-            .lock()
-            .query_row("select name from files where hash = ?1 limit 1", params![hash], |r| r.get(0))
-            .optional()?)
+    pub async fn by_hash(&self, hash: &str) -> Result<Option<String>> {
+        Ok(sqlx::query_scalar("select name from files where hash = $1 order by first_seen, name limit 1")
+            .bind(hash)
+            .fetch_optional(&self.pool)
+            .await?)
     }
 
-    pub fn isrcs(&self) -> Result<std::collections::HashMap<String, String>> {
-        let conn = self.lock();
-        let mut stmt = conn.prepare("select isrc, name from files where isrc is not null and isrc != ''")?;
-        let rows = stmt
-            .query_map([], |r| Ok((r.get::<_, String>(0)?.to_ascii_uppercase(), r.get(1)?)))?
-            .collect::<rusqlite::Result<_>>()?;
-        Ok(rows)
+    /// Every file that holds a known recording, by ISRC. Of two files of
+    /// one recording, the one the scanner saw last.
+    pub async fn isrcs(&self) -> Result<HashMap<String, String>> {
+        let rows: Vec<(String, String)> =
+            sqlx::query_as("select isrc, name from files where isrc is not null order by first_seen, name")
+                .fetch_all(&self.pool)
+                .await?;
+        Ok(rows.into_iter().collect())
     }
 
-    pub fn conn(&self) -> MutexGuard<'_, Connection> {
-        self.lock()
+    /// A setting or other small state, as JSON.
+    pub async fn meta<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>> {
+        let value: Option<Json<serde_json::Value>> =
+            sqlx::query_scalar("select value from meta where key = $1").bind(key).fetch_optional(&self.pool).await?;
+        value
+            .map(|Json(value)| serde_json::from_value(value).with_context(|| format!("reading the setting {key}")))
+            .transpose()
     }
 
-    pub fn meta(&self, key: &str) -> Result<Option<String>> {
-        Ok(self
-            .lock()
-            .query_row("select value from meta where key = ?1", params![key], |r| r.get(0))
-            .optional()?)
-    }
-
-    pub fn set_meta(&self, key: &str, value: &str) -> Result<()> {
-        self.lock().execute(
-            "insert into meta(key, value) values(?1, ?2) on conflict(key) do update set value = ?2",
-            params![key, value],
-        )?;
+    pub async fn set_meta<T: Serialize + ?Sized + Sync>(&self, key: &str, value: &T) -> Result<()> {
+        sqlx::query("insert into meta(key, value) values($1, $2) on conflict(key) do update set value = $2")
+            .bind(key)
+            .bind(Json(value))
+            .execute(&self.pool)
+            .await?;
         self.changed();
         Ok(())
     }
-}
-
-fn row_of(r: &rusqlite::Row<'_>) -> rusqlite::Result<Row> {
-    let origin: Option<String> = r.get(8)?;
-    let dat: Option<String> = r.get(9)?;
-    let analysis = match (origin.as_deref(), dat) {
-        (Some(origin), Some(dat)) => Some(Analysis {
-            origin: if origin == "rekordbox" { Origin::Rekordbox } else { Origin::Rbxport },
-            dat,
-            ext: r.get(10)?,
-            two_ex: r.get(11)?,
-        }),
-        _ => None,
-    };
-    let small: Option<String> = r.get(12)?;
-    let medium: Option<String> = r.get(13)?;
-    let artwork = small.zip(medium).map(|(small, medium)| Artwork { small, medium });
-    let state: String = r.get(5)?;
-    Ok(Row {
-        name: r.get(0)?,
-        size: to_u64(r.get(1)?),
-        mtime_ms: r.get(2)?,
-        hash: r.get(3)?,
-        first_seen_ms: r.get(4)?,
-        state: State::parse(&state),
-        error: r.get(6)?,
-        source: r.get(7)?,
-        analysis,
-        artwork,
-    })
 }
 
 fn origin_str(origin: Origin) -> &'static str {
@@ -434,16 +462,26 @@ fn origin_str(origin: Origin) -> &'static str {
     }
 }
 
-fn to_i64(n: u64) -> i64 {
+pub fn to_i64(n: u64) -> i64 {
     i64::try_from(n).unwrap_or(i64::MAX)
 }
 
-fn to_u64(n: i64) -> u64 {
+pub fn to_u64(n: i64) -> u64 {
     u64::try_from(n).unwrap_or(0)
 }
 
 pub fn now_ms() -> i64 {
-    chrono::Utc::now().timestamp_millis()
+    Utc::now().timestamp_millis()
+}
+
+/// A time as the API sends it.
+pub fn ms(t: DateTime<Utc>) -> i64 {
+    t.timestamp_millis()
+}
+
+/// A time the API sent, or one in `*_ms`, as stored.
+pub fn at_ms(ms: i64) -> DateTime<Utc> {
+    DateTime::from_timestamp_millis(ms).unwrap_or_default()
 }
 
 /// A file name as rekordbox's facts are kept and looked up by: composed
@@ -454,21 +492,69 @@ pub fn name_key(name: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    #[test]
-    fn rekordbox_facts_match_whatever_unicode_form() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = Store::open(&dir.path().join("db.sqlite")).unwrap();
+    /// A store in the fresh database `#[sqlx::test]` made for the test.
+    pub async fn store(options: PgConnectOptions) -> Store {
+        Store::connect_with(options).await.unwrap()
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn rekordbox_facts_match_whatever_unicode_form(_: PgPoolOptions, options: PgConnectOptions) {
+        let store = store(options).await;
         // The folder's file is composed; rekordbox stored the path decomposed.
         let composed = "17 \u{e5}r - Veronica Maggio.flac";
         let decomposed = "17 a\u{30a}r - Veronica Maggio.flac";
-        store.upsert(composed, 1, 1, "h", State::Ready, None).unwrap();
-        store.replace_rekordbox(&[(decomposed.to_owned(), "{}".to_owned())]).unwrap();
-        assert_eq!(store.rekordbox_facts(composed).unwrap().as_deref(), Some("{}"));
-        assert_eq!(store.rekordbox_facts(decomposed).unwrap().as_deref(), Some("{}"));
-        // New facts queue the file for analysis with them.
-        assert_eq!(store.get(composed).unwrap().unwrap().state, State::Pending);
+        let hash = "0".repeat(64);
+        store.upsert(composed, 1, 1, &hash, State::Ready, None).await.unwrap();
+        let facts = serde_json::json!({ "bpm_x100": 12000 });
+        store.replace_rekordbox(&[(decomposed.to_owned(), facts.clone())]).await.unwrap();
+        assert_eq!(store.rekordbox_facts(composed).await.unwrap(), Some(facts.clone()));
+        assert_eq!(store.rekordbox_facts(decomposed).await.unwrap(), Some(facts.clone()));
+        // New facts queue the file for analysis with them; the same again doesn't.
+        assert_eq!(store.get(composed).await.unwrap().unwrap().state, State::Pending);
+        sqlx::query("update files set state = 'ready'").execute(store.pool()).await.unwrap();
+        store.replace_rekordbox(&[(decomposed.to_owned(), facts)]).await.unwrap();
+        assert_eq!(store.get(composed).await.unwrap().unwrap().state, State::Ready);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn files_keep_their_times_and_leave_tombstones(_: PgPoolOptions, options: PgConnectOptions) {
+        let store = store(options).await;
+        let hash = "a".repeat(64);
+        let mtime_ms = 1_795_080_312_721;
+        store
+            .upsert("b.flac", 10, mtime_ms, &hash, State::Pending, Some(r#"{"title":"B","bpm_x100":12850}"#))
+            .await
+            .unwrap();
+        store.upsert("a.flac", 10, mtime_ms - 1, &hash, State::Pending, None).await.unwrap();
+        let row = store.get("b.flac").await.unwrap().unwrap();
+        assert_eq!(row.mtime_ms, mtime_ms);
+        let bpm: Option<String> = sqlx::query_scalar("select bpm::text from files where name = 'b.flac'")
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+        assert_eq!(bpm.as_deref(), Some("128.50"));
+        // Newest first.
+        let next = store.next_pending(&HashSet::new()).await.unwrap().unwrap();
+        assert_eq!(next.name, "b.flac");
+        let skip = HashSet::from(["b.flac".to_owned()]);
+        assert_eq!(store.next_pending(&skip).await.unwrap().unwrap().name, "a.flac");
+
+        store.set_isrc("a.flac", Some("gbduw0000059")).await.unwrap();
+        assert_eq!(store.isrcs().await.unwrap().get("GBDUW0000059").map(String::as_str), Some("a.flac"));
+        assert_eq!(store.isrc_unread().await.unwrap(), vec!["b.flac".to_owned()]);
+
+        store.remove("a.flac", 10).await.unwrap();
+        let tombstones = store.tombstones().await.unwrap();
+        assert_eq!(tombstones.len(), 1);
+        assert_eq!(tombstones[0].name, "a.flac");
+        store.upsert("a.flac", 10, mtime_ms, &hash, State::Pending, None).await.unwrap();
+        assert!(store.tombstones().await.unwrap().is_empty(), "a file back loses its tombstone");
+
+        store.set_meta("spotify.paused", &true).await.unwrap();
+        assert_eq!(store.meta::<bool>("spotify.paused").await.unwrap(), Some(true));
+        assert_eq!(store.meta::<bool>("nothing").await.unwrap(), None);
     }
 }

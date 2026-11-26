@@ -36,9 +36,8 @@ pub struct Manifest {
 }
 
 impl Manifest {
-    pub fn new(store: Store) -> Self {
-        let saved =
-            store.meta(META_KEY).ok().flatten().and_then(|json| serde_json::from_str(&json).ok()).unwrap_or_default();
+    pub async fn load(store: Store) -> Self {
+        let saved = store.meta(META_KEY).await.ok().flatten().unwrap_or_default();
         Self { store, current: Arc::new(RwLock::new(saved)), fetched: Arc::default() }
     }
 
@@ -62,8 +61,8 @@ impl Manifest {
             tracing::warn!("could not read the Antra mirror list; keeping the last one");
             return;
         };
-        if let Ok(json) = serde_json::to_string(&published) {
-            let _ = self.store.set_meta(META_KEY, &json);
+        if let Err(e) = self.store.set_meta(META_KEY, &published).await {
+            tracing::warn!(error = %e, "could not keep the Antra mirror list");
         }
         *self.current.write().unwrap_or_else(std::sync::PoisonError::into_inner) = published;
     }

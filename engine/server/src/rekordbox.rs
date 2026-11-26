@@ -12,7 +12,7 @@
 //! `PIONEER/USBANLZ`. See `scripts/upload-rekordbox.sh`.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
 use deckhand_model::{Analysis, Origin};
@@ -22,6 +22,12 @@ use tracing::{info, warn};
 
 use crate::blobs::Blobs;
 use crate::store::Store;
+
+/// Where the uploaded library's identity is kept (`meta`): its DBID, its
+/// cloud DBID and when the snapshot was taken (RFC 3339).
+pub const DB_ID_KEY: &str = "rekordbox.db_id";
+pub const CLOUD_DB_ID_KEY: &str = "rekordbox.cloud_db_id";
+pub const SNAPSHOT_KEY: &str = "rekordbox.snapshot_at";
 
 /// What rekordbox knows about one file that the file's tags do not.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,7 +79,25 @@ impl Facts {
 }
 
 /// Unpacks a snapshot and records what it says about each file name.
-pub fn ingest(archive: &Path, work: &Path, store: &Store, blobs: &Blobs) -> Result<usize> {
+pub async fn ingest(archive: PathBuf, work: PathBuf, store: &Store, blobs: Blobs) -> Result<usize> {
+    let read = tokio::task::spawn_blocking(move || read(&archive, &work, &blobs)).await??;
+    let count = read.facts.len();
+    store.replace_rekordbox(&read.facts).await?;
+    store.set_meta(DB_ID_KEY, &read.db_id).await?;
+    store.set_meta(CLOUD_DB_ID_KEY, &read.cloud_db_id).await?;
+    store.set_meta(SNAPSHOT_KEY, &chrono::Utc::now().to_rfc3339()).await?;
+    info!(tracks = count, db_id = read.db_id, "rekordbox snapshot ingested");
+    Ok(count)
+}
+
+/// What a snapshot says.
+struct Snapshot {
+    facts: Vec<(String, serde_json::Value)>,
+    db_id: u64,
+    cloud_db_id: u32,
+}
+
+fn read(archive: &Path, work: &Path, blobs: &Blobs) -> Result<Snapshot> {
     let dir = tempfile::tempdir_in(work)?;
     let mut tar = tar::Archive::new(std::fs::File::open(archive)?);
     // `unpack` refuses entries that would land outside the directory.
@@ -118,8 +142,12 @@ pub fn ingest(archive: &Path, work: &Path, store: &Store, blobs: &Blobs) -> Resu
 
     let mut facts: HashMap<String, Facts> = HashMap::new();
     for (id, (name, rating, color_id)) in by_id {
-        let Some(extra) = extras.get(&id) else { continue };
-        let Ok(content_id) = id.parse::<u64>() else { continue };
+        let Some(extra) = extras.get(&id) else {
+            continue;
+        };
+        let Ok(content_id) = id.parse::<u64>() else {
+            continue;
+        };
         let analysed = extra.analysis.as_ref().filter(|a| !a.analysis_path.is_empty());
         let analysis = analysed.and_then(|analysed| {
             let dat_path = location.share_root.join(analysed.analysis_path.trim_start_matches(['/', '\\']));
@@ -155,22 +183,17 @@ pub fn ingest(archive: &Path, work: &Path, store: &Store, blobs: &Blobs) -> Resu
             }
         }
     }
-    let count = facts.len();
-    let rows: Vec<(String, String)> =
-        facts.iter().map(|(name, f)| Ok((name.clone(), serde_json::to_string(f)?))).collect::<Result<_>>()?;
-    store.replace_rekordbox(&rows)?;
-    store.set_meta("rekordbox_db_id", &db_id.to_string())?;
-    store.set_meta("rekordbox_cloud_db_id", &cloud_db_id.to_string())?;
-    store.set_meta("rekordbox_snapshot_ms", &crate::store::now_ms().to_string())?;
-    info!(tracks = count, db_id, "rekordbox snapshot ingested");
-    Ok(count)
+    let facts = facts.into_iter().map(|(name, f)| Ok((name, serde_json::to_value(f)?))).collect::<Result<_>>()?;
+    Ok(Snapshot { facts, db_id, cloud_db_id })
 }
 
 /// rekordbox keeps some numbers as text (`ColorID` is a key into a table).
 fn number(value: rusqlite::types::ValueRef<'_>) -> i64 {
     match value {
         rusqlite::types::ValueRef::Integer(n) => n,
-        rusqlite::types::ValueRef::Text(t) => std::str::from_utf8(t).ok().and_then(|t| t.trim().parse().ok()).unwrap_or(0),
+        rusqlite::types::ValueRef::Text(t) => {
+            std::str::from_utf8(t).ok().and_then(|t| t.trim().parse().ok()).unwrap_or(0)
+        }
         _ => 0,
     }
 }

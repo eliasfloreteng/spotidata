@@ -110,20 +110,23 @@ async fn library(State(app): State<App>, headers: axum::http::HeaderMap) -> Resu
     let body = match cached {
         Some((v, body)) if v == version => body,
         _ => {
-            let (music, store) = (app.music.clone(), app.store.clone());
-            let lib = tokio::task::spawn_blocking(move || crate::library::build(&music, &store)).await??;
+            let lib = crate::library::build(&app.music, &app.store).await?;
             let body = Arc::new(serde_json::to_vec(&lib)?);
             *app.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some((version, body.clone()));
             body
         }
     };
-    let headers = [(header::CONTENT_TYPE, "application/json".to_owned()), (header::ETAG, etag), (header::CACHE_CONTROL, "no-cache".to_owned())];
+    let headers = [
+        (header::CONTENT_TYPE, "application/json".to_owned()),
+        (header::ETAG, etag),
+        (header::CACHE_CONTROL, "no-cache".to_owned()),
+    ];
     Ok((headers, Body::from(body.as_ref().clone())).into_response())
 }
 
 async fn music(State(app): State<App>, Path(name): Path<String>, req: Request) -> Result<Response, Error> {
     // Only files the store knows: no paths, no hidden files.
-    if name.contains(['/', '\\']) || !deckhand_model::is_mirrored(&name) || app.store.get(&name)?.is_none() {
+    if name.contains(['/', '\\']) || !deckhand_model::is_mirrored(&name) || app.store.get(&name).await?.is_none() {
         return Ok(StatusCode::NOT_FOUND.into_response());
     }
     let response = ServeFile::new(app.music.join(&name)).oneshot(req).await?;
@@ -131,7 +134,9 @@ async fn music(State(app): State<App>, Path(name): Path<String>, req: Request) -
 }
 
 async fn blob(State(app): State<App>, Path(hash): Path<String>) -> Result<Response, Error> {
-    let Some(path) = app.blobs.path(&hash) else { return Ok(StatusCode::NOT_FOUND.into_response()) };
+    let Some(path) = app.blobs.path(&hash) else {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    };
     match tokio::fs::read(&path).await {
         Ok(bytes) => {
             let mut response = Body::from(bytes).into_response();
@@ -159,8 +164,7 @@ async fn rekordbox(State(app): State<App>, req: Request) -> Result<Response, Err
     }
     file.flush().await?;
     drop(file);
-    let (store, blobs, path) = (app.store.clone(), app.blobs.clone(), archive.clone());
-    let result = tokio::task::spawn_blocking(move || crate::rekordbox::ingest(&path, &work, &store, &blobs)).await?;
+    let result = crate::rekordbox::ingest(archive.clone(), work, &app.store, app.blobs.clone()).await;
     let _ = tokio::fs::remove_file(&archive).await;
     let tracks = result?;
     Ok(Json(serde_json::json!({ "tracks": tracks })).into_response())
@@ -186,32 +190,32 @@ async fn search(State(app): State<App>, Query(query): Query<SearchQuery>) -> Res
 }
 
 async fn downloads(State(app): State<App>) -> Result<Response, Error> {
-    Ok(Json(app.downloads.list()?).into_response())
+    Ok(Json(app.downloads.list().await?).into_response())
 }
 
 async fn add_download(
     State(app): State<App>,
     Json(body): Json<deckhand_model::downloads::NewDownload>,
 ) -> Result<Response, Error> {
-    Ok((StatusCode::CREATED, Json(app.downloads.add(&body.track)?)).into_response())
+    Ok((StatusCode::CREATED, Json(app.downloads.add(&body.track).await?)).into_response())
 }
 
 async fn set_download_settings(
     State(app): State<App>,
     Json(settings): Json<deckhand_model::downloads::Settings>,
 ) -> Result<Response, Error> {
-    Ok(Json(app.downloads.set_settings(settings)?).into_response())
+    Ok(Json(app.downloads.set_settings(settings).await?).into_response())
 }
 
 async fn retry_download(State(app): State<App>, Path(id): Path<i64>) -> Result<Response, Error> {
-    Ok(match app.downloads.retry(id)? {
+    Ok(match app.downloads.retry(id).await? {
         Some(download) => Json(download).into_response(),
         None => StatusCode::NOT_FOUND.into_response(),
     })
 }
 
 async fn remove_download(State(app): State<App>, Path(id): Path<i64>) -> Result<Response, Error> {
-    Ok(if app.downloads.remove(id)? { StatusCode::NO_CONTENT } else { StatusCode::NOT_FOUND }.into_response())
+    Ok(if app.downloads.remove(id).await? { StatusCode::NO_CONTENT } else { StatusCode::NOT_FOUND }.into_response())
 }
 
 /// Hour-long WAV mixes fit; anything larger is not a track.
@@ -231,15 +235,15 @@ async fn import(State(app): State<App>, Query(query): Query<ImportQuery>, req: R
     while let Some(chunk) = stream.try_next().await? {
         size += chunk.len() as u64;
         if size > MAX_IMPORT {
-            return Ok((StatusCode::PAYLOAD_TOO_LARGE, format!("{} is too large to be a track.", query.name))
-                .into_response());
+            return Ok(
+                (StatusCode::PAYLOAD_TOO_LARGE, format!("{} is too large to be a track.", query.name)).into_response()
+            );
         }
         file.write_all(&chunk).await?;
     }
     file.flush().await?;
     drop(file);
-    let downloads = app.downloads.clone();
-    let result = tokio::task::spawn_blocking(move || downloads.import(staged.path(), &query.name)).await??;
+    let result = app.downloads.import(staged.path(), &query.name).await?;
     Ok(match result {
         Ok(imported) => {
             (if imported.added { StatusCode::CREATED } else { StatusCode::OK }, Json(imported)).into_response()
@@ -263,20 +267,20 @@ async fn register_device(
     State(app): State<App>,
     Json(device): Json<deckhand_model::downloads::Device>,
 ) -> Result<Response, Error> {
-    app.push.register(&device.token, &device.environment)?;
+    app.push.register(&device.token, &device.environment).await?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 async fn spotify(State(app): State<App>) -> Result<Response, Error> {
-    Ok(Json(app.spotify.status()?).into_response())
+    Ok(Json(app.spotify.status().await?).into_response())
 }
 
 async fn set_spotify(
     State(app): State<App>,
     Json(settings): Json<deckhand_model::spotify::Settings>,
 ) -> Result<Response, Error> {
-    app.spotify.set_paused(settings.paused)?;
-    Ok(Json(app.spotify.status()?).into_response())
+    app.spotify.set_paused(settings.paused).await?;
+    Ok(Json(app.spotify.status().await?).into_response())
 }
 
 async fn check_spotify(State(app): State<App>) -> Result<Response, Error> {
@@ -291,11 +295,11 @@ struct ActivityQuery {
 }
 
 async fn spotify_activity(State(app): State<App>, Query(query): Query<ActivityQuery>) -> Result<Response, Error> {
-    Ok(Json(app.spotify.activity(query.playlist.as_deref(), query.limit.unwrap_or(100))?).into_response())
+    Ok(Json(app.spotify.activity(query.playlist.as_deref(), query.limit.unwrap_or(100)).await?).into_response())
 }
 
 async fn check_playlist(State(app): State<App>, Path(id): Path<String>) -> Result<Response, Error> {
-    Ok(if app.spotify.check_playlist(&id)? {
+    Ok(if app.spotify.check_playlist(&id).await? {
         StatusCode::ACCEPTED.into_response()
     } else {
         StatusCode::NOT_FOUND.into_response()
@@ -324,11 +328,14 @@ async fn select_playlist(
     Path(id): Path<String>,
     Json(selection): Json<deckhand_model::spotify::Selection>,
 ) -> Result<Response, Error> {
-    Ok(if app.spotify.select(&id, selection.selected)? {
-        app.spotify.status()?.playlists.into_iter().find(|p| p.id == id).map_or_else(
-            || StatusCode::NO_CONTENT.into_response(),
-            |playlist| Json(playlist).into_response(),
-        )
+    Ok(if app.spotify.select(&id, selection.selected).await? {
+        app.spotify
+            .status()
+            .await?
+            .playlists
+            .into_iter()
+            .find(|p| p.id == id)
+            .map_or_else(|| StatusCode::NO_CONTENT.into_response(), |playlist| Json(playlist).into_response())
     } else {
         StatusCode::NOT_FOUND.into_response()
     })

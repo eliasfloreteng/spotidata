@@ -130,9 +130,9 @@ pub trait Gate: Send + Sync {
 
 /// Every source this server can use, and the checks some sit behind.
 /// Amazon needs ffmpeg to decrypt.
-pub fn all(store: &Store, ffmpeg: bool) -> (Vec<Arc<dyn Source>>, Vec<Arc<dyn Gate>>) {
-    let antra = antra::Manifest::new(store.clone());
-    let fd = flacdownloader::Session::new(store.clone());
+pub async fn all(store: &Store, ffmpeg: bool) -> (Vec<Arc<dyn Source>>, Vec<Arc<dyn Gate>>) {
+    let antra = antra::Manifest::load(store.clone()).await;
+    let fd = flacdownloader::Session::load(store.clone()).await;
     let mut sources: Vec<Arc<dyn Source>> = vec![
         Arc::new(antra::Antra::new(antra::Service::Tidal, antra.clone())),
         Arc::new(monochrome::Monochrome),

@@ -57,8 +57,8 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn new(store: Store) -> Arc<Self> {
-        let pass = store.meta(META_KEY).ok().flatten().and_then(|json| serde_json::from_str(&json).ok());
+    pub async fn load(store: Store) -> Arc<Self> {
+        let pass = store.meta::<Option<Pass>>(META_KEY).await.ok().flatten().flatten();
         Arc::new(Self { store, pass: RwLock::new(pass) })
     }
 
@@ -66,9 +66,10 @@ impl Session {
         self.pass.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone().filter(Pass::usable)
     }
 
-    fn set(&self, pass: Option<Pass>) {
-        let json = pass.as_ref().and_then(|p| serde_json::to_string(p).ok()).unwrap_or_default();
-        let _ = self.store.set_meta(META_KEY, &json);
+    async fn set(&self, pass: Option<Pass>) {
+        if let Err(e) = self.store.set_meta(META_KEY, &pass).await {
+            tracing::warn!(error = %e, "could not keep the flacdownloader pass");
+        }
         *self.pass.write().unwrap_or_else(std::sync::PoisonError::into_inner) = pass;
     }
 
@@ -90,7 +91,9 @@ impl Session {
 
     /// A one-use download token, spending the pass.
     async fn token(&self, http: &reqwest::Client) -> Result<String, LookupError> {
-        let Some(mut pass) = self.get() else { return Err(LookupError::NeedsYou(GATE.to_owned())) };
+        let Some(mut pass) = self.get() else {
+            return Err(LookupError::NeedsYou(GATE.to_owned()));
+        };
         let response =
             self.request(http, reqwest::Method::POST, "/prepare").json(&json!({ "sp": pass.sp })).send().await?;
         match response.status().as_u16() {
@@ -98,7 +101,7 @@ impl Session {
             429 => return Err(LookupError::RateLimited(super::retry_after(&response))),
             401 | 403 => {
                 // Spent or refused: the next download asks for a new check.
-                self.set(None);
+                self.set(None).await;
                 return Err(LookupError::NeedsYou(GATE.to_owned()));
             }
             status => return Err(LookupError::Unavailable(format!("answered {status}"))),
@@ -115,7 +118,7 @@ impl Session {
             pass.sp = sp.to_owned();
         }
         pass.remaining = answer.get("quedan").and_then(Value::as_u64).and_then(|n| u32::try_from(n).ok());
-        self.set(Some(pass));
+        self.set(Some(pass)).await;
         Ok(token)
     }
 }
@@ -151,7 +154,7 @@ impl Gate for Session {
             if !pass.usable() {
                 return Err("That pass has already run out.".to_owned());
             }
-            self.set(Some(pass));
+            self.set(Some(pass)).await;
             // Proves the site takes it from the server too; the token is
             // spent, which a download would have done anyway.
             match self.token(http).await {
@@ -292,7 +295,9 @@ impl Source for FlacDownloader {
         want: &'a Wanted,
     ) -> BoxFuture<'a, Result<Found, LookupError>> {
         Box::pin(async move {
-            let Media::Pending(track) = found.media else { return Ok(found) };
+            let Media::Pending(track) = found.media else {
+                return Ok(found);
+            };
             let text = |k: &str| track.get(k).map(|v| v.as_str().map_or_else(|| v.to_string(), str::to_owned));
             let (path, body) = match self.route {
                 Route::Tidal => (

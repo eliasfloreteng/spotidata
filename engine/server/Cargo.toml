@@ -35,7 +35,10 @@ futures-util = "0.3"
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["fs", "trace", "compression-gzip"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-# Must match rbl-db's: one SQLite (SQLCipher) in the process.
+# The server's own state, in Postgres (the `deckhand` schema).
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres", "macros", "migrate", "chrono", "json"] }
+# rekordbox's master.db, and the old SQLite database the import reads. Must
+# match rbl-db's: one SQLite (SQLCipher) in the process.
 rusqlite = { version = "0.40", features = ["bundled-sqlcipher-vendored-openssl"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
