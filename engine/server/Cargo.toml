@@ -1,0 +1,61 @@
+[package]
+name = "deckhand-server"
+description = "Serves the music folder, its analysis and artwork to the Deckhand app."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "deckhand_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "deckhand-server"
+path = "src/main.rs"
+
+[dependencies]
+deckhand-model = { workspace = true }
+serde = { workspace = true }
+# Exact floats: the mirrors' health read from the old database keeps every digit.
+serde_json = { workspace = true, features = ["float_roundtrip"] }
+tracing = { workspace = true }
+blake3 = { workspace = true }
+rbl-core = { workspace = true }
+rbl-export = { workspace = true }
+rbl-anlz = { workspace = true }
+rbl-analysis = { workspace = true }
+rbl-audio = { workspace = true }
+rbl-db = { workspace = true }
+rbl-index = { workspace = true }
+anyhow = "1"
+axum = { version = "0.8", features = ["macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "fs", "io-util", "time", "sync", "process"] }
+tokio-util = { version = "0.7", features = ["io"] }
+futures-util = "0.3"
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["fs", "trace", "compression-gzip"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# The server's own state, in Postgres (the `deckhand` schema).
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres", "macros", "migrate", "chrono", "json"] }
+# rekordbox's master.db, and the old SQLite database the import reads. Must
+# match rbl-db's: one SQLite (SQLCipher) in the process.
+rusqlite = { version = "0.40", features = ["bundled-sqlcipher-vendored-openssl"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+tar = "0.4"
+# rekordbox stores a path in whichever Unicode form macOS handed it.
+unicode-normalization = "0.1"
+tempfile = "3"
+lofty = "0.25.5"
+# Decodes FLAC for the AIFF conversion; rbl-audio decodes with it too.
+symphonia = { version = "0.5", default-features = false, features = ["flac"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "stream", "json", "gzip", "brotli", "http2", "charset", "query"] }
+blowfish = "0.10.0"
+cbc = "0.2.1"
+md5 = { package = "md-5", version = "0.11.0" }
+base64 = "0.23.1"
+jsonwebtoken = { version = "12.0.0", features = ["aws_lc_rs"] }
+
+[dev-dependencies]
+tempfile = "3"
