@@ -41,6 +41,9 @@ use tower_http::services::ServeFile;
 use crate::blobs::Blobs;
 use crate::store::Store;
 
+/// A manifest as served, with the store version it was built at.
+pub type Manifest = (u64, Arc<Vec<u8>>);
+
 #[derive(Clone)]
 pub struct App {
     pub music: PathBuf,
@@ -48,7 +51,7 @@ pub struct App {
     pub store: Store,
     pub blobs: Blobs,
     /// The last manifest, with the store version it was built at.
-    pub cache: Arc<Mutex<Option<(u64, Arc<Vec<u8>>)>>>,
+    pub cache: Arc<Mutex<Option<Manifest>>>,
     /// When this process started: with the store version, the manifest's
     /// ETag, since the version counts from zero again on a restart.
     pub started_ms: i64,

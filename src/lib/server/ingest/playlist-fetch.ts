@@ -22,7 +22,8 @@ import { clearPlaylistItems, replacePlaylistItems, upsertPlaylists } from './ups
  */
 export async function ingestPlaylist(playlist: SimplifiedPlaylist): Promise<number> {
 	const me = await getMe();
-	await upsertPlaylists([playlist], me?.id ?? '');
+	// Fetched by id, not from the account's listing.
+	await upsertPlaylists([playlist], me?.id ?? '', undefined, { listed: false });
 	await storeRaw('playlist', [{ id: playlist.id, payload: playlist }]);
 
 	// Every page is fetched BEFORE the transaction opens. Holding one open

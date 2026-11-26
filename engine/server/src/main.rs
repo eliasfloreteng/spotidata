@@ -1,7 +1,9 @@
-//! Deckhand's server as its own process: `DECKHAND_MUSIC`, `DECKHAND_DATA`
+//! Deckhand's engine as its own process: `DECKHAND_MUSIC`, `DECKHAND_DATA`
 //! and `DECKHAND_BIND` say where, `DECKHAND_DATABASE_URL` (required) which
-//! Postgres holds its state (in the schema `deckhand`), `DECKHAND_SPOTIDATA`
-//! (required) where Spotidata is; see `lib.rs`.
+//! Postgres holds its state (in the schema `deckhand`) and
+//! `DECKHAND_DATABASE_ROLE` the role to run as there (Spotidata's `deckhand`,
+//! which may only read Spotidata's views), `DECKHAND_SPOTIDATA` (required)
+//! where Spotidata is; see `lib.rs`.
 //!
 //! - `deckhand-server` serves, after bringing the schema up to date;
 //! - `deckhand-server migrate` only brings the schema up to date;
@@ -22,8 +24,11 @@ fn required(name: &str, why: &str) -> Result<String> {
     std::env::var(name).ok().filter(|s| !s.trim().is_empty()).with_context(|| format!("{name} must be set to {why}"))
 }
 
-fn database() -> Result<String> {
-    required("DECKHAND_DATABASE_URL", "the Postgres database the server keeps its state in (postgres://…)")
+fn database() -> Result<deckhand_server::Database> {
+    Ok(deckhand_server::Database {
+        url: required("DECKHAND_DATABASE_URL", "the Postgres database the server keeps its state in (postgres://…)")?,
+        role: std::env::var("DECKHAND_DATABASE_ROLE").ok().filter(|s| !s.trim().is_empty()),
+    })
 }
 
 #[tokio::main]

@@ -1,16 +1,17 @@
 //! Spotify playlists kept in the music folder.
 //!
 //! You pick playlists in the app, from the account's or by pasting a link to
-//! any other. Every ten minutes (and when asked) the server reads the
-//! account's playlists through Spotidata (and each one added by its link
-//! that the account doesn't list) and, for a picked one whose snapshot
-//! changed, its tracks. Then, against the folder:
+//! any other. Spotidata holds every playlist and its tracks in its own tables;
+//! every ten minutes (and when asked) the engine has it check the kept ones
+//! (`Spotidata::check`: the account's list, one request per 50 playlists, and
+//! the tracks read again of each kept one whose snapshot moved) and reads
+//! them from there (`db.rs`). Then, against the folder:
 //!
 //! 1. each track is found by ISRC, else by title and first artist, else by
 //!    the download that got it;
-//! 2. a track the folder lacks is queued as a download (as Deezer's catalog
-//!    knows it, else as Spotify does); one that failed is tried again a day
-//!    later; one you stopped is left alone;
+//! 2. a track the folder lacks is queued as a download, as Spotify knows it
+//!    (the sources are asked by its ISRC); one that failed is tried again a
+//!    day later; one you stopped is left alone;
 //! 3. the playlist is written as `<Name>.m3u8` in Spotify's order, with the
 //!    tracks the folder holds.
 //!
@@ -27,7 +28,6 @@
 pub mod db;
 pub mod link;
 pub mod m3u;
-pub mod remote;
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -41,9 +41,9 @@ use deckhand_model::spotify::{Activity, ActivityKind, Playlist, PlaylistTracks, 
 use tokio::sync::Notify;
 use tracing::{info, warn};
 
-use self::db::Event;
-use self::remote::{Gone, RemotePlaylistTracks, RemoteTrack, Spotidata};
+use self::db::{Event, PlaylistTrack};
 use crate::downloads::catalog::LibraryNames;
+use crate::spotidata::{Checked, Gone, Spotidata};
 use crate::store::{now_ms, State as FileState, Store};
 
 /// How often the account is read.
@@ -98,19 +98,13 @@ struct Found {
 }
 
 impl Spotify {
-    /// `spotidata` is Spotidata's address, which Spotify is read through.
+    /// `remote` is Spotidata, which Spotify is read through.
     pub async fn new(
         store: Store,
         music: PathBuf,
         downloads: crate::downloads::Service,
-        spotidata: &str,
+        remote: Spotidata,
     ) -> Result<Self> {
-        let http = reqwest::Client::builder()
-            .user_agent(concat!("deckhand/", env!("CARGO_PKG_VERSION")))
-            .connect_timeout(Duration::from_secs(10))
-            .build()
-            .unwrap_or_default();
-        let remote = Spotidata::new(spotidata, http);
         let paused = store.meta(PAUSED_KEY).await?.unwrap_or(false);
         Ok(Self {
             inner: Arc::new(Inner {
@@ -223,7 +217,7 @@ impl Spotify {
     pub async fn status(&self) -> Result<Status> {
         let index = self.index().await?;
         let mut playlists = Vec::new();
-        for p in db::all(&self.inner.store).await?.into_iter().filter(|p| !p.gone || p.selected) {
+        for p in db::all(&self.inner.store).await?.into_iter().filter(|p| p.listed || p.selected) {
             playlists.push(self.describe(&p, &index).await?);
         }
         let (checked_ms, error) = lock(&self.inner.last).clone();
@@ -238,17 +232,16 @@ impl Spotify {
         })
     }
 
-    /// A playlist with each track's state, read from Spotify first when what
-    /// the server has is older than the account's list.
+    /// A playlist with each track's state, its tracks fetched into Spotidata
+    /// first when it never read them.
     pub async fn playlist(&self, id: &str) -> Result<Option<PlaylistTracks>> {
         let store = &self.inner.store;
         let Some(row) = db::get(store, id).await? else {
             return Ok(None);
         };
-        if row.read_snapshot.as_deref() != Some(row.snapshot.as_str()) && !row.gone {
-            match self.inner.remote.playlist(id).await {
-                Ok(read) => self.store_read(&row, &read).await?,
-                Err(e) => db::set_error(store, id, Some(&e.to_string())).await?,
+        if !row.readable() {
+            if let Err(e) = self.inner.remote.fetch(id).await {
+                warn!(error = %e, playlist = %row.name, "Spotidata could not fetch a playlist");
             }
         }
         let Some(row) = db::get(store, id).await? else {
@@ -287,25 +280,29 @@ impl Spotify {
             },
             (None, None) => return Ok(Err("That isn't a link to a Spotify playlist.".to_owned())),
         };
-        let p = match remote.info(&id).await {
-            Ok(p) => p,
+        // Into Spotidata's tables, as its pages fetch what they show.
+        match remote.fetch(&id).await {
+            Ok(_) => {}
             Err(e) if e.is::<Gone>() => {
                 return Ok(Err("Spotify won't show this playlist to the server. Its own mixes and editorial \
                      playlists can't be read by apps; a copy of one in your library can."
                     .to_owned()));
             }
             Err(e) => return Err(e),
-        };
+        }
         let store = &self.inner.store;
-        let was = db::get(store, &p.id).await?;
-        db::add_linked(store, &p).await?;
+        let was = db::get(store, &id).await?;
+        // Still being read when Spotidata stopped waiting: named by its id
+        // until it is in.
+        let name = was.as_ref().map_or_else(|| id.clone(), |row| row.name.clone());
+        db::add_linked(store, &id, &name).await?;
         if !was.as_ref().is_some_and(|row| row.selected) {
-            info!(playlist = %p.name, "keeping a Spotify playlist added by its link");
-            let event = Event { playlist: Some((p.id.as_str(), p.name.as_str())), ..Event::default() };
+            info!(playlist = %name, "keeping a Spotify playlist added by its link");
+            let event = Event { playlist: Some((id.as_str(), name.as_str())), ..Event::default() };
             db::log(store, ActivityKind::Kept, &event).await?;
         }
         self.check_soon();
-        let row = db::get(store, &p.id).await?.context("the playlist just added is not there")?;
+        let row = db::get(store, &id).await?.context("the playlist just added is not there")?;
         let index = self.index().await?;
         Ok(Ok(self.describe(&row, &index).await?))
     }
@@ -316,7 +313,7 @@ impl Spotify {
         let Some(row) = db::get(store, id).await? else {
             return Ok(false);
         };
-        db::select(store, id, selected).await?;
+        db::select(store, id, &row.name, selected).await?;
         if row.selected != selected {
             info!(id, selected, "Spotify playlist selection changed");
             let playlist = Some((row.id.as_str(), row.name.as_str()));
@@ -333,7 +330,7 @@ impl Spotify {
 
     async fn describe(&self, p: &db::Row, index: &Index) -> Result<Playlist> {
         let (mut have, mut getting, mut missing) = (0, 0, 0);
-        if p.read_snapshot.is_some() {
+        if p.readable() {
             for t in db::tracks(&self.inner.store, &p.id).await? {
                 match self.find(index, &t).await?.state {
                     TrackState::Here => have += 1,
@@ -342,11 +339,10 @@ impl Spotify {
                 }
             }
         }
-        let error = match (&p.error, p.gone) {
-            (Some(error), _) => Some(error.clone()),
-            (None, true) if p.linked_ms.is_some() => Some(Gone.to_string()),
-            (None, true) => Some("It's no longer in your Spotify library.".to_owned()),
-            (None, false) => None,
+        let error = match &p.error {
+            Some(error) => Some(error.clone()),
+            None if p.linked_ms.is_none() && !p.listed => Some("It's no longer in your Spotify library.".to_owned()),
+            None => None,
         };
         Ok(Playlist {
             id: p.id.clone(),
@@ -400,65 +396,50 @@ impl Spotify {
         }
     }
 
+    /// Has Spotidata check the kept playlists, and notes which it can't read.
     async fn read(&self, remote: &Spotidata) -> Result<()> {
         let store = &self.inner.store;
-        let list = remote.playlists().await?;
-        db::replace_list(store, &list).await?;
-        // Kept by their link but not the account's: asked one by one.
-        let listed: HashSet<&str> = list.iter().map(|p| p.id.as_str()).collect();
-        for p in db::all(store).await?.into_iter().filter(|p| p.selected && p.linked_ms.is_some()) {
-            if listed.contains(p.id.as_str()) {
-                continue;
-            }
-            match remote.info(&p.id).await {
-                Ok(info) => db::update_info(store, &info).await?,
-                Err(e) if e.is::<Gone>() => {
-                    db::set_gone(store, &p.id).await?;
-                    db::set_error(store, &p.id, Some(&e.to_string())).await?;
-                }
-                Err(e) => {
-                    db::set_error(store, &p.id, Some(&format!("{e:#}"))).await?;
-                    return Err(e);
-                }
-            }
-        }
-        for p in db::all(store).await?.into_iter().filter(|p| p.selected && !p.gone) {
-            let forced = lock(&self.inner.force).contains(&p.id);
-            if p.read_snapshot.as_deref() == Some(p.snapshot.as_str()) && !forced {
-                continue;
-            }
-            match remote.playlist(&p.id).await {
-                Ok(read) => {
-                    info!(playlist = %p.name, tracks = read.tracks.len(), "read a changed Spotify playlist");
-                    self.store_read(&p, &read).await?;
-                }
-                Err(e) if e.is::<Gone>() => db::set_error(store, &p.id, Some(&e.to_string())).await?,
-                Err(e) => {
-                    db::set_error(store, &p.id, Some(&format!("{e:#}"))).await?;
-                    // Rate limited or unreachable: the rest would be too.
-                    return Err(e);
-                }
+        let kept = db::kept(store).await?;
+        let force: Vec<String> = lock(&self.inner.force).iter().cloned().collect();
+        for checked in remote.check(&kept, &force).await? {
+            match checked.state {
+                Checked::Gone => db::set_error(store, &checked.id, Some(&Gone.to_string())).await?,
+                Checked::Read | Checked::Unchanged => db::set_error(store, &checked.id, None).await?,
             }
         }
         Ok(())
     }
 
-    /// Stores a playlist's tracks as just read, and records what changed.
-    async fn store_read(&self, p: &db::Row, read: &RemotePlaylistTracks) -> Result<()> {
-        let store = &self.inner.store;
-        let before = db::tracks(store, &p.id).await?;
-        db::replace_tracks(store, &p.id, &read.snapshot_id, &read.tracks).await?;
-        if !p.selected {
+    /// Records what changed in each kept playlist since the engine last
+    /// looked: read for the first time, or tracks added and removed.
+    async fn note_changes(&self) -> Result<()> {
+        // Spotidata's copy can be older than what was seen last (its sync
+        // reads twice a day; the last check may have been this engine's
+        // previous run): compare only once a check has brought it up to date.
+        if lock(&self.inner.last_check).is_none() && !self.paused() {
             return Ok(());
         }
-        let playlist = Some((p.id.as_str(), p.name.as_str()));
-        if p.read_snapshot.is_none() {
-            let event = Event { playlist, count: read.tracks.len(), ..Event::default() };
-            return db::log(store, ActivityKind::Read, &event).await;
-        }
-        let (added, removed) = diff(&before, &read.tracks);
-        if added + removed > 0 {
-            db::log(store, ActivityKind::Changed, &Event { playlist, added, removed, ..Event::default() }).await?;
+        let store = &self.inner.store;
+        for p in db::all(store).await?.into_iter().filter(|p| p.selected) {
+            let Some(snapshot) = p.items_snapshot.as_deref() else { continue };
+            if p.seen_snapshot.as_deref() == Some(snapshot) {
+                continue;
+            }
+            let tracks: Vec<String> = db::tracks(store, &p.id).await?.iter().map(PlaylistTrack::seen_key).collect();
+            let playlist = Some((p.id.as_str(), p.name.as_str()));
+            if p.seen_snapshot.is_none() {
+                info!(playlist = %p.name, tracks = tracks.len(), "read a kept Spotify playlist");
+                db::log(store, ActivityKind::Read, &Event { playlist, count: tracks.len(), ..Event::default() })
+                    .await?;
+            } else {
+                let (added, removed) = diff(&p.seen_tracks, &tracks);
+                if added + removed > 0 {
+                    info!(playlist = %p.name, added, removed, "a kept Spotify playlist changed");
+                    db::log(store, ActivityKind::Changed, &Event { playlist, added, removed, ..Event::default() })
+                        .await?;
+                }
+            }
+            db::set_seen(store, &p.id, &p.name, snapshot, &tracks).await?;
         }
         Ok(())
     }
@@ -485,7 +466,7 @@ impl Spotify {
         Ok(index)
     }
 
-    async fn find(&self, index: &Index, t: &RemoteTrack) -> Result<Found> {
+    async fn find(&self, index: &Index, t: &PlaylistTrack) -> Result<Found> {
         let here = |file: String| Found { state: TrackState::Here, file: Some(file), download: None };
         if let Some(file) = t.isrc.as_ref().and_then(|isrc| index.isrcs.get(isrc)) {
             return Ok(here(file.clone()));
@@ -522,6 +503,7 @@ impl Spotify {
     async fn reconcile(&self, get: bool) -> Result<()> {
         let _pass = self.inner.pass.lock().await;
         let store = &self.inner.store;
+        self.note_changes().await?;
         let index = self.index().await?;
         // Asked-for playlists are seen to by a pass that gets.
         let forced = if get { std::mem::take(&mut *lock(&self.inner.force)) } else { HashSet::new() };
@@ -547,7 +529,7 @@ impl Spotify {
                 }
                 continue;
             }
-            if p.read_snapshot.is_none() {
+            if !p.readable() {
                 continue;
             }
             let tracks = db::tracks(store, &p.id).await?;
@@ -629,7 +611,7 @@ impl Spotify {
 
     /// Queues a missing track, or tries a failed download again once it
     /// has rested a day (`now`: at once).
-    async fn get(&self, t: &RemoteTrack, last: Option<&Download>, playlist: &str, now: bool) -> Got {
+    async fn get(&self, t: &PlaylistTrack, last: Option<&Download>, playlist: &str, now: bool) -> Got {
         let downloads = &self.inner.downloads;
         if let Some(d) = last {
             match d.state {
@@ -653,18 +635,8 @@ impl Spotify {
             return Got::Nothing;
         };
         let Some(id) = &t.id else { return Got::Nothing };
-        let catalog = match &t.isrc {
-            Some(isrc) => match downloads.by_isrc(isrc).await {
-                Ok(found) => found,
-                Err(e) => {
-                    // Asked again next pass.
-                    warn!(error = %e, title = %t.title, "the catalog could not be asked");
-                    return Got::Nothing;
-                }
-            },
-            None => None,
-        };
-        let catalog = catalog.unwrap_or_else(|| CatalogTrack {
+        // As Spotify knows it, as Get Music's search finds it.
+        let catalog = CatalogTrack {
             id: format!("spotify:{id}"),
             title: t.title.clone(),
             artists: t.artists.clone(),
@@ -674,7 +646,7 @@ impl Spotify {
             cover: t.cover.clone(),
             explicit: false,
             in_library: None,
-        });
+        };
         match downloads.add_for(&catalog, Some(playlist)).await {
             Ok(download) => {
                 if let Err(e) = db::set_link(&self.inner.store, &key, download.id).await {
@@ -702,15 +674,14 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 /// Tracks added to and removed from a playlist between two reads, by
-/// recording (local files by title and artists).
-fn diff(before: &[RemoteTrack], after: &[RemoteTrack]) -> (usize, usize) {
-    let key = |t: &RemoteTrack| t.key().unwrap_or_else(|| format!("local:{}|{}", t.title, t.artists.join(",")));
-    let mut counts: HashMap<String, i64> = HashMap::new();
-    for t in after {
-        *counts.entry(key(t)).or_default() += 1;
+/// recording (`PlaylistTrack::seen_key`).
+fn diff(before: &[String], after: &[String]) -> (usize, usize) {
+    let mut counts: HashMap<&str, i64> = HashMap::new();
+    for key in after {
+        *counts.entry(key).or_default() += 1;
     }
-    for t in before {
-        *counts.entry(key(t)).or_default() -= 1;
+    for key in before {
+        *counts.entry(key).or_default() -= 1;
     }
     let added = counts.values().filter(|n| **n > 0).map(|n| n.unsigned_abs()).sum::<u64>();
     let removed = counts.values().filter(|n| **n < 0).map(|n| n.unsigned_abs()).sum::<u64>();
@@ -721,22 +692,11 @@ fn diff(before: &[RemoteTrack], after: &[RemoteTrack]) -> (usize, usize) {
 mod tests {
     use super::*;
 
-    fn track(id: &str) -> RemoteTrack {
-        RemoteTrack {
-            id: Some(id.to_owned()),
-            title: id.to_owned(),
-            artists: vec![],
-            album: String::new(),
-            isrc: None,
-            duration_ms: 0,
-            cover: None,
-        }
-    }
-
     #[test]
     fn diff_counts_recordings() {
-        let before = [track("a"), track("b"), track("c")];
-        let after = [track("b"), track("c"), track("d"), track("e"), track("b")];
+        let keys = |ids: &[&str]| ids.iter().map(|id| format!("spotify:{id}")).collect::<Vec<_>>();
+        let before = keys(&["a", "b", "c"]);
+        let after = keys(&["b", "c", "d", "e", "b"]);
         assert_eq!(diff(&before, &after), (3, 1));
         assert_eq!(diff(&after, &after), (0, 0));
     }

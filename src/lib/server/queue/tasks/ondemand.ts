@@ -16,7 +16,7 @@ import { upsertFullArtists } from '../../ingest/upsert-artists.ts';
 import { upsertFullTracks, upsertSimplifiedTracks } from '../../ingest/upsert-tracks.ts';
 import { ingestPlaylistById } from '../../ingest/playlist-fetch.ts';
 import { storeRaw } from '../../ingest/raw.ts';
-import { SpotifyNotFound, SpotifyRateLimited } from '../../spotify/errors.ts';
+import { SpotifyForbidden, SpotifyNotFound, SpotifyRateLimited } from '../../spotify/errors.ts';
 import { rescheduleForRateLimit } from '../helpers.ts';
 
 export type EntityKind = 'track' | 'album' | 'artist' | 'playlist';
@@ -60,9 +60,11 @@ export const ondemandEntity: Task = async (payload, helpers) => {
 			await rescheduleForRateLimit(helpers, err);
 			return;
 		}
-		if (err instanceof SpotifyNotFound) {
+		if (err instanceof SpotifyNotFound || err instanceof SpotifyForbidden) {
 			// Tell the waiting page so it can render "not found" instead of
-			// spinning until its timeout.
+			// spinning until its timeout. A 403 is the same answer for this app:
+			// Spotify's own playlists (its mixes, its editorial ones) are hidden
+			// from it, and asking again changes nothing.
 			await notify(kind, id, 'missing');
 			return;
 		}

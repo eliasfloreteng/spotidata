@@ -1,12 +1,14 @@
-//! What the server knows about the Spotify playlists, in `deckhand.spotify_*`.
+//! The Spotify playlists: what Spotify says about them is Spotidata's, read
+//! from its views `spotidata.engine_playlists` and
+//! `spotidata.engine_playlist_tracks` (read-only); what the engine did with
+//! them is its own, in `deckhand.spotify_*`.
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use sqlx::types::Json;
+use serde::{Deserialize, Serialize};
 
 use deckhand_model::spotify::{Activity, ActivityKind};
 
-use super::remote::{RemotePlaylist, RemoteTrack};
 use crate::store::{ms, Store};
 
 #[derive(Debug, Clone)]
@@ -17,20 +19,32 @@ pub struct Row {
     pub owned: bool,
     pub image: Option<String>,
     pub total: usize,
-    pub snapshot: String,
-    pub gone: bool,
-    pub selected: bool,
-    pub read_snapshot: Option<String>,
+    /// The snapshot whose tracks Spotidata holds; `None` until read.
+    pub items_snapshot: Option<String>,
+    /// When Spotidata last read its tracks.
     pub read_ms: Option<i64>,
-    pub file: Option<String>,
-    pub file_hash: Option<String>,
-    pub error: Option<String>,
+    /// In the account's playlists.
+    pub listed: bool,
+    pub selected: bool,
     /// Added by its link (when), rather than picked from the account's
     /// list: kept and read whether or not the account lists it.
     pub linked_ms: Option<i64>,
+    pub file: Option<String>,
+    pub file_hash: Option<String>,
+    pub error: Option<String>,
+    /// The tracks the engine last compared, at this snapshot.
+    pub seen_snapshot: Option<String>,
+    pub seen_tracks: Vec<String>,
 }
 
-/// A row of `spotify_playlists` as stored.
+impl Row {
+    /// Whether its tracks can be read: Spotidata has read them.
+    pub fn readable(&self) -> bool {
+        self.items_snapshot.is_some()
+    }
+}
+
+/// A playlist as the views and the engine's table join it.
 #[derive(sqlx::FromRow)]
 struct Record {
     id: String,
@@ -39,15 +53,16 @@ struct Record {
     owned: bool,
     image: Option<String>,
     total: i32,
-    snapshot: String,
-    gone: bool,
-    selected: bool,
-    read_snapshot: Option<String>,
+    items_snapshot: Option<String>,
     read_at: Option<DateTime<Utc>>,
+    listed: bool,
+    selected: bool,
+    linked_at: Option<DateTime<Utc>>,
     file: Option<String>,
     file_hash: Option<String>,
     error: Option<String>,
-    linked_at: Option<DateTime<Utc>>,
+    seen_snapshot: Option<String>,
+    seen_tracks: Vec<String>,
 }
 
 impl From<Record> for Row {
@@ -59,22 +74,30 @@ impl From<Record> for Row {
             owned: r.owned,
             image: r.image,
             total: usize::try_from(r.total).unwrap_or(0),
-            snapshot: r.snapshot,
-            gone: r.gone,
-            selected: r.selected,
-            read_snapshot: r.read_snapshot,
+            items_snapshot: r.items_snapshot,
             read_ms: r.read_at.map(ms),
+            listed: r.listed,
+            selected: r.selected,
+            linked_ms: r.linked_at.map(ms),
             file: r.file,
             file_hash: r.file_hash,
             error: r.error,
-            linked_ms: r.linked_at.map(ms),
+            seen_snapshot: r.seen_snapshot,
+            seen_tracks: r.seen_tracks,
         }
     }
 }
 
-macro_rules! columns {
+/// Every playlist the account lists, and every one the engine kept, with
+/// what each side knows.
+macro_rules! playlists {
     () => {
-        "id, name, owner, owned, image, total, snapshot, gone, selected, read_snapshot, read_at, file, file_hash, error, linked_at"
+        "select coalesce(k.id, e.id) as id, coalesce(e.name, k.name) as name, coalesce(e.owner, '') as owner,
+             coalesce(e.owned, false) as owned, e.image, coalesce(e.tracks, 0) as total, e.items_snapshot, e.items_synced_at as read_at, coalesce(e.listed, false) as listed,
+             coalesce(k.selected, false) as selected, k.linked_at, k.file, k.file_hash, k.error, k.seen_snapshot,
+             coalesce(k.seen_tracks, '{}') as seen_tracks
+         from spotidata.engine_playlists e
+         full join spotify_playlists k on k.id = e.id"
     };
 }
 
@@ -82,156 +105,114 @@ fn count(n: usize) -> i32 {
     i32::try_from(n).unwrap_or(i32::MAX)
 }
 
-/// Every playlist, in the account's order; gone ones last.
+/// The account's playlists by name, then those kept by their link in the
+/// order they were added, then those kept that Spotify no longer lists.
 pub async fn all(store: &Store) -> Result<Vec<Row>> {
-    let rows: Vec<Record> =
-        sqlx::query_as(concat!("select ", columns!(), " from spotify_playlists order by gone, position, id"))
-            .fetch_all(store.pool())
-            .await?;
+    let rows: Vec<Record> = sqlx::query_as(concat!(
+        playlists!(),
+        " where e.listed or k.id is not null
+          order by k.linked_at is not null, not coalesce(e.listed, false), k.linked_at,
+                   lower(coalesce(e.name, k.name)), coalesce(k.id, e.id)"
+    ))
+    .fetch_all(store.pool())
+    .await?;
     Ok(rows.into_iter().map(Row::from).collect())
 }
 
+/// One playlist the account lists or the engine knows, or that Spotidata
+/// fetched (by its link).
 pub async fn get(store: &Store, id: &str) -> Result<Option<Row>> {
-    let row: Option<Record> = sqlx::query_as(concat!("select ", columns!(), " from spotify_playlists where id = $1"))
+    let row: Option<Record> = sqlx::query_as(concat!(playlists!(), " where coalesce(k.id, e.id) = $1"))
         .bind(id)
         .fetch_optional(store.pool())
         .await?;
     Ok(row.map(Row::from))
 }
 
-/// Records the account's playlists as Spotify lists them now; the rest are
-/// marked gone, but for those added by their link, which follow the list.
-pub async fn replace_list(store: &Store, list: &[RemotePlaylist]) -> Result<()> {
-    let mut tx = store.pool().begin().await?;
-    sqlx::query("update spotify_playlists set gone = true where linked_at is null").execute(&mut *tx).await?;
-    for (position, p) in list.iter().enumerate() {
-        sqlx::query(
-            "insert into spotify_playlists(id, name, owner, owned, image, total, snapshot, position, gone)
-             values($1, $2, $3, $4, $5, $6, $7, $8, false)
-             on conflict(id) do update set name = $2, owner = $3, owned = $4, image = $5, total = $6,
-                 snapshot = $7, position = $8, gone = false",
-        )
-        .bind(&p.id)
-        .bind(&p.name)
-        .bind(&p.owner)
-        .bind(p.owned)
-        .bind(&p.image)
-        .bind(count(p.tracks))
-        .bind(&p.snapshot_id)
-        .bind(count(position))
-        .execute(&mut *tx)
-        .await?;
-    }
-    let ids: Vec<&str> = list.iter().map(|p| p.id.as_str()).collect();
-    let unlisted: Vec<String> = sqlx::query_scalar(
-        "select id from spotify_playlists where linked_at is not null and id <> all($1) order by linked_at, id",
-    )
-    .bind(&ids)
-    .fetch_all(&mut *tx)
-    .await?;
-    for (n, id) in unlisted.iter().enumerate() {
-        sqlx::query("update spotify_playlists set position = $2 where id = $1")
-            .bind(id)
-            .bind(count(list.len() + n))
-            .execute(&mut *tx)
-            .await?;
-    }
-    tx.commit().await?;
-    Ok(())
+/// The ids of the kept playlists.
+pub async fn kept(store: &Store) -> Result<Vec<String>> {
+    Ok(sqlx::query_scalar("select id from spotify_playlists where selected order by id")
+        .fetch_all(store.pool())
+        .await?)
 }
 
-/// A playlist added by its link: kept from now on, after the account's own.
-pub async fn add_linked(store: &Store, p: &RemotePlaylist) -> Result<()> {
+/// A playlist added by its link: kept from now on, whether or not the
+/// account lists it.
+pub async fn add_linked(store: &Store, id: &str, name: &str) -> Result<()> {
     sqlx::query(
-        "insert into spotify_playlists(id, name, owner, owned, image, total, snapshot, position, gone, selected, linked_at)
-         values($1, $2, $3, $4, $5, $6, $7, (select coalesce(max(position), -1) + 1 from spotify_playlists),
-             false, true, now())
-         on conflict(id) do update set name = $2, owner = $3, owned = $4, image = $5, total = $6, snapshot = $7,
-             gone = false, selected = true, linked_at = coalesce(spotify_playlists.linked_at, now())",
-    )
-    .bind(&p.id)
-    .bind(&p.name)
-    .bind(&p.owner)
-    .bind(p.owned)
-    .bind(&p.image)
-    .bind(count(p.tracks))
-    .bind(&p.snapshot_id)
-    .execute(store.pool())
-    .await?;
-    Ok(())
-}
-
-/// A playlist added by its link, as Spotify describes it now.
-pub async fn update_info(store: &Store, p: &RemotePlaylist) -> Result<()> {
-    sqlx::query(
-        "update spotify_playlists set name = $2, owner = $3, owned = $4, image = $5, total = $6, snapshot = $7,
-             gone = false
-         where id = $1",
-    )
-    .bind(&p.id)
-    .bind(&p.name)
-    .bind(&p.owner)
-    .bind(p.owned)
-    .bind(&p.image)
-    .bind(count(p.tracks))
-    .bind(&p.snapshot_id)
-    .execute(store.pool())
-    .await?;
-    Ok(())
-}
-
-/// Spotify no longer shows a playlist added by its link.
-pub async fn set_gone(store: &Store, id: &str) -> Result<()> {
-    sqlx::query("update spotify_playlists set gone = true where id = $1").bind(id).execute(store.pool()).await?;
-    Ok(())
-}
-
-/// Whether the playlist exists; selecting an unknown one is refused. One
-/// added by its link that you stop keeping is the account's again: it
-/// stays listed only if the account lists it.
-pub async fn select(store: &Store, id: &str, selected: bool) -> Result<bool> {
-    Ok(sqlx::query(
-        "update spotify_playlists set selected = $2,
-             error = case when $2 then error end,
-             linked_at = case when $2 then linked_at end
-         where id = $1",
+        "insert into spotify_playlists(id, name, selected, linked_at) values($1, $2, true, now())
+         on conflict(id) do update set name = $2, selected = true,
+             linked_at = coalesce(spotify_playlists.linked_at, now())",
     )
     .bind(id)
+    .bind(name)
+    .execute(store.pool())
+    .await?;
+    Ok(())
+}
+
+/// Starts or stops keeping a playlist the account lists or the engine knows.
+/// One added by its link that you stop keeping is the account's again: it
+/// stays listed only if the account lists it.
+pub async fn select(store: &Store, id: &str, name: &str, selected: bool) -> Result<()> {
+    sqlx::query(
+        "insert into spotify_playlists(id, name, selected) values($1, $2, $3)
+         on conflict(id) do update set name = $2, selected = $3,
+             error = case when $3 then spotify_playlists.error end,
+             linked_at = case when $3 then spotify_playlists.linked_at end",
+    )
+    .bind(id)
+    .bind(name)
     .bind(selected)
     .execute(store.pool())
-    .await?
-    .rows_affected()
-        > 0)
+    .await?;
+    Ok(())
 }
 
-pub async fn tracks(store: &Store, id: &str) -> Result<Vec<RemoteTrack>> {
-    let rows: Vec<Json<serde_json::Value>> =
-        sqlx::query_scalar("select track from spotify_tracks where playlist = $1 order by position")
-            .bind(id)
-            .fetch_all(store.pool())
-            .await?;
-    Ok(rows.into_iter().filter_map(|Json(track)| serde_json::from_value(track).ok()).collect())
-}
-
-/// Stores a playlist's tracks as read at `snapshot`.
-pub async fn replace_tracks(store: &Store, id: &str, snapshot: &str, tracks: &[RemoteTrack]) -> Result<()> {
-    let mut tx = store.pool().begin().await?;
-    sqlx::query("delete from spotify_tracks where playlist = $1").bind(id).execute(&mut *tx).await?;
-    let json = tracks.iter().map(serde_json::to_string).collect::<serde_json::Result<Vec<_>>>()?;
-    sqlx::query(
-        "insert into spotify_tracks(playlist, position, track)
-         select $1, t.position - 1, t.track::jsonb from unnest($2::text[]) with ordinality as t(track, position)",
+/// A playlist's tracks as Spotidata last read them, in Spotify's order.
+pub async fn tracks(store: &Store, id: &str) -> Result<Vec<PlaylistTrack>> {
+    #[derive(sqlx::FromRow)]
+    struct Item {
+        track_id: Option<String>,
+        title: String,
+        artists: Vec<String>,
+        album: String,
+        isrc: Option<String>,
+        duration_ms: i32,
+        cover: Option<String>,
+    }
+    let rows: Vec<Item> = sqlx::query_as(
+        "select track_id, title, artists, album, isrc, duration_ms, cover
+         from spotidata.engine_playlist_tracks where playlist_id = $1 order by position",
     )
     .bind(id)
-    .bind(&json)
-    .execute(&mut *tx)
+    .fetch_all(store.pool())
     .await?;
-    sqlx::query("update spotify_playlists set read_snapshot = $2, read_at = now(), error = null where id = $1")
-        .bind(id)
-        .bind(snapshot)
-        .execute(&mut *tx)
-        .await?;
-    tx.commit().await?;
+    Ok(rows
+        .into_iter()
+        .map(|t| PlaylistTrack {
+            id: t.track_id,
+            title: t.title,
+            artists: t.artists,
+            album: t.album,
+            isrc: t.isrc,
+            duration_ms: u64::try_from(t.duration_ms).unwrap_or(0),
+            cover: t.cover,
+        })
+        .collect())
+}
+
+/// What the engine compared last: the tracks at a snapshot, and its name then.
+pub async fn set_seen(store: &Store, id: &str, name: &str, snapshot: &str, tracks: &[String]) -> Result<()> {
+    sqlx::query(
+        "update spotify_playlists set name = $2, seen_snapshot = $3, seen_tracks = $4, seen_at = now() where id = $1",
+    )
+    .bind(id)
+    .bind(name)
+    .bind(snapshot)
+    .bind(tracks)
+    .execute(store.pool())
+    .await?;
     Ok(())
 }
 
@@ -270,6 +251,41 @@ pub async fn set_link(store: &Store, key: &str, download: i64) -> Result<()> {
         .execute(store.pool())
         .await?;
     Ok(())
+}
+
+/// One track of a playlist, as Spotidata holds it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlaylistTrack {
+    /// `None` for a local file.
+    pub id: Option<String>,
+    pub title: String,
+    pub artists: Vec<String>,
+    pub album: String,
+    pub isrc: Option<String>,
+    pub duration_ms: u64,
+    pub cover: Option<String>,
+}
+
+impl PlaylistTrack {
+    pub fn duration_sec(&self) -> u32 {
+        u32::try_from((self.duration_ms + 500) / 1000).unwrap_or(0)
+    }
+
+    /// What identifies the recording across playlists: its ISRC, else its
+    /// Spotify id. `None` for a local file.
+    pub fn key(&self) -> Option<String> {
+        match (&self.isrc, &self.id) {
+            (Some(isrc), _) => Some(format!("isrc:{isrc}")),
+            (None, Some(id)) => Some(format!("spotify:{id}")),
+            (None, None) => None,
+        }
+    }
+
+    /// The recording, or for a local file its title and artists: what
+    /// `seen_tracks` holds, to count what was added and removed.
+    pub fn seen_key(&self) -> String {
+        self.key().unwrap_or_else(|| format!("local:{}|{}", self.title, self.artists.join(",")))
+    }
 }
 
 /// Entries kept; older ones go.
@@ -375,69 +391,104 @@ pub async fn activity(store: &Store, playlist: Option<&str>, limit: usize) -> Re
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 
     use super::*;
 
-    fn remote(id: &str) -> RemotePlaylist {
-        RemotePlaylist {
-            id: id.to_owned(),
-            name: id.to_owned(),
-            owner: String::new(),
-            owned: false,
-            snapshot_id: "s1".to_owned(),
-            tracks: 0,
-            image: None,
+    /// Spotidata's two views, as tables a test fills (the real ones are in
+    /// Spotidata's db/sql/post/110_engine.sql).
+    pub async fn spotidata(store: &Store) {
+        sqlx::raw_sql(
+            "create schema spotidata;
+             create table spotidata.engine_playlists(id text primary key, name text not null, owner text not null,
+                 owned boolean not null, image text, tracks integer not null, snapshot_id text not null,
+                 items_snapshot text, items_synced_at timestamptz, listed boolean not null);
+             create table spotidata.engine_playlist_tracks(playlist_id text not null, position integer not null,
+                 track_id text, title text not null, artists text[] not null, album text not null, isrc text,
+                 duration_ms integer not null, cover text);",
+        )
+        .execute(store.pool())
+        .await
+        .unwrap();
+    }
+
+    /// A playlist as Spotidata would hold it, its tracks read at `snapshot`.
+    pub async fn playlist(store: &Store, id: &str, listed: bool, snapshot: &str, tracks: &[&str]) {
+        sqlx::query(
+            "insert into spotidata.engine_playlists values($1, $1, '', false, null, $2, $3, $3, now(), $4)
+             on conflict(id) do update set snapshot_id = $3, items_snapshot = $3, listed = $4, tracks = $2",
+        )
+        .bind(id)
+        .bind(count(tracks.len()))
+        .bind(snapshot)
+        .bind(listed)
+        .execute(store.pool())
+        .await
+        .unwrap();
+        sqlx::query("delete from spotidata.engine_playlist_tracks where playlist_id = $1")
+            .bind(id)
+            .execute(store.pool())
+            .await
+            .unwrap();
+        for (position, track) in tracks.iter().enumerate() {
+            sqlx::query(
+                "insert into spotidata.engine_playlist_tracks values($1, $2, $3, $3, '{}', '', null, 1000, null)",
+            )
+            .bind(id)
+            .bind(count(position))
+            .bind(track)
+            .execute(store.pool())
+            .await
+            .unwrap();
         }
     }
 
     #[sqlx::test(migrations = false)]
     async fn linked_playlists_outlast_the_list(_: PgPoolOptions, options: PgConnectOptions) {
         let store = crate::store::tests::store(options).await;
-        replace_list(&store, &[remote("a"), remote("b")]).await.unwrap();
-        add_linked(&store, &remote("x")).await.unwrap();
+        spotidata(&store).await;
+        playlist(&store, "a", true, "s1", &[]).await;
+        playlist(&store, "b", true, "s1", &[]).await;
+        // Fetched by its link, not the account's.
+        playlist(&store, "x", false, "s1", &[]).await;
+        add_linked(&store, "x", "x").await.unwrap();
         // Also the account's: still kept by its link once it isn't.
-        add_linked(&store, &remote("b")).await.unwrap();
-        replace_list(&store, &[remote("a")]).await.unwrap();
+        add_linked(&store, "b", "b").await.unwrap();
+        playlist(&store, "b", false, "s1", &[]).await;
         let rows = all(&store).await.unwrap();
-        let shown: Vec<_> = rows.iter().map(|p| (p.id.as_str(), p.gone, p.selected)).collect();
+        let shown: Vec<_> = rows.iter().map(|p| (p.id.as_str(), p.listed, p.selected)).collect();
         // The linked ones after the account's, in the order they were linked.
-        assert_eq!(shown, vec![("a", false, false), ("x", false, true), ("b", false, true)]);
-        // Stopped: the account's again, so gone at the next list.
-        select(&store, "x", false).await.unwrap();
-        replace_list(&store, &[remote("a")]).await.unwrap();
-        let x = get(&store, "x").await.unwrap().unwrap();
-        assert!(x.gone && x.linked_ms.is_none());
+        assert_eq!(shown, vec![("a", true, false), ("x", false, true), ("b", false, true)]);
+        // Stopped: the account's again, so no longer shown.
+        select(&store, "x", "x", false).await.unwrap();
+        let rows = all(&store).await.unwrap();
+        let x = rows.iter().find(|p| p.id == "x").unwrap();
+        assert!(!x.selected && x.linked_ms.is_none());
+        assert_eq!(kept(&store).await.unwrap(), ["b"]);
     }
 
     #[sqlx::test(migrations = false)]
     async fn tracks_keep_spotifys_order(_: PgPoolOptions, options: PgConnectOptions) {
         let store = crate::store::tests::store(options).await;
-        replace_list(&store, &[remote("a")]).await.unwrap();
-        let track = |id: &str| RemoteTrack {
-            id: Some(id.to_owned()),
-            title: id.to_owned(),
-            artists: vec![],
-            album: String::new(),
-            isrc: None,
-            duration_ms: 1000,
-            cover: None,
-        };
-        replace_tracks(&store, "a", "s1", &[track("t2"), track("t1"), track("t3")]).await.unwrap();
+        spotidata(&store).await;
+        playlist(&store, "a", true, "s1", &["t2", "t1", "t3"]).await;
         let ids: Vec<_> = tracks(&store, "a").await.unwrap().into_iter().filter_map(|t| t.id).collect();
         assert_eq!(ids, ["t2", "t1", "t3"]);
         let row = get(&store, "a").await.unwrap().unwrap();
-        assert_eq!(row.read_snapshot.as_deref(), Some("s1"));
-        assert!(row.read_ms.is_some());
-        replace_tracks(&store, "a", "s2", &[]).await.unwrap();
-        assert!(tracks(&store, "a").await.unwrap().is_empty());
+        assert_eq!(row.items_snapshot.as_deref(), Some("s1"));
+        assert!(row.read_ms.is_some() && row.readable());
+        select(&store, "a", "a", true).await.unwrap();
+        set_seen(&store, "a", "a", "s1", &["spotify:t2".to_owned()]).await.unwrap();
+        let row = get(&store, "a").await.unwrap().unwrap();
+        assert_eq!((row.seen_snapshot.as_deref(), row.seen_tracks.len()), (Some("s1"), 1));
     }
 
     #[sqlx::test(migrations = false)]
     async fn repeats_close_together_add_up(_: PgPoolOptions, options: PgConnectOptions) {
         let store = crate::store::tests::store(options).await;
-        replace_list(&store, &[remote("p1")]).await.unwrap();
+        spotidata(&store).await;
+        select(&store, "p1", "House", true).await.unwrap();
         let house = Event { playlist: Some(("p1", "House")), count: 3, ..Event::default() };
         log(&store, ActivityKind::Queued, &house).await.unwrap();
         log(&store, ActivityKind::Queued, &Event { count: 2, ..house.clone() }).await.unwrap();

@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { query } from '../db/index.ts';
-import { pick } from '../export/live-playlists.ts';
+import { pickImage } from '../spotify/images.ts';
 import { BATCH, chunk, getTracks } from '../spotify/endpoints.ts';
 import type { FullTrack } from '../spotify/types.ts';
 import { webPlayerGet, WebPlayerError } from '../spotify/web-player.ts';
@@ -121,7 +121,7 @@ export async function songRadio(trackId: string): Promise<SongRadio | null> {
 				isrc: normalIsrc(t.external_ids?.isrc),
 				duration_ms: t.duration_ms,
 				explicit: t.explicit,
-				cover: pick(t.album?.images),
+				cover: pickImage(t.album?.images),
 				canonical_id: m?.canonicalId ?? null,
 				in_library: m?.inLibrary ?? false,
 				liked: m?.liked ?? false,

@@ -1,6 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import { songRadio } from '$lib/server/entities/radio.ts';
-import { liveFailure } from '$lib/server/export/live-playlists.ts';
+import { spotifyFailure } from '$lib/server/spotify/errors.ts';
 import { WebPlayerError } from '$lib/server/spotify/web-player.ts';
 import type { RequestHandler } from './$types';
 
@@ -31,5 +31,5 @@ function radioFailure(err: unknown): Response | null {
 			headers
 		});
 	}
-	return liveFailure(err);
+	return spotifyFailure(err);
 }

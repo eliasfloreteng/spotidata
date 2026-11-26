@@ -11,6 +11,7 @@ mod library;
 mod push;
 mod rekordbox;
 mod scan;
+mod spotidata;
 mod spotify;
 mod store;
 mod tags;
@@ -24,6 +25,8 @@ use std::time::Duration;
 use anyhow::Result;
 use tracing::{info, warn};
 
+pub use store::Database;
+
 pub struct Config {
     /// The music folder: flat, audio and `.m3u8` playlists.
     pub music: PathBuf,
@@ -31,15 +34,17 @@ pub struct Config {
     pub data: PathBuf,
     /// Tracks analysed at once.
     pub analysis_threads: usize,
-    /// Spotidata's address, which Spotify is read through.
+    /// Spotidata's address, which Spotify is read through
+    /// (`http://spotidata:3000` in the stack).
     pub spotidata: String,
-    /// The Postgres database whose `deckhand` schema holds the server's state.
-    pub database: String,
+    /// The Postgres database whose `deckhand` schema holds the server's state,
+    /// which is Spotidata's.
+    pub database: Database,
 }
 
 /// Connects to the database and brings its `deckhand` schema up to date,
 /// as `Server::start` does first.
-pub async fn migrate(database: &str) -> Result<()> {
+pub async fn migrate(database: &Database) -> Result<()> {
     store::Store::connect(database).await?;
     Ok(())
 }
@@ -105,9 +110,11 @@ impl Server {
                 }
             });
         }
-        let downloads = downloads::Service::new(store.clone(), music.clone(), &data, push.clone()).await?;
+        let spotidata = spotidata::Spotidata::new(&spotidata);
+        let downloads =
+            downloads::Service::new(store.clone(), music.clone(), &data, push.clone(), spotidata.clone()).await?;
         downloads.spawn();
-        let spotify = spotify::Spotify::new(store.clone(), music.clone(), downloads.clone(), &spotidata).await?;
+        let spotify = spotify::Spotify::new(store.clone(), music.clone(), downloads.clone(), spotidata).await?;
         spotify.spawn();
 
         Ok(Self {

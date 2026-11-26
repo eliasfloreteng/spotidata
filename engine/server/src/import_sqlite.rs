@@ -5,7 +5,10 @@
 //! Every row of every table is copied into the `deckhand` schema, converted:
 //! `*_ms` integers to `timestamptz`, JSON text to `jsonb`, 0/1 to booleans,
 //! the settings in `meta` to JSON values, each mirror's health from JSON to
-//! columns. It refuses to run into a schema that holds anything, and runs in
+//! columns. The Spotify playlists are the exception: what Spotify said about
+//! them is Spotidata's now, so only the ones the engine kept (or wrote a
+//! file for, or logged activity about) are copied, and of their tracks only
+//! what it last compared (`seen_tracks`), not the tracks themselves. It refuses to run into a schema that holds anything, and runs in
 //! one transaction: a row that does not convert (or breaks a constraint) is
 //! reported, and nothing is kept unless `--keep-going` says to keep the rest.
 //! The analysis and artwork blobs stay files in the data dir's `blobs/`; their
@@ -24,7 +27,21 @@ use sqlx::{Connection, PgConnection, Postgres};
 use crate::store::Store;
 
 /// The tables, in the order they are filled (foreign keys first).
-const TABLES: [&str; 11] = [
+const TABLES: [&str; 10] = [
+    "files",
+    "tombstones",
+    "meta",
+    "rekordbox",
+    "downloads",
+    "endpoints",
+    "devices",
+    "spotify_playlists",
+    "spotify_links",
+    "spotify_activity",
+];
+
+/// The old tables read: those, and the playlists' tracks.
+const OLD_TABLES: [&str; 11] = [
     "files",
     "tombstones",
     "meta",
@@ -121,7 +138,7 @@ impl Sqlite {
         let conn = rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
             .with_context(|| format!("opening {}", path.display()))?;
         let mut tables = HashMap::new();
-        for table in TABLES {
+        for table in OLD_TABLES {
             let mut stmt = conn.prepare(&format!("select * from {table} order by rowid"))?;
             let names: Vec<String> = stmt.column_names().into_iter().map(str::to_owned).collect();
             let rows = stmt
@@ -209,7 +226,7 @@ fn key(row: &Old, columns: &[&str]) -> String {
         .join(" / ")
 }
 
-pub async fn run(database: &str, options: Options) -> Result<()> {
+pub async fn run(database: &crate::Database, options: Options) -> Result<()> {
     import(&Store::connect(database).await?, options).await
 }
 
@@ -262,6 +279,17 @@ async fn import(store: &Store, options: Options) -> Result<()> {
             report.imported.get(table).copied().unwrap_or(0),
         );
     }
+    let seen: i64 = sqlx::query_scalar("select coalesce(sum(cardinality(seen_tracks)), 0) from spotify_playlists")
+        .fetch_one(&mut *tx)
+        .await?;
+    println!(
+        "{:<20} {:>8} {:>9} {:>7} {:>9}  (as the kept playlists' seen_tracks)",
+        "spotify_tracks",
+        old.rows("spotify_tracks").len(),
+        "-",
+        "-",
+        seen
+    );
     println!();
     check_blobs(&old, options.blobs.as_deref(), &mut report);
     for note in &report.notes {
@@ -449,25 +477,40 @@ async fn devices(old: &Sqlite, conn: &mut PgConnection, report: &mut Report) -> 
 }
 
 async fn spotify(old: &Sqlite, conn: &mut PgConnection, report: &mut Report) -> Result<()> {
+    // What the engine compared last: each playlist's tracks, by recording.
+    let mut seen: HashMap<String, Vec<String>> = HashMap::new();
+    for row in old.rows("spotify_tracks") {
+        let (Ok(playlist), Ok(track)) = (row.required_text("playlist"), row.required_text("track")) else { continue };
+        let Ok(track) = serde_json::from_str::<OldTrack>(&track) else { continue };
+        seen.entry(playlist).or_default().push(track.seen_key());
+    }
+    let logged: BTreeSet<String> =
+        old.rows("spotify_activity").iter().filter_map(|row| row.text("playlist").ok().flatten()).collect();
+    let mut left_out = 0;
     for row in old.rows("spotify_playlists") {
+        let id = row.text("id").ok().flatten().unwrap_or_default();
+        let ours = row.flag("selected").unwrap_or(true)
+            || row.text("file").map_or(true, |f| f.is_some())
+            || row.time("linked_ms").map_or(true, |t| t.is_some())
+            || logged.contains(&id);
+        if !ours {
+            left_out += 1;
+            continue;
+        }
+        let snapshot = row.text("read_snapshot").ok().flatten();
+        let tracks = if snapshot.is_some() { seen.remove(&id).unwrap_or_default() } else { Vec::new() };
         let insert = (|| {
             Ok(sqlx::query(
-                "insert into spotify_playlists(id, name, owner, owned, image, total, snapshot, position, gone,
-                     selected, read_snapshot, read_at, file, file_hash, error, linked_at)
-                 values($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)",
+                "insert into spotify_playlists(id, name, selected, seen_snapshot, seen_at, seen_tracks, file,
+                     file_hash, error, linked_at)
+                 values($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
             )
             .bind(row.required_text("id")?)
             .bind(row.required_text("name")?)
-            .bind(row.required_text("owner")?)
-            .bind(row.flag("owned")?)
-            .bind(row.text("image")?)
-            .bind(row.int32("total")?)
-            .bind(row.required_text("snapshot")?)
-            .bind(row.int32("position")?)
-            .bind(row.flag("gone")?)
             .bind(row.flag("selected")?)
             .bind(row.text("read_snapshot")?)
             .bind(row.time("read_ms")?)
+            .bind(tracks.clone())
             .bind(row.text("file")?)
             .bind(row.text("file_hash")?)
             .bind(row.text("error")?)
@@ -475,14 +518,8 @@ async fn spotify(old: &Sqlite, conn: &mut PgConnection, report: &mut Report) -> 
         })();
         report.put(conn, "spotify_playlists", key(row, &["id"]), insert).await?;
     }
-    for row in old.rows("spotify_tracks") {
-        let insert = (|| {
-            Ok(sqlx::query("insert into spotify_tracks(playlist, position, track) values($1, $2, $3::jsonb)")
-                .bind(row.required_text("playlist")?)
-                .bind(row.int32("position")?)
-                .bind(row.required_text("track")?))
-        })();
-        report.put(conn, "spotify_tracks", key(row, &["playlist", "position"]), insert).await?;
+    if left_out > 0 {
+        report.notes.push(format!("Left out {left_out} playlists the engine never kept: Spotidata has them."));
     }
     for row in old.rows("spotify_links") {
         let insert = (|| {
@@ -512,6 +549,33 @@ async fn spotify(old: &Sqlite, conn: &mut PgConnection, report: &mut Report) -> 
         report.put(conn, "spotify_activity", key(row, &["id"]), insert).await?;
     }
     Ok(())
+}
+
+/// A playlist's track as the old table kept it (JSON).
+#[derive(serde::Deserialize)]
+struct OldTrack {
+    #[serde(default)]
+    id: Option<String>,
+    title: String,
+    #[serde(default)]
+    artists: Vec<String>,
+    #[serde(default)]
+    isrc: Option<String>,
+}
+
+impl OldTrack {
+    fn seen_key(&self) -> String {
+        crate::spotify::db::PlaylistTrack {
+            id: self.id.clone(),
+            title: self.title.clone(),
+            artists: self.artists.clone(),
+            album: String::new(),
+            isrc: self.isrc.clone(),
+            duration_ms: 0,
+            cover: None,
+        }
+        .seen_key()
+    }
 }
 
 /// Says whether every blob the rows name is in `blobs/`.
@@ -613,7 +677,9 @@ mod tests {
              insert into endpoints values('deezer:x', '{{\"reliability\":0.9999999999999997,\"speed_kbps\":null,
                  \"latency_ms\":12.5,\"downloads\":3,\"failures_in_row\":0,\"resting_until_ms\":null,
                  \"last_error\":null,\"last_ok_ms\":1795080312000}}');
-             insert into spotify_playlists(id, name, selected, read_ms) values('p1', 'House', 1, 1795080312000);
+             insert into spotify_playlists(id, name, selected, read_snapshot, read_ms)
+                 values('p1', 'House', 1, 's1', 1795080312000);
+             insert into spotify_playlists(id, name) values('p2', 'Listed, never kept');
              insert into spotify_tracks values('p1', 0, '{{\"id\":\"t1\",\"title\":\"A\",\"artists\":[],
                  \"album\":\"\",\"isrc\":null,\"duration_ms\":1000,\"cover\":null}}');
              insert into spotify_links values('isrc:GBDUW0000059', 1);
@@ -672,6 +738,13 @@ mod tests {
             .unwrap();
         let newest = crate::spotify::db::activity(&store, None, 1).await.unwrap();
         assert_eq!(newest[0].id, 8);
+        // The kept playlist, with what it was compared at; not the other.
+        let (snapshot, seen): (Option<String>, Vec<String>) =
+            sqlx::query_as("select seen_snapshot, seen_tracks from spotify_playlists where id = 'p1'")
+                .fetch_one(store.pool())
+                .await
+                .unwrap();
+        assert_eq!((snapshot.as_deref(), seen), (Some("s1"), vec!["spotify:t1".to_owned()]));
         // Once is enough.
         let again = import(&store, Options { sqlite, blobs: None, keep_going: false }).await;
         assert!(again.unwrap_err().to_string().contains("already holds data"));

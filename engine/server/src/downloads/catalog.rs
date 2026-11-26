@@ -1,6 +1,9 @@
-//! The catalog the app searches: Deezer's public API. It needs no account,
-//! is up far more than any download source, and gives every track an ISRC,
-//! which is what the sources are then asked for.
+//! The catalog the app searches is Spotify's, through Spotidata
+//! (`Spotidata::search`): the results carry the library's own ids and ISRCs,
+//! and the ISRC is what the sources are then asked for. Deezer's public API
+//! (no account) stays for what the sources need beyond that: the Deezer id
+//! of the recording, for the sources that fetch from Deezer, and the tags and
+//! 1000 px cover a download is filed with (`details`).
 
 use std::collections::HashMap;
 
@@ -12,12 +15,6 @@ use serde_json::Value;
 use super::Wanted;
 
 const API: &str = "https://api.deezer.com";
-
-#[derive(Deserialize)]
-struct Page {
-    #[serde(default)]
-    data: Vec<DzTrack>,
-}
 
 #[derive(Deserialize)]
 struct DzTrack {
@@ -82,24 +79,31 @@ async fn get(http: &reqwest::Client, url: &str, query: &[(&str, &str)]) -> Resul
     Ok(value)
 }
 
-/// Tracks matching free text, best first. `in_library` is filled in from
-/// `library`, the folder's files by ISRC, and `names`, by title and artist.
-pub async fn search(
-    http: &reqwest::Client,
-    query: &str,
-    limit: usize,
+/// A track of Spotify's catalog, as the app reads it.
+pub fn from_spotify(t: crate::spotidata::CatalogTrack) -> CatalogTrack {
+    CatalogTrack {
+        id: format!("spotify:{}", t.id),
+        title: t.title,
+        artists: t.artists,
+        album: t.album,
+        isrc: t.isrc.map(|s| s.trim().to_ascii_uppercase()).filter(|s| !s.is_empty()),
+        duration_sec: u32::try_from((t.duration_ms + 500) / 1000).unwrap_or(0),
+        cover: t.cover,
+        explicit: t.explicit,
+        in_library: None,
+    }
+}
+
+/// Marks the tracks the folder already holds: by ISRC from `library` (the
+/// folder's files by ISRC), else by title and artist from `names`.
+pub fn mark(
+    tracks: Vec<CatalogTrack>,
     library: &HashMap<String, String>,
     names: &LibraryNames,
-) -> Result<Vec<CatalogTrack>> {
-    let limit = limit.clamp(1, 100).to_string();
-    let page: Page =
-        serde_json::from_value(get(http, &format!("{API}/search/track"), &[("q", query), ("limit", &limit)]).await?)?;
-    Ok(page
-        .data
+) -> Vec<CatalogTrack> {
+    tracks
         .into_iter()
-        .filter(|t| t.readable)
-        .map(|t| {
-            let mut track = to_catalog(&t);
+        .map(|mut track| {
             track.in_library = track
                 .isrc
                 .as_ref()
@@ -108,7 +112,7 @@ pub async fn search(
                 .or_else(|| names.find(&track.title, &track.artists));
             track
         })
-        .collect())
+        .collect()
 }
 
 fn to_catalog(t: &DzTrack) -> CatalogTrack {
@@ -150,12 +154,20 @@ pub async fn by_isrc(http: &reqwest::Client, isrc: &str) -> Result<Option<Catalo
     Ok(t.readable.then(|| to_catalog(&t)))
 }
 
-/// Everything known about a track before asking the sources for it: the
-/// full artist list, album details for the tags, and the big cover.
+/// Everything known about a track before asking the sources for it: its
+/// Deezer id, album details for the tags, and the big cover. Found on Deezer
+/// by the ISRC (a download asked for before the search was Spotify's names
+/// Deezer's id itself); when Deezer lacks the recording, the sources are
+/// asked by ISRC, title, artists and length alone.
 pub async fn details(http: &reqwest::Client, track: &CatalogTrack) -> Wanted {
     let mut wanted = Wanted::from_catalog(track);
-    let Some(id) = track.id.strip_prefix("deezer:") else {
-        return wanted;
+    let id = match (track.id.strip_prefix("deezer:"), &track.isrc) {
+        (Some(id), _) => id.to_owned(),
+        (None, Some(isrc)) => match by_isrc(http, isrc).await {
+            Ok(Some(found)) => found.id.trim_start_matches("deezer:").to_owned(),
+            Ok(None) | Err(_) => return wanted,
+        },
+        (None, None) => return wanted,
     };
     let Ok(value) = get(http, &format!("{API}/track/{id}"), &[]).await else {
         return wanted;
@@ -163,8 +175,12 @@ pub async fn details(http: &reqwest::Client, track: &CatalogTrack) -> Wanted {
     let Ok(t) = serde_json::from_value::<DzTrack>(value) else {
         return wanted;
     };
+    wanted.deezer_id = Some(t.id);
     let full = to_catalog(&t);
-    wanted.artists = full.artists;
+    // Spotify's credits are the library's; Deezer's fill in for its own.
+    if track.id.starts_with("deezer:") || wanted.artists.is_empty() {
+        wanted.artists = full.artists;
+    }
     wanted.isrc = wanted.isrc.or(full.isrc);
     if t.duration > 0 {
         wanted.duration_sec = t.duration;

@@ -10,11 +10,17 @@ import { upsertPublicUser } from './upsert-users.ts';
  * Playlist metadata only. `itemsSyncedSnapshotId` / `itemsSyncedAt` are
  * deliberately untouched: they claim the stored items match a snapshot, which
  * is a promise only the item sync is in a position to make.
+ *
+ * `listed`: the playlists come from the account's own listing
+ * (`/me/playlists`), which is proof each is in the library again. A playlist
+ * fetched by id (a page, an automation source, one Deckhand keeps by its
+ * link) proves nothing of the sort, so it keeps whatever `removedAt` it had.
  */
 export async function upsertPlaylists(
 	input: SimplifiedPlaylist[],
 	meId: string,
-	on?: Executor
+	on?: Executor,
+	{ listed = true }: { listed?: boolean } = {}
 ): Promise<void> {
 	const list = dedupeBy(input, (p) => p.id);
 	if (list.length === 0) return;
@@ -64,7 +70,7 @@ export async function upsertPlaylists(
 						uri: sql`coalesce(excluded.uri, ${playlists.uri})`,
 						externalUrls: sql`coalesce(nullif(excluded.external_urls, '{}'::jsonb), ${playlists.externalUrls})`,
 						// Seeing it in the listing again is proof it came back.
-						removedAt: null,
+						removedAt: listed ? null : sql`${playlists.removedAt}`,
 						updatedAt: sql`now()`
 					}
 				});

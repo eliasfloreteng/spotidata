@@ -32,6 +32,7 @@ use self::fetch::FetchError;
 use self::health::{Event, Registry};
 use self::sources::{Gate, LookupError, Source};
 use crate::push::Push;
+use crate::spotidata::Spotidata;
 use crate::store::Store;
 use crate::tags;
 
@@ -61,7 +62,9 @@ pub struct Wanted {
     pub album: String,
     /// 0 when unknown.
     pub duration_sec: u32,
-    /// Deezer's id, when the catalog is Deezer.
+    /// Deezer's id, for the sources that fetch from Deezer: found by the
+    /// ISRC (`catalog::details`), or the catalog's own for an older
+    /// download asked for from Deezer's catalog.
     pub deezer_id: Option<u64>,
     pub cover_url: Option<String>,
     /// Album-level tags.
@@ -121,6 +124,7 @@ struct Inner {
     music: PathBuf,
     staging: PathBuf,
     http: reqwest::Client,
+    spotidata: Spotidata,
     sources: Vec<Arc<dyn Source>>,
     gates: Vec<Arc<dyn Gate>>,
     health: Registry,
@@ -150,7 +154,9 @@ impl std::fmt::Display for NeedsYou {
 impl std::error::Error for NeedsYou {}
 
 impl Service {
-    pub async fn new(store: Store, music: PathBuf, data: &Path, push: Push) -> Result<Self> {
+    /// `spotidata` is where the catalog is searched: Spotify's, through
+    /// Spotidata's rate limiter.
+    pub async fn new(store: Store, music: PathBuf, data: &Path, push: Push, spotidata: Spotidata) -> Result<Self> {
         db::requeue_interrupted(&store).await?;
         let staging = data.join("downloads");
         // Leftovers of downloads a restart cut short.
@@ -175,6 +181,7 @@ impl Service {
                 music,
                 staging,
                 http,
+                spotidata,
                 health,
                 push,
                 ffmpeg,
@@ -233,7 +240,8 @@ impl Service {
             }))
         })
         .await?;
-        catalog::search(&self.inner.http, query, limit, &isrcs, &names).await
+        let found = self.inner.spotidata.search(query, limit).await?;
+        Ok(catalog::mark(found.into_iter().map(catalog::from_spotify).collect(), &isrcs, &names))
     }
 
     pub async fn list(&self) -> Result<Downloads> {
@@ -351,11 +359,6 @@ impl Service {
 
     pub async fn get(&self, id: i64) -> Result<Option<Download>> {
         db::get(&self.inner.store, id).await
-    }
-
-    /// The catalog's track for a recording, when it has it.
-    pub async fn by_isrc(&self, isrc: &str) -> Result<Option<CatalogTrack>> {
-        catalog::by_isrc(&self.inner.http, isrc).await
     }
 
     pub async fn retry(&self, id: i64) -> Result<Option<Download>> {

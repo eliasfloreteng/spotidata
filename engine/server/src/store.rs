@@ -22,6 +22,14 @@ use sqlx::types::Json;
 /// The schema the server keeps its state in.
 pub const SCHEMA: &str = "deckhand";
 
+/// Where the state is kept: a Postgres database, and the role to run as
+/// there, if not the one the URL signs in as.
+#[derive(Debug, Clone)]
+pub struct Database {
+    pub url: String,
+    pub role: Option<String>,
+}
+
 /// Bump to analyse every track again (a better analyser, a format fix).
 pub const ANALYSIS_RECIPE: i32 = 1;
 
@@ -138,10 +146,17 @@ pub struct Store {
 }
 
 impl Store {
-    /// Connects to the database at `url` and brings the `deckhand` schema up
-    /// to date.
-    pub async fn connect(url: &str) -> Result<Self> {
-        let options = PgConnectOptions::from_str(url).context("the database URL is not a Postgres URL")?;
+    /// Connects to the database `database` names and brings the `deckhand`
+    /// schema up to date.
+    pub async fn connect(database: &Database) -> Result<Self> {
+        let mut options =
+            PgConnectOptions::from_str(&database.url).context("the database URL is not a Postgres URL")?;
+        if let Some(role) = &database.role {
+            // Every statement runs as this role, which Spotidata grants only
+            // its views (db/sql/post/110_engine.sql): the engine cannot write
+            // outside its schema even by mistake.
+            options = options.options([("role", role.as_str())]);
+        }
         Self::connect_with(options).await
     }
 
@@ -426,12 +441,11 @@ impl Store {
     }
 
     /// Every file that holds a known recording, by ISRC. Of two files of
-    /// one recording, the one the scanner saw last.
+    /// one recording, the one the scanner saw last: the `recordings` view
+    /// decides, so Spotidata, which reads it too, picks the same file.
     pub async fn isrcs(&self) -> Result<HashMap<String, String>> {
         let rows: Vec<(String, String)> =
-            sqlx::query_as("select isrc, name from files where isrc is not null order by first_seen, name")
-                .fetch_all(&self.pool)
-                .await?;
+            sqlx::query_as("select isrc, file from recordings").fetch_all(&self.pool).await?;
         Ok(rows.into_iter().collect())
     }
 
@@ -556,5 +570,61 @@ pub(crate) mod tests {
         store.set_meta("spotify.paused", &true).await.unwrap();
         assert_eq!(store.meta::<bool>("spotify.paused").await.unwrap(), Some(true));
         assert_eq!(store.meta::<bool>("nothing").await.unwrap(), None);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn recordings_pick_the_file_seen_last(_: PgPoolOptions, options: PgConnectOptions) {
+        let store = store(options).await;
+        let hash = "a".repeat(64);
+        let analysed = |key: &str| format!(r#"{{"title":"A","bpm_x100":12400,"key":"{key}"}}"#);
+        for (name, seen_ms, key) in
+            [("b.flac", 2_000, "Abm"), ("a.flac", 3_000, "8A"), ("c.flac", 1_000, "")]
+        {
+            store.upsert(name, 1, 1, &hash, State::Ready, Some(&analysed(key))).await.unwrap();
+            sqlx::query("update files set first_seen = $2, isrc = 'GBDUW0000059', isrc_read = true where name = $1")
+                .bind(name)
+                .bind(at_ms(seen_ms))
+                .execute(store.pool())
+                .await
+                .unwrap();
+        }
+        assert_eq!(store.isrcs().await.unwrap().get("GBDUW0000059").map(String::as_str), Some("a.flac"));
+        let (file, camelot): (String, Option<String>) =
+            sqlx::query_as("select file, camelot from recordings").fetch_one(store.pool()).await.unwrap();
+        assert_eq!((file.as_str(), camelot.as_deref()), ("a.flac", Some("8A")));
+        let codes: Vec<Option<String>> =
+            sqlx::query_scalar("select camelot(k) from unnest(array['Abm', 'F#', 'Eb', 'E', '12B', '', 'X']) k")
+                .fetch_all(store.pool())
+                .await
+                .unwrap();
+        let codes: Vec<_> = codes.iter().map(Option::as_deref).collect();
+        assert_eq!(codes, [Some("1A"), Some("2B"), Some("5B"), Some("12B"), Some("12B"), None, None]);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn runs_as_the_role_it_is_given(_: PgPoolOptions, options: PgConnectOptions) {
+        // What Spotidata's db/sql/post/110_engine.sql sets up.
+        let admin = PgPoolOptions::new().connect_with(options.clone()).await.unwrap();
+        let database: String = sqlx::query_scalar("select current_database()").fetch_one(&admin).await.unwrap();
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+            "do $$ begin if not exists (select 1 from pg_roles where rolname = 'deckhand') then
+                 create role deckhand nologin; end if; end $$;
+             grant deckhand to current_user;
+             grant create on database \"{database}\" to deckhand;
+             create table public.secret(x int);"
+        )))
+        .execute(&admin)
+        .await
+        .unwrap();
+        let store = Store::connect_with(options.options([("role", "deckhand")])).await.unwrap();
+        let role: String = sqlx::query_scalar("select current_role::text").fetch_one(store.pool()).await.unwrap();
+        assert_eq!(role, "deckhand");
+        let owner: String =
+            sqlx::query_scalar("select nspowner::regrole::text from pg_namespace where nspname = 'deckhand'")
+                .fetch_one(store.pool())
+                .await
+                .unwrap();
+        assert_eq!(owner, "deckhand");
+        assert!(sqlx::query("select * from public.secret").execute(store.pool()).await.is_err());
     }
 }
