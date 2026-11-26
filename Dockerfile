@@ -24,7 +24,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 COPY --from=engine-build /deckhand-server /usr/local/bin/deckhand-server
 ENV DECKHAND_MUSIC=/music DECKHAND_DATA=/data DECKHAND_BIND=0.0.0.0:8080
 EXPOSE 8080
-HEALTHCHECK --interval=60s --timeout=5s CMD curl -fsS http://127.0.0.1:8080/api/health || exit 1
+# Traefik routes to the container only once it is healthy: check every two
+# seconds while it starts, so a deploy is a few seconds without the engine
+# rather than the first minute.
+HEALTHCHECK --interval=60s --timeout=5s --start-period=60s --start-interval=2s \
+    CMD curl -fsS http://127.0.0.1:8080/api/health || exit 1
 CMD ["deckhand-server"]
 
 # ---------------------------------------------------------------------- app
