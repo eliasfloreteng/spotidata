@@ -116,6 +116,14 @@ mod tests {
         Some(out.stdout)
     }
 
+    /// A small PNG to embed as the cover.
+    fn cover() -> Vec<u8> {
+        let image = image::RgbImage::from_fn(64, 64, |x, y| image::Rgb([x as u8 * 4, y as u8 * 4, 128]));
+        let mut png = std::io::Cursor::new(Vec::new());
+        image.write_to(&mut png, image::ImageFormat::Png).unwrap();
+        png.into_inner()
+    }
+
     fn pcm(path: &Path) -> Vec<u8> {
         ffmpeg(&["-i", path.to_str().unwrap(), "-f", "s32le", "-"]).unwrap()
     }
@@ -139,7 +147,7 @@ mod tests {
                 title: "Song".into(),
                 artists: vec!["Artist".into()],
                 isrc: Some("GBDUW0000059".into()),
-                cover: Some(std::fs::read(env!("CARGO_MANIFEST_DIR").to_owned() + "/../../apple/Deckhand/Assets.xcassets/AppIcon.appiconset/icon.png").unwrap()),
+                cover: Some(cover()),
                 ..tags::Meta::default()
             };
             tags::write(&flac, &meta).unwrap();

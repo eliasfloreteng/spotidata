@@ -11,4 +11,4 @@ pgdata
 auth-data
 *.tsbuildinfo
 # Built inside the image; a local build is not part of it.
-analyser/target
+engine/target

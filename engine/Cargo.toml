@@ -1,0 +1,44 @@
+# Deckhand's engine: the music folder, its analysis, downloads, the Spotify
+# playlists it keeps, and the API the Deckhand apps sync the DJ stick from.
+# `model` is the manifest it publishes; the Deckhand repository's
+# crates/core (the stick exporter, in the apps) takes it from here as a git
+# dependency.
+[workspace]
+resolver = "2"
+members = ["model", "server"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "GPL-2.0-or-later"
+publish = false
+
+[workspace.dependencies]
+deckhand-model = { path = "model" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+blake3 = "1"
+
+# rbxport's crates do the rekordbox formats and the analysis. Pinned, and to
+# the same rev as Deckhand's crates/core (its Cargo.toml): the exporter on the
+# phone reads the analysis blobs written here, and both sides share the shape
+# of `SourceTrack`. Bump both together (CLAUDE.md).
+# From the fork eliasfloreteng/rbxport, branch `batched-durability`.
+rbl-core = { git = "https://github.com/eliasfloreteng/rbxport", rev = "ebc7ef22698272ce1d0c7582b6dadba878189300" }
+rbl-export = { git = "https://github.com/eliasfloreteng/rbxport", rev = "ebc7ef22698272ce1d0c7582b6dadba878189300" }
+rbl-anlz = { git = "https://github.com/eliasfloreteng/rbxport", rev = "ebc7ef22698272ce1d0c7582b6dadba878189300" }
+rbl-analysis = { git = "https://github.com/eliasfloreteng/rbxport", rev = "ebc7ef22698272ce1d0c7582b6dadba878189300" }
+rbl-audio = { git = "https://github.com/eliasfloreteng/rbxport", rev = "ebc7ef22698272ce1d0c7582b6dadba878189300" }
+rbl-db = { git = "https://github.com/eliasfloreteng/rbxport", rev = "ebc7ef22698272ce1d0c7582b6dadba878189300" }
+rbl-index = { git = "https://github.com/eliasfloreteng/rbxport", rev = "ebc7ef22698272ce1d0c7582b6dadba878189300" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4
+strip = "symbols"
+
+[profile.dev.package."*"]
+# SQLCipher, symphonia and the DSP crates are unusable unoptimised.
+opt-level = 2
