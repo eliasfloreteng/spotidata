@@ -130,7 +130,7 @@ export const getArtistTopTracks = (id: string) =>
 
 // ------------------------------------------------------------ playlist writes
 //
-// The only endpoints in this file that change anything on Spotify. Both need
+// The only endpoints in this file that change anything on Spotify. All need
 // `playlist-modify-public`/`playlist-modify-private`, which an early grant does
 // not carry — the app compares the stored scope against the configured one and
 // asks for a re-authorization.
@@ -152,6 +152,17 @@ export const addPlaylistItems = (id: string, uris: string[]) =>
 	spotifyGet<{ snapshot_id: string }>(`/playlists/${id}/tracks`, {
 		method: 'POST',
 		body: { uris }
+	});
+
+/**
+ * Removes every occurrence of up to 100 uris. Only Sortify calls it, when the
+ * user un-ticks a playlist a song is in — never an automation, which only
+ * appends. Safe to resend: removing what is already gone changes nothing.
+ */
+export const removePlaylistItems = (id: string, uris: string[]) =>
+	spotifyGet<{ snapshot_id: string }>(`/playlists/${id}/tracks`, {
+		method: 'DELETE',
+		body: { tracks: uris.map((uri) => ({ uri })) }
 	});
 
 export const search = (q: string, types: string[], limit = 20) =>

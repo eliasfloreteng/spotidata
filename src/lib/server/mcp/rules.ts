@@ -175,6 +175,20 @@ plus \`'seeded'\` rows that were only ever recorded as seen). None of them
 describe the library — an automation's destination is an ordinary playlist and
 is already in \`playlists\`/\`playlist_tracks\` like any other.
 
+Sortify (the iOS app that sorts liked songs into playlists) keeps its state in
+the \`sortify_*\` tables. Its sort decisions key on a *song*, one level looser
+than a recording — \`spotidata.sortify_song_key(canonical_tracks.title,
+canonical_tracks.id, canonical_tracks.primary_artist_id)\` — so join through that
+function, not on a canonical id. \`sortify_reviewed_songs\` is what the user has
+been through, \`sortify_dismissals\` a suggestion turned down (never offered
+again), \`sortify_verdicts\` the model's rating of a song for a playlist
+(\`confidence\` 1–3; NULL is judged and left out), and
+\`sortify_playlist_overrides\` a playlist switched in or out of sorting against
+its default (monthly, Spotify-made and two-years-idle playlists are out by
+default). "Which playlists does Sortify sort into" is not a column: it is that
+default plus the override, computed in the app (\`sortify/catalog.ts\`).
+\`sortify_ai_requests\` logs every OpenRouter call with its cost in USD.
+
 ## 9. Incomplete rows are normal
 
 \`detail_level = 'simplified'\` means the row was built from an object nested

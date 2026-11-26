@@ -56,6 +56,19 @@ const SECTIONS: { title: string; tables: string[] }[] = [
 		]
 	},
 	{
+		title: 'Sortify — the playlist sorter: its eligibility rules, verdicts and decisions',
+		tables: [
+			'sortify_playlist_overrides',
+			'sortify_reviewed_songs',
+			'sortify_dismissals',
+			'sortify_verdicts',
+			'sortify_asked_songs',
+			'sortify_card_suggestions',
+			'sortify_ideas',
+			'sortify_ai_requests'
+		]
+	},
+	{
 		title: 'Operational — sync bookkeeping, rarely the answer to a question',
 		tables: [
 			'sync_runs',
