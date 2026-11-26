@@ -1,9 +1,6 @@
 //! Deckhand's server: watches the music folder, analyses new tracks, gets
-//! music, and serves the library to the phone that syncs the DJ stick.
-//!
-//! It runs as its own process on a home server (`main.rs`), or inside the
-//! app on the phone itself (`deckhand-core`), where the phone holds the
-//! music folder and does the searching, downloading and analysis.
+//! music, and serves the library to the apps that sync the DJ stick. It runs
+//! on the home server (`main.rs`).
 
 mod analyse;
 mod api;
@@ -33,12 +30,12 @@ pub struct Config {
     pub data: PathBuf,
     /// Tracks analysed at once.
     pub analysis_threads: usize,
-    /// Spotidata's address, for an account's playlists; without it,
-    /// playlists are kept by their link only.
-    pub spotidata: Option<String>,
-    /// How often the music folder is looked at for changes.
-    pub scan_every: Duration,
+    /// Spotidata's address, which Spotify is read through.
+    pub spotidata: String,
 }
+
+/// How often the music folder is looked at for changes.
+const SCAN_EVERY: Duration = Duration::from_secs(20);
 
 /// A running server: its background work started, its API ready to serve.
 #[derive(Clone)]
@@ -51,7 +48,7 @@ impl Server {
     /// download queue and the Spotify sync. Call it inside a tokio runtime,
     /// which keeps them running.
     pub fn start(config: Config) -> Result<Self> {
-        let Config { music, data, analysis_threads, spotidata, scan_every } = config;
+        let Config { music, data, analysis_threads, spotidata } = config;
         std::fs::create_dir_all(&data)?;
         std::fs::create_dir_all(&music)?;
 
@@ -71,7 +68,7 @@ impl Server {
                     Ok(false) => {}
                     Err(e) => warn!(error = %e, "scan failed"),
                 }
-                std::thread::sleep(scan_every);
+                std::thread::sleep(SCAN_EVERY);
             })?;
         }
         worker::spawn(analysis_threads, music.clone(), store.clone(), blobs.clone());
@@ -97,7 +94,7 @@ impl Server {
         }
         let downloads = downloads::Service::new(store.clone(), music.clone(), &data, push.clone())?;
         downloads.spawn();
-        let spotify = spotify::Spotify::new(store.clone(), music.clone(), downloads.clone(), spotidata.as_deref())?;
+        let spotify = spotify::Spotify::new(store.clone(), music.clone(), downloads.clone(), &spotidata)?;
         spotify.spawn();
 
         Ok(Self {

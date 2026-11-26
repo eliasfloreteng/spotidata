@@ -1,11 +1,8 @@
-//! Where Spotify is read from. With an account, as Spotidata serves it:
-//! Spotidata holds the account's sign-in and the rate limiter every Spotify
-//! call of the house goes through, and reads the playlists live
-//! (`GET /api/playlists`, `/api/playlists/{id}`, `/api/playlists/{id}/info`
-//! for one added by its link). Without one (a library on the phone), as
-//! Spotify shows anyone (`public.rs`): playlists added by their link only.
+//! Where Spotify is read from: Spotidata, which holds the account's sign-in
+//! and the rate limiter every Spotify call of the house goes through, and
+//! reads the playlists live (`GET /api/playlists`, `/api/playlists/{id}`,
+//! `/api/playlists/{id}/info` for one added by its link).
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
@@ -79,52 +76,6 @@ impl std::fmt::Display for Gone {
 impl std::error::Error for Gone {}
 
 #[derive(Clone)]
-pub enum Remote {
-    /// The account's playlists, and any other by its link.
-    Spotidata(Spotidata),
-    /// No account: playlists added by their link.
-    Public(Arc<super::public::Public>),
-}
-
-impl Remote {
-    /// Whether there is an account whose own playlists are listed.
-    pub fn has_account(&self) -> bool {
-        matches!(self, Self::Spotidata(_))
-    }
-
-    /// The account's playlists; none without one.
-    pub async fn playlists(&self) -> Result<Vec<RemotePlaylist>> {
-        match self {
-            Self::Spotidata(s) => s.playlists().await,
-            Self::Public(_) => Ok(Vec::new()),
-        }
-    }
-
-    pub async fn playlist(&self, id: &str) -> Result<RemotePlaylistTracks> {
-        match self {
-            Self::Spotidata(s) => s.playlist(id).await,
-            Self::Public(p) => p.playlist(id).await,
-        }
-    }
-
-    /// Any playlist, without its tracks.
-    pub async fn info(&self, id: &str) -> Result<RemotePlaylist> {
-        match self {
-            Self::Spotidata(s) => s.info(id).await,
-            Self::Public(p) => p.info(id).await,
-        }
-    }
-
-    /// The client, for following a short link.
-    pub fn http(&self) -> &reqwest::Client {
-        match self {
-            Self::Spotidata(s) => &s.http,
-            Self::Public(p) => p.http(),
-        }
-    }
-}
-
-#[derive(Clone)]
 pub struct Spotidata {
     base: String,
     http: reqwest::Client,
@@ -135,6 +86,12 @@ impl Spotidata {
         Self { base: base.trim_end_matches('/').to_owned(), http }
     }
 
+    /// The client, for following a short link.
+    pub fn http(&self) -> &reqwest::Client {
+        &self.http
+    }
+
+    /// The account's playlists.
     pub async fn playlists(&self) -> Result<Vec<RemotePlaylist>> {
         self.get("/api/playlists").await
     }

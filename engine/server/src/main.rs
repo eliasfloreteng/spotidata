@@ -1,10 +1,10 @@
 //! Deckhand's server as its own process: `DECKHAND_MUSIC`, `DECKHAND_DATA`
-//! and `DECKHAND_BIND` say where; see `lib.rs`.
+//! and `DECKHAND_BIND` say where, `DECKHAND_SPOTIDATA` (required) where
+//! Spotidata is; see `lib.rs`.
 
 use std::path::PathBuf;
-use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use tracing::info;
 
 fn env(name: &str, default: &str) -> String {
@@ -20,12 +20,15 @@ async fn main() -> Result<()> {
         .init();
 
     let bind = env("DECKHAND_BIND", "0.0.0.0:8080");
+    let spotidata = std::env::var("DECKHAND_SPOTIDATA")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .context("DECKHAND_SPOTIDATA must be set to Spotidata's address, which Spotify is read through")?;
     let server = deckhand_server::Server::start(deckhand_server::Config {
         music: PathBuf::from(env("DECKHAND_MUSIC", "/music")),
         data: PathBuf::from(env("DECKHAND_DATA", "/data")),
         analysis_threads: env("DECKHAND_ANALYSIS_THREADS", "2").parse().unwrap_or(2),
-        spotidata: std::env::var("DECKHAND_SPOTIDATA").ok(),
-        scan_every: Duration::from_secs(20),
+        spotidata,
     })?;
 
     let listener = tokio::net::TcpListener::bind(&bind).await?;

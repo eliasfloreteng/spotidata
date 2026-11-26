@@ -27,7 +27,6 @@
 pub mod db;
 pub mod link;
 pub mod m3u;
-mod public;
 pub mod remote;
 
 use std::collections::{HashMap, HashSet};
@@ -43,7 +42,7 @@ use tokio::sync::Notify;
 use tracing::{info, warn};
 
 use self::db::Event;
-use self::remote::{Gone, Remote, RemotePlaylistTracks, RemoteTrack};
+use self::remote::{Gone, RemotePlaylistTracks, RemoteTrack, Spotidata};
 use crate::downloads::catalog::LibraryNames;
 use crate::store::{now_ms, State as FileState, Store};
 
@@ -65,7 +64,7 @@ struct Inner {
     store: Store,
     music: PathBuf,
     downloads: crate::downloads::Service,
-    remote: Option<Remote>,
+    remote: Spotidata,
     wake: Notify,
     checking: AtomicBool,
     /// Read only when asked.
@@ -99,23 +98,15 @@ struct Found {
 }
 
 impl Spotify {
-    /// `spotidata` is Spotidata's address, for an account's playlists;
-    /// without it, playlists are kept by their link only, read as Spotify
-    /// shows anyone.
-    pub fn new(store: Store, music: PathBuf, downloads: crate::downloads::Service, spotidata: Option<&str>) -> Result<Self> {
+    /// `spotidata` is Spotidata's address, which Spotify is read through.
+    pub fn new(store: Store, music: PathBuf, downloads: crate::downloads::Service, spotidata: &str) -> Result<Self> {
         db::migrate(&store)?;
         let http = reqwest::Client::builder()
             .user_agent(concat!("deckhand/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(10))
             .build()
             .unwrap_or_default();
-        let remote = Some(match spotidata.filter(|s| !s.is_empty()) {
-            Some(base) => Remote::Spotidata(remote::Spotidata::new(base, http)),
-            None => {
-                info!("DECKHAND_SPOTIDATA is not set; Spotify playlists are kept by their link, without an account");
-                Remote::Public(Arc::new(public::Public::new(http)))
-            }
-        });
+        let remote = Spotidata::new(spotidata, http);
         let paused = store.meta(PAUSED_KEY)?.as_deref() == Some("1");
         Ok(Self {
             inner: Arc::new(Inner {
@@ -233,14 +224,11 @@ impl Spotify {
         let (checked_ms, error) = lock(&self.inner.last).clone();
         let paused = self.paused();
         Ok(Status {
-            configured: self.inner.remote.is_some(),
-            account: self.inner.remote.as_ref().is_some_and(Remote::has_account),
             checking: self.inner.checking.load(Ordering::Relaxed),
             checked_ms,
             error,
             paused,
-            next_check_ms: (!paused && self.inner.remote.is_some())
-                .then(|| now_ms() + i64::try_from(self.until_check().as_millis()).unwrap_or(0)),
+            next_check_ms: (!paused).then(|| now_ms() + i64::try_from(self.until_check().as_millis()).unwrap_or(0)),
             playlists,
         })
     }
@@ -251,11 +239,9 @@ impl Spotify {
         let store = &self.inner.store;
         let Some(row) = db::get(store, id)? else { return Ok(None) };
         if row.read_snapshot.as_deref() != Some(row.snapshot.as_str()) && !row.gone {
-            if let Some(remote) = &self.inner.remote {
-                match remote.playlist(id).await {
-                    Ok(read) => self.store_read(&row, &read)?,
-                    Err(e) => db::set_error(store, id, Some(&e.to_string()))?,
-                }
+            match self.inner.remote.playlist(id).await {
+                Ok(read) => self.store_read(&row, &read)?,
+                Err(e) => db::set_error(store, id, Some(&e.to_string()))?,
             }
         }
         let Some(row) = db::get(store, id)? else { return Ok(None) };
@@ -285,9 +271,7 @@ impl Spotify {
     /// whether or not the account lists it. `Err` inside says why not, for
     /// you to read.
     pub async fn add(&self, link: &str) -> Result<Result<Playlist, String>> {
-        let Some(remote) = &self.inner.remote else {
-            return Ok(Err("The server isn't set up to read Spotify.".to_owned()));
-        };
+        let remote = &self.inner.remote;
         let id = match (link::parse(link), link::short(link)) {
             (Some(id), _) => id,
             (None, Some(url)) => match link::follow(remote.http(), url).await? {
@@ -299,13 +283,9 @@ impl Spotify {
         let p = match remote.info(&id).await {
             Ok(p) => p,
             Err(e) if e.is::<Gone>() => {
-                return Ok(Err(if remote.has_account() {
-                    "Spotify won't show this playlist to the server. Its own mixes and editorial \
+                return Ok(Err("Spotify won't show this playlist to the server. Its own mixes and editorial \
                      playlists can't be read by apps; a copy of one in your library can."
-                } else {
-                    "Spotify doesn't show this playlist to anyone without an account: it's private, or gone."
-                }
-                .to_owned()));
+                    .to_owned()));
             }
             Err(e) => return Err(e),
         };
@@ -382,9 +362,8 @@ impl Spotify {
     /// Reads the account's playlists, and the tracks of the kept ones that
     /// changed.
     async fn check(&self) {
-        let Some(remote) = &self.inner.remote else { return };
         self.inner.checking.store(true, Ordering::Relaxed);
-        let result = self.read(remote).await;
+        let result = self.read(&self.inner.remote).await;
         self.inner.checking.store(false, Ordering::Relaxed);
         let (was, now) = {
             let mut last = lock(&self.inner.last);
@@ -411,7 +390,7 @@ impl Spotify {
         }
     }
 
-    async fn read(&self, remote: &Remote) -> Result<()> {
+    async fn read(&self, remote: &Spotidata) -> Result<()> {
         let store = &self.inner.store;
         let list = remote.playlists().await?;
         db::replace_list(store, &list)?;
