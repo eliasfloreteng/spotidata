@@ -9,6 +9,9 @@ docs
 # ship it into the build context. Same for the OAuth proxy's state.
 pgdata
 auth-data
+# The same for the engine's data dir (blobs, staged downloads) and its APNs key.
+deckhand-data
+secrets
 *.tsbuildinfo
 # Built inside the image; a local build is not part of it.
 engine/target

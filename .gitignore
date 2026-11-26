@@ -45,3 +45,6 @@ CLAUDE.local.md
 
 auth-data
 /engine/target
+# The engine's data dir and APNs key, where a deployment bind-mounts them.
+/deckhand-data
+/secrets
