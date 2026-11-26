@@ -71,6 +71,9 @@
 
 		<div class="actions">
 			<SpotifyLink kind="track" id={t.representativeTrackId} />
+			<a class="radio" href="/radio/{t.representativeTrackId}" title="The playlist Spotify builds from this track">
+				Song radio →
+			</a>
 		</div>
 	</div>
 </header>
@@ -456,6 +459,23 @@
 	}
 	.actions {
 		margin-top: 14px;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		flex-wrap: wrap;
+	}
+	.radio {
+		padding: 7px 14px;
+		border-radius: 999px;
+		border: 1px solid var(--hairline-strong);
+		background: var(--bg-elevated);
+		font-size: 0.84rem;
+		color: var(--text-muted);
+		transition: color 0.15s ease, border-color 0.15s ease;
+	}
+	.radio:hover {
+		color: var(--text);
+		border-color: rgba(255, 255, 255, 0.2);
 	}
 	.explain {
 		margin: 0 0 var(--gap);

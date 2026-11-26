@@ -2,6 +2,7 @@ import { DEFAULT_LIMIT, MAX_LIMIT, runReadOnly, SqlError } from './query.ts';
 import { businessRules, KEY_RULES, serverInstructions, SPOTIFY_API_RULES } from './rules.ts';
 import { describeSchema } from './schema.ts';
 import { callSpotify, SPOTIFY_METHODS } from './spotify.ts';
+import { callSongRadio } from './radio.ts';
 import { APP_VERSION } from '../../version.ts';
 
 /**
@@ -132,6 +133,35 @@ ${SPOTIFY_API_RULES}`,
 				idempotentHint: false,
 				openWorldHint: true
 			}
+		},
+		{
+			name: 'song_radio',
+			title: "Get a song's Spotify radio",
+			description: `The Spotify radio for one track — the 50-track "<Song> Radio" playlist Spotify builds from it — with each track's ISRC and what the library holds of it.
+
+spotify_api cannot do this: the Web API hides every Spotify-owned playlist from this app (search returns null in their place, and GET /playlists/{id} answers 404 for one), and nothing in it says which playlist is a song's radio. This reads Spotify's own web-player API anonymously, so the radio is the one anyone would get, not one tuned to the account.
+
+Each track carries \`canonical_id\` (the recording, matched by Spotify id or ISRC; null when the archive has never seen it), \`in_library\`, \`liked\` and \`plays\` — so "what in this radio don't I have yet" needs no follow-up query.`,
+			inputSchema: {
+				type: 'object',
+				properties: {
+					track: {
+						type: 'string',
+						description:
+							'The seed track: a Spotify track id, a spotify:track: URI or an open.spotify.com/track link. Find one with `query` against spotify_tracks, or with spotify_api /search.'
+					}
+				},
+				required: ['track'],
+				additionalProperties: false
+			},
+			annotations: {
+				title: "Get a song's Spotify radio",
+				readOnlyHint: true,
+				destructiveHint: false,
+				// Spotify regenerates a radio, so the same call can answer differently.
+				idempotentHint: false,
+				openWorldHint: true
+			}
 		}
 	];
 }
@@ -175,6 +205,13 @@ async function callTool(name: string, args: Record<string, unknown>, timezone: s
 				args.query as Record<string, string | number> | undefined,
 				args.body
 			);
+			return text(body, isError);
+		}
+		case 'song_radio': {
+			if (typeof args.track !== 'string' || args.track.trim() === '') {
+				return text('The `track` argument is required: a Spotify track id, URI or link.', true);
+			}
+			const { text: body, isError } = await callSongRadio(args.track);
 			return text(body, isError);
 		}
 		default:

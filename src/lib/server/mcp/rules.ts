@@ -43,7 +43,11 @@ playlists, history): it is faster and costs nothing. Use this for what the
 archive cannot answer — the live state of the account, the catalog beyond it,
 or a change. Calls share the background sync's rate limit, so do not page
 through thousands of items here. The app's grant bounds what is reachable; a
-403 usually means a scope it was never given.`;
+403 usually means a scope it was never given.
+
+Spotify-owned playlists (radios, editorial playlists, Discover Weekly) are
+hidden from this app: search returns null in their place and fetching one by
+id is a 404. For a song's radio, use \`song_radio\` instead.`;
 
 function coreRules(
 	timezone: string,

@@ -366,6 +366,21 @@ its link, rather than from your library, this way. Both go
 through the same rate limiter as the sync, and answer 503 with `Retry-After`
 while Spotify wants a pause.
 
+**Song radio comes from the web player, not the Web API.** Since November
+2024 the Web API hides every Spotify-owned playlist from an app like this one:
+search returns `null` in their place, `GET /playlists/{id}` answers 404, and
+nothing says which playlist is a song's radio anyway. Spotify's internal API
+(`spclient`) knows both — `inspiredby-mix/v2/seed_to_playlist` names the radio,
+`playlist/v2/playlist/{id}` lists its 50 tracks — and it accepts the anonymous
+token the embed widget ships in its `__NEXT_DATA__`. So `spotify/web-player.ts`
+scrapes that token (no cookie, no account) and the radio is the one anyone
+would get, not one tuned to this account. The tracks are then filled in by the
+ordinary `/tracks?ids=` (one request per 50, through the bucket) and marked
+with what the library holds, matched on the ISRC so a different release of a
+song you keep still counts. Nothing is stored; Spotify regenerates radios.
+It is at `/radio/<track id>` (linked from every track page), at
+`/api/radio/<track id>` as JSON, and as the MCP tool `song_radio`.
+
 ## Traps this codebase has already hit
 
 Each of these failed silently rather than loudly, so they have guards:
