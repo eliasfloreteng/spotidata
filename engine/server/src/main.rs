@@ -4,7 +4,10 @@
 //! (required) where Spotidata is; see `lib.rs`.
 //!
 //! - `deckhand-server` serves, after bringing the schema up to date;
-//! - `deckhand-server migrate` only brings the schema up to date.
+//! - `deckhand-server migrate` only brings the schema up to date;
+//! - `deckhand-server import-sqlite <deckhand.db> [--keep-going]` copies the
+//!   SQLite database the server kept before into an empty schema (see
+//!   `import_sqlite.rs`).
 
 use std::path::PathBuf;
 
@@ -39,7 +42,19 @@ async fn main() -> Result<()> {
             info!("the deckhand schema is up to date");
             Ok(())
         }
-        _ => bail!("usage: deckhand-server [migrate]"),
+        ["import-sqlite", rest @ ..] => {
+            let keep_going = rest.contains(&"--keep-going");
+            let [sqlite] = rest.iter().filter(|a| !a.starts_with("--")).collect::<Vec<_>>()[..] else {
+                bail!("usage: deckhand-server import-sqlite <deckhand.db> [--keep-going]");
+            };
+            let options = deckhand_server::import_sqlite::Options {
+                sqlite: PathBuf::from(sqlite),
+                blobs: Some(PathBuf::from(env("DECKHAND_DATA", "/data")).join("blobs")),
+                keep_going,
+            };
+            deckhand_server::import_sqlite::run(&database()?, options).await
+        }
+        _ => bail!("usage: deckhand-server [migrate | import-sqlite <deckhand.db> [--keep-going]]"),
     }
 }
 

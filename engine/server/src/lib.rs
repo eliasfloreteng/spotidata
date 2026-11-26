@@ -6,6 +6,7 @@ mod analyse;
 mod api;
 mod blobs;
 mod downloads;
+pub mod import_sqlite;
 mod library;
 mod push;
 mod rekordbox;

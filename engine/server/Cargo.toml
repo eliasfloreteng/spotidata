@@ -17,7 +17,8 @@ path = "src/main.rs"
 [dependencies]
 deckhand-model = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true }
+# Exact floats: the mirrors' health read from the old database keeps every digit.
+serde_json = { workspace = true, features = ["float_roundtrip"] }
 tracing = { workspace = true }
 blake3 = { workspace = true }
 rbl-core = { workspace = true }
