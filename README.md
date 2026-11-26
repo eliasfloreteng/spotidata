@@ -1,10 +1,14 @@
 # Spotidata
 
 A single-user monolith that ingests a Spotify account into local Postgres and
-presents it as a dark, chart-heavy dashboard, resyncing in the background.
+presents it as a dark, chart-heavy dashboard, resyncing in the background. It
+is also the whole backend of [Sortify](https://github.com/eliasfloreteng/sortify)
+(`/api/sortify`) and of [Deckhand](https://github.com/eliasfloreteng/deckhand),
+the DJ-stick syncer, whose engine (`engine/`, Rust) runs beside the app in the
+same stack and the same database.
 
 Bun · TypeScript · SvelteKit 2 (Svelte 5 runes) · Postgres 18 · Drizzle v1 ·
-Graphile Worker · d3 v7.
+Graphile Worker · d3 v7 · Rust (the engine).
 
 ![The dashboard: library totals, then a per-year calendar of tracks added](docs/screenshots/dashboard-hero.png)
 
@@ -59,6 +63,7 @@ exception.
 | `bun run db:backup -- --full` | `pg_dump` alongside the grant |
 | `bun run db:generate` | New migration + guard against touching the queue schema |
 | `bun scripts/sortify-recall.ts [--model]` | Sortify's held-out recall test |
+| `cd engine && cargo test` | The engine's tests (need a Postgres in `DATABASE_URL`, see Deckhand's engine) |
 
 ## Design decisions worth knowing
 
@@ -177,7 +182,8 @@ rather than when the automation was created. Runs happen hourly, after every
 completed sync, and inline when the button is pressed.
 
 **`/dj` finds the next record.** The pool is every library recording
-rbxport measured a tempo and a key for (below). Browse it by a Camelot wheel and a
+Deckhand has downloaded, with the tempo and key of the file itself (below).
+Browse it by a Camelot wheel and a
 tempo strip that each count under every filter but their own, pick a record
 to start a set, and every suggestion after that is ranked against the last
 track: how safe the key move is, how little pitching it takes, then, lightly,
@@ -186,25 +192,20 @@ harmonic or with the +2/+7 energy moves); play count only ranks. Tempo is
 matched with octaves folded, because thirty seconds of an 87 BPM record can
 read as 174 and a DJ mixes across that anyway.
 
-**rbxport measures the whole library.** Spotify withdrew `/audio-features`, so
-tempo and key come from [rbxport](https://github.com/eliasfloreteng/rbxport)'s
-analysis — the same crates, at the same rev, that Deckhand analyses the stick
-with.
-`analyser/` is a small Rust binary around them (`rbx-analyse <file>…`, JSON
-lines out), built into the image. The audio is Deezer's 30-second preview,
-found by ISRC (else by title, first artist and length, strictly), downloaded,
-measured and thrown away; `track_analysis` keeps the numbers, keyed by ISRC.
-`analyse:tick` is a self-chaining job paced at four Deezer requests a second,
-through a token bucket in Postgres (`external_limiters`) like Spotify's. It
-keeps no bookkeeping of its own: `/sync` reads its progress off
-`track_analysis`, the limiter and the queued job, so the page cannot disagree
-with what was measured, and offers a retry for the recordings Deezer had no
-preview of.
-
-Against rekordbox's analysis of the full files, on 49 tracks: the preview's
-tempo agrees within 1 BPM for 86% (94% with octaves folded), and its key
-exactly for 73%, on a neighbouring code for 90%. A low tempo confidence is
-where the misses are, and the DJ tab marks it.
+**Tempo and key come from the real files.** Spotify withdrew
+`/audio-features`, so the numbers are Deckhand's: the engine analyses every
+file it downloads into the music folder with
+[rbxport](https://github.com/eliasfloreteng/rbxport), and where rekordbox on
+the Mac has analysed the same file, uses rekordbox's numbers instead.
+`deckhand.recordings` is one row per ISRC — the file, its state, `bpm`,
+`camelot` and whose `analysis` it is — and the DJ tab, the track page and
+Sortify join it to `canonical_tracks` on the ISRC. The engine owns that view,
+and reads it itself to pick between two files of one recording, so both sides
+always mean the same file. A recording that is not downloaded has no tempo or
+key at all: an earlier version measured Deezer's 30-second preview of every
+recording, and those numbers were deleted rather than kept as a fallback, since
+a preview is not the record on the stick. How much of the library is
+downloaded is on the dashboard.
 
 Which keys may follow which is defined once, in TypeScript (`movesFrom` in
 `utils/music.ts`), and handed to Postgres as a table — so the suggestions and
@@ -236,7 +237,9 @@ Protocol: one `query` tool running read-only SQL, plus `describe_schema` and
 `get_business_rules`. Read-only is enforced by Postgres — every statement runs
 in a `BEGIN READ ONLY` transaction under `SET LOCAL ROLE spotidata_mcp`, a role
 granted `SELECT` and nothing else, which also puts the OAuth tables out of
-reach. Statement-inspecting allowlists were not considered: they have to be
+reach. It reads the engine's `deckhand` tables too (the downloaded files,
+their tempo and key, the downloads), but not the phones it notifies or the
+download sources' passes. Statement-inspecting allowlists were not considered: they have to be
 right about every way of spelling a write, forever.
 
 The interesting half is the *metadata*. A model pointed at this schema will
@@ -363,19 +366,6 @@ device, and bounces straight back to Sortify's URL scheme. That redirect
 (`reelsforspotify://callback`) must be registered on the Spotify app; the code
 it carries is thrown away.
 
-**`/api/playlists` and `/api/playlists/{id}` feed
-[Deckhand](https://github.com/eliasfloreteng/deckhand)**, which keeps a lossless
-copy of the playlists you pick on a DJ stick. They read Spotify live, not the
-mirror, because the mirror is twelve hours old at worst and a track added in
-the afternoon should be on the stick that evening. The list carries each
-playlist's `snapshot_id`; Deckhand asks for a playlist's tracks (with ISRCs)
-only when that changed, so a check costs one request per 50 playlists.
-`/api/playlists/{id}/info` describes any playlist Spotify shows the app, by
-id, as the list would (one request): Deckhand checks a playlist you added by
-its link, rather than from your library, this way. Both go
-through the same rate limiter as the sync, and answer 503 with `Retry-After`
-while Spotify wants a pause.
-
 **Song radio comes from the web player, not the Web API.** Since November
 2024 the Web API hides every Spotify-owned playlist from an app like this one:
 search returns `null` in their place, `GET /playlists/{id}` answers 404, and
@@ -390,6 +380,175 @@ with what the library holds, matched on the ISRC so a different release of a
 song you keep still counts. Nothing is stored; Spotify regenerates radios.
 It is at `/radio/<track id>` (linked from every track page), at
 `/api/radio/<track id>` as JSON, and as the MCP tool `song_radio`.
+
+## Deckhand's engine
+
+[Deckhand](https://github.com/eliasfloreteng/deckhand) keeps a DJ USB stick in
+sync with a music folder, from an iPhone or a Mac. The engine is its server:
+it watches the folder (`/home/pi/music` on the Pi, synced to the stick by
+Syncthing), analyses new tracks with rbxport (or takes rekordbox's analysis
+when the Mac sends it), downloads lossless copies of the tracks you ask for and
+of the Spotify playlists you keep, and serves the library, the audio and the
+analysis to the apps. It is `engine/`, a Cargo workspace: `server/` is the
+binary (`deckhand-server`), `model/` the manifest the apps read, which
+Deckhand's `crates/core` (the stick exporter) takes from this repository as a
+git dependency.
+
+It runs as the stack's second service, from the same Dockerfile
+(`--target engine`), and keeps its state in the same Postgres, in a schema of
+its own, `deckhand`, which it creates and migrates at startup
+(`engine/server/migrations/`, sqlx). It runs every statement as the role
+`deckhand` (`DECKHAND_DATABASE_ROLE`), which `db/sql/post/110_engine.sql`
+creates and grants nothing of Spotidata's but two views. So the line between
+the two is Postgres's to hold:
+
+- **The engine reads Spotidata, read-only.** Every playlist and its tracks is
+  already in `playlists` / `playlist_tracks`; the engine reads the ones you
+  keep through `spotidata.engine_playlists` and
+  `spotidata.engine_playlist_tracks` instead of keeping a copy. What it keeps
+  is its own: which playlists are kept, which download got which recording,
+  what keeping them did (activity), the `.m3u8` it wrote for each.
+- **Spotidata reads the engine.** `deckhand.recordings` (above) for tempo,
+  key and what is downloaded; the MCP role may read the engine's tables but
+  its phones (`devices`) and `meta`, which holds the sources' passes.
+- **Spotify only through Spotidata.** The engine has no Spotify sign-in. What
+  needs Spotify goes through Spotidata's `/api/engine/*`, and so through
+  `spotifyFetch` and the one rate limiter:
+
+| Route | |
+|---|---|
+| `GET /api/engine/search?q=&limit=` | Spotify's catalog, for Get Music in the apps |
+| `POST /api/engine/playlists/check` | `{ids, force}`: the check of the kept playlists, below |
+| `PUT /api/engine/playlists/{id}` | Fetch a playlist (one kept by its link) into the tables, as a page fetches an entity |
+
+### Routing
+
+Both services answer on `spotidata.eliasf.se`. The engine's paths
+(`/api/library`, `/api/music/…`, …) would collide with Spotidata's own, so it
+lives under a prefix: Traefik sends `/deckhand/*` to the engine with the prefix
+stripped (a `stripprefix` middleware, behind `tailnet-only@file` like the rest),
+and the apps' server address is `https://spotidata.eliasf.se/deckhand`. The
+engine itself serves from `/`; inside the stack Spotidata is
+`http://spotidata:3000`.
+
+### The engine's API
+
+| Route | |
+|---|---|
+| `GET /api/health` | `ok` |
+| `GET /api/library` | the manifest (gzip, with an ETag) |
+| `GET /api/music/{name}`, `/api/blobs/{hash}` | a file of the folder (with ranges), an analysis or artwork blob (immutable) |
+| `PUT /api/rekordbox` | a snapshot of rekordbox's library from the Mac (tar) |
+| `GET /api/catalog/search?q=` | Spotify's catalog, with what the folder already holds marked |
+| `GET`/`POST /api/downloads`, `PUT …/settings`, `POST …/{id}/retry`, `DELETE …/{id}` | the queue, sources and settings / ask for a track |
+| `POST /api/imports?name=` | an audio file from the phone, as the body |
+| `POST /api/challenges/{id}`, `POST /api/devices` | a solved check's pass / a phone to notify |
+| `GET`/`PUT /api/spotify`, `POST …/check`, `GET …/activity` | the playlists and the checks, pause, check now, what they did |
+| `POST /api/spotify/playlists`, `GET`/`PUT …/{id}`, `POST …/{id}/check` | keep one by its link / its tracks, keep or stop / read it again |
+
+### Downloads
+
+Get Music searches Spotify's catalog (`/api/catalog/search`), so a result
+carries the library's own ids and ISRCs, and marks what the folder holds (by
+ISRC tag, else title and artist). Asking for a track (`POST /api/downloads`)
+queues it, and the engine:
+
+1. finds the recording on Deezer by its ISRC, for the Deezer id the Deezer
+   sources fetch by and the tags and 1000 px cover it files the track with;
+2. asks every source at once whether it has the recording (by ISRC, else by
+   title, artist and duration), then tries them best first;
+3. streams the file, dropping a mirror that stalls or crawls while another
+   could do better, and falls back to the next mirror and source;
+4. checks that it is lossless and the right length (no previews), decrypts
+   where needed, writes clean tags and the cover;
+5. files it as `Title - Artists.flac`, never over an existing file.
+
+| Source | Via | Notes |
+|---|---|---|
+| Amazon Music | Antra mirror | FLAC in encrypted MP4; needs ffmpeg |
+| Deezer | Antra mirror | Deezer CDN, Blowfish stripes decrypted in Rust |
+| Tidal | Antra mirror | relayed FLAC |
+| Qobuz | Antra mirror | relayed FLAC; often region-locked |
+| Monochrome | tracks.monochrome.st | plain FLAC, rate-limited |
+| Tidal (hifi-api) | community instances | list read from Monochrome's `instances.json`, plus `DECKHAND_HIFI_INSTANCES` |
+| Tidal, Qobuz, Deezer | flacdownloader.com | behind a Cloudflare Turnstile check solved in the app |
+
+The sources are free community mirrors that come and go. Each is a `Source` in
+`engine/server/src/downloads/sources/`; every lookup, download and half-hourly
+probe updates a running average of each mirror's reliability, latency and
+speed (`health.rs`), and the next download tries the lowest expected time
+first. A mirror that fails twice (once, if it has never worked) or answers
+429 rests, 1 min doubling to an hour. `DECKHAND_SOURCES_OFF=qobuz,hifi` turns
+sources off. flacdownloader hands out each file for a token from a solved
+Turnstile: a download with nothing left but that source waits, the engine
+sends a push (APNs, the key in `secrets/apns.p8`), and the app solves the
+check on the site's own origin and posts the pass to `/api/challenges/…`.
+
+Files you already have go in from the apps (`POST /api/imports`): checked to
+play on the decks (FLAC, AIFF, WAV, MP3, M4A), skipped when the folder holds
+the same file or ISRC, and filed like a download. Settings › Downloads ›
+Convert to AIFF files FLAC as AIFF from then on, decoded in Rust to the same
+samples, with the tags as an ID3 chunk.
+
+The engine only ever adds audio to the folder: a download is staged in
+`/data/downloads`, copied in as a Syncthing temporary and hard-linked to its
+name, which fails rather than replace a file. The only files it rewrites or
+deletes are the `.m3u8` of the playlists it keeps.
+
+### Spotify playlists
+
+The apps list the account's playlists (from `spotidata.engine_playlists`) and
+you pick the ones to keep; any other playlist is kept by pasting its link,
+which has Spotidata fetch it into its tables (`PUT /api/engine/playlists/{id}`,
+through the on-demand queue a page uses). Every ten minutes, and when the app
+asks (`POST /api/spotify/check`), the engine has Spotidata check the kept ones
+(`POST /api/engine/playlists/check`): the account's listing (one request per
+50 playlists), one request for each kept playlist the account does not list,
+and the item pages of only those whose snapshot moved — the sync's own
+snapshot gate, so a quiet check is a handful of requests and a track added in
+the afternoon is on the stick that evening. Then, against the folder:
+
+1. each track is found by ISRC, else by title and first artist, else by the
+   download that got it;
+2. a track the folder lacks is queued as a download, as Spotify knows it; a
+   failed one is tried again after a day, one you stopped is left alone;
+3. the playlist is written as `<Name>.m3u8` in Spotify's order with the
+   tracks the folder holds, and rewritten as downloads land.
+
+Removing a track on Spotify takes it out of the playlist file, never out of
+the folder. A playlist you stop keeping loses its file, unless it was edited
+since. The checks can be paused from the app; what they do is kept as
+activity (the last 500 entries).
+
+### Develop
+
+```sh
+docker run -d --name engine-pg -e POSTGRES_PASSWORD=pg -p 127.0.0.1:55432:5432 postgres:18-trixie
+cd engine
+DATABASE_URL=postgres://postgres:pg@127.0.0.1:55432/postgres cargo test
+cargo clippy --all-targets
+```
+
+The tests run against a real Postgres: `DATABASE_URL` names one they may
+create throwaway databases in (`#[sqlx::test]`), and they stand in for
+Spotidata's two views with tables of their own. A local engine against the
+dev database (after `bun run db:migrate`, which creates the role):
+
+```sh
+DECKHAND_MUSIC=/some/music DECKHAND_DATA=/tmp/dh DECKHAND_BIND=0.0.0.0:8797 \
+DECKHAND_DATABASE_URL=postgres://spotidata:spotidata@127.0.0.1:5432/spotidata DECKHAND_DATABASE_ROLE=deckhand \
+DECKHAND_SPOTIDATA=http://127.0.0.1:5173 cargo run -p deckhand-server
+```
+
+Against the real account, only read: don't keep playlists from a test engine,
+and download only into a scratch music folder.
+
+The engine used to keep its state in SQLite (`deckhand.db` in its data dir).
+`deckhand-server import-sqlite <deckhand.db>` copies it once into an empty
+schema, converting the types, and checks the blobs the rows name against
+`DECKHAND_DATA/blobs`; it keeps nothing if a row does not convert
+(`--keep-going` keeps the rest). Of the Spotify playlists it copies only the
+engine's own state: Spotidata already has the playlists.
 
 ## Traps this codebase has already hit
 
@@ -435,10 +594,12 @@ Each of these failed silently rather than loudly, so they have guards:
 db/migrations/     committed drizzle output
 db/sql/pre/        extensions + parse_release_date (migrations depend on them)
 db/sql/post/       fallback_key, rate limiter, refresh_canonical, refresh_library,
-                   refresh_album_groups, refresh_plays, mcp_role,
-                   external_limiter, analysis, sortify
-src/lib/server/    db/ spotify/ analysis/ ingest/ import/ queue/ stats/
-                   entities/ playlists/ export/ mcp/ sortify/
+                   refresh_album_groups, refresh_plays, mcp_role, sortify,
+                   engine (the deckhand role and the engine's views)
+src/lib/server/    db/ spotify/ ingest/ import/ queue/ stats/ entities/
+                   playlists/ mcp/ sortify/ engine/ (what the engine asks of Spotidata)
+engine/            Deckhand's engine, a Cargo workspace: server/ (the binary,
+                   its migrations/) and model/ (the manifest the apps read)
 src/lib/charts/    d3 computes, Svelte renders — no d3-selection
 src/routes/        dashboard, entity pages, /history, /dj, /automations, /sync,
                    /settings, /api
