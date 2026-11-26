@@ -90,15 +90,27 @@ export const config = {
 			// Spotify scopes the two cases separately.
 			'playlist-modify-private',
 			'playlist-modify-public',
-			// Nothing in the app itself uses these. They exist for the MCP
-			// `spotify_api` tool, which passes arbitrary calls through and can
-			// reach no further than this grant: saving and unsaving, following,
-			// and reading and driving playback.
+			// For the MCP `spotify_api` tool, which passes arbitrary calls
+			// through and can reach no further than this grant: saving and
+			// unsaving, and following.
 			'user-library-modify',
 			'user-follow-modify',
+			// Sortify plays the song it shows on the phone's Spotify app through
+			// Spotify Connect (devices, play, pause, seek), and the MCP tool can
+			// read and drive playback too.
 			'user-read-playback-state',
 			'user-modify-playback-state'
 		] as const
+	},
+
+	/**
+	 * Sortify's playlist suggestions ask a language model through OpenRouter.
+	 * Optional: without a key the data-based suggestions still work and the
+	 * API says the model is unavailable.
+	 */
+	openRouter: {
+		apiKey: process.env.OPENROUTER_API_KEY ?? '',
+		url: process.env.OPENROUTER_API_URL ?? 'https://openrouter.ai/api/v1/chat/completions'
 	},
 
 	/**
