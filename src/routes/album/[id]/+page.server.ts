@@ -2,6 +2,7 @@ import { error } from '@sveltejs/kit';
 import { getAlbum, getAlbumEditions, getAlbumTracks } from '$lib/server/entities/album.ts';
 import { albumPlaySummary } from '$lib/server/entities/play-stats.ts';
 import { ensureEntity } from '$lib/server/ingest/ensure.ts';
+import { statusesFor } from '$lib/server/engine/downloads.ts';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -30,6 +31,7 @@ export const load: PageServerLoad = async ({ params }) => {
 		tracks,
 		editions,
 		plays,
+		downloads: await statusesFor(tracks.map((t) => ({ id: t.id }))),
 		refreshing: state.pending
 	};
 };

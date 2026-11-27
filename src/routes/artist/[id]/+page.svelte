@@ -3,6 +3,8 @@
 	import Cover from '$lib/components/Cover.svelte';
 	import PendingEntity from '$lib/components/PendingEntity.svelte';
 	import SpotifyLink from '$lib/components/SpotifyLink.svelte';
+	import DownloadButton from '$lib/components/DownloadButton.svelte';
+	import { provideDownloads } from '$lib/downloads.svelte.ts';
 	import StatTile from '$lib/components/StatTile.svelte';
 	import { CATEGORICAL } from '$lib/charts/index.ts';
 	import { num, relativeTime, shortDate, trackTime, longDuration } from '$lib/utils/format.ts';
@@ -36,6 +38,13 @@
 		const rank = (k: string) => (ORDER.indexOf(k) < 0 ? 99 : ORDER.indexOf(k));
 		return [...map.entries()].sort((a, b) => rank(a[0]) - rank(b[0]));
 	});
+
+	provideDownloads(() => ({
+		statuses: data.pending ? {} : data.downloads,
+		refs: data.pending
+			? []
+			: [...data.topPlayed, ...data.topTracks].map((t) => ({ id: t.representativeTrackId }))
+	}));
 </script>
 
 <svelte:head><title>{artist?.name ?? 'Artist'} · Spotidata</title></svelte:head>
@@ -110,7 +119,7 @@
 							<th class="idx wide-only">#</th><th>Track</th>
 							<th class="r">Plays</th><th class="r wide-only">Listened</th><th class="r wide-only"
 								>Last</th
-							>
+							><th class="dl"><span class="sr">Download</span></th>
 						</tr>
 					</thead>
 					<tbody>
@@ -134,6 +143,7 @@
 								<td class="r num">{num(t.plays)}</td>
 								<td class="r num muted small wide-only">{longDuration(t.msPlayed)}</td>
 								<td class="r muted small nowrap wide-only">{relativeTime(t.lastPlayedAt)}</td>
+								<td class="dl"><DownloadButton id={t.representativeTrackId} title={t.title} /></td>
 							</tr>
 						{/each}
 					</tbody>
@@ -155,7 +165,7 @@
 							<th class="idx wide-only">#</th><th>Track</th><th class="wide-only">Album</th>
 							<th class="r wide-only">Length</th><th class="r">Pop.</th><th class="r wide-only"
 								>Added</th
-							>
+							><th class="dl"><span class="sr">Download</span></th>
 						</tr>
 					</thead>
 					<tbody>
@@ -181,6 +191,7 @@
 								<td class="r num muted wide-only">{trackTime(t.durationMs)}</td>
 								<td class="r num">{t.popularity ?? '—'}</td>
 								<td class="r muted small nowrap wide-only">{shortDate(t.firstAddedAt)}</td>
+								<td class="dl"><DownloadButton id={t.representativeTrackId} title={t.title} /></td>
 							</tr>
 						{/each}
 					</tbody>
@@ -212,6 +223,15 @@
 {/if}
 
 <style>
+	/* In flow at 1px, so it cannot escape the table's scroll lane. */
+	.sr {
+		display: inline-block;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
 	.hero {
 		display: flex;
 		gap: 24px;

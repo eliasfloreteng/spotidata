@@ -21,6 +21,7 @@
 	];
 
 	const owned = $derived(data.rows.filter((p) => p.isOwned).length);
+	const kept = $derived(new Set(data.kept));
 </script>
 
 <svelte:head><title>Playlists · Spotidata</title></svelte:head>
@@ -56,6 +57,9 @@
 							{#if p.isOwned}<Chip tone="accent">Yours</Chip>{/if}
 							{#if p.collaborative}<Chip tone="good">Collab</Chip>{/if}
 							{#if p.public === false}<Chip>Private</Chip>{/if}
+							{#if kept.has(p.id)}
+								<Chip tone="good" title="Deckhand keeps it in the music folder and on the DJ stick">On the stick</Chip>
+							{/if}
 						</span>
 						{#if p.description}
 							<span class="desc faint">{plainText(p.description)}</span>

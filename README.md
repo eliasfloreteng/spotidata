@@ -504,6 +504,32 @@ Turnstile: a download with nothing left but that source waits, the engine
 sends a push (APNs, the key in `secrets/apns.p8`), and the app solves the
 check on the site's own origin and posts the pass to `/api/challenges/…`.
 
+**The web app manages the downloads too.** Every page that lists tracks (a
+track, an album, a playlist, the library, an artist's top tracks, a song
+radio) shows where each stands — in the folder, on the way, failed — with a
+button to get it, try again or stop, and a list's missing tracks can be asked
+for at once. A playlist page keeps or stops keeping the playlist on the stick,
+the library filters on what is downloaded, and `/downloads` is the engine's
+own view: the queue with live progress, the failures and the sources each
+tried, the kept playlists and their checks, the sources' health, the AIFF
+setting, and Get Music over Spotify's catalog.
+
+Where a track stands is read from the engine's tables (`deckhand.recordings`
+by ISRC, then its newest download by ISRC or Spotify id), so a playlist of a
+thousand tracks is one query and the pages still load while the engine is
+down; only the bytes so far come from the engine, while something downloads.
+Everything that changes something goes through the engine's API, at
+`DECKHAND_URL` (`http://engine:8080` in the stack), since the schema is the
+engine's to write:
+
+| Route | |
+|---|---|
+| `POST /api/downloads` | `{tracks: [spotify id]}`: queue what the folder lacks and nothing is getting |
+| `POST /api/downloads/status` | `{tracks: [{id, isrc?}]}`: where each stands, for the buttons to follow |
+| `POST /api/downloads/{id}/retry`, `DELETE /api/downloads/{id}` | try again / stop, or forget a finished one |
+| `GET /api/downloads/queue` | the engine's queue, for `/downloads` to follow |
+| `PUT /api/downloads/playlists/{id}` | `{kept}`: keep a playlist on the stick, or stop |
+
 Files you already have go in from the apps (`POST /api/imports`): checked to
 play on the decks (FLAC, AIFF, WAV, MP3, M4A), skipped when the folder holds
 the same file or ISRC, and filed like a download. Settings › Downloads ›
@@ -623,7 +649,7 @@ src/lib/server/    db/ spotify/ ingest/ import/ queue/ stats/ entities/
 engine/            Deckhand's engine, a Cargo workspace: server/ (the binary,
                    its migrations/) and model/ (the manifest the apps read)
 src/lib/charts/    d3 computes, Svelte renders — no d3-selection
-src/routes/        overview, entity pages, /history/{log,import}, /dj, /automations, /sync,
+src/routes/        overview, entity pages, /history/{log,import}, /dj, /downloads, /automations, /sync,
                    /settings, /api
 scripts/           probe-api, apply-sql, check-migration, check-sql-conventions,
                    backup, restore-auth, spike-worker

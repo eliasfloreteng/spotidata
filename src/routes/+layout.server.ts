@@ -2,16 +2,18 @@ import { sql } from 'drizzle-orm';
 import { db } from '$lib/server/db/index.ts';
 import { readAuthState } from '$lib/server/spotify/auth.ts';
 import { getMe } from '$lib/server/ingest/upsert-users.ts';
+import { activeDownloads } from '$lib/server/engine/downloads.ts';
 import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = async ({ locals }) => {
-	const [auth, me, active] = await Promise.all([
+	const [auth, me, active, downloading] = await Promise.all([
 		readAuthState(),
 		getMe(),
 		db.execute<{ id: number; status: string }>(sql`
 			select id, status from sync_runs
 			 where status in ('queued','running','paused_rate_limited','paused_auth') limit 1
-		`)
+		`),
+		activeDownloads()
 	]);
 
 	const daysLeft = auth?.refreshExpiresAt
@@ -27,6 +29,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 			needsReauth: auth?.needsReauth ?? false,
 			daysLeft
 		},
-		activeSync: active.rows[0] ?? null
+		activeSync: active.rows[0] ?? null,
+		activeDownloads: downloading
 	};
 };

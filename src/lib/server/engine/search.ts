@@ -30,14 +30,19 @@ export async function searchCatalog(q: string, limit: number): Promise<CatalogTr
 	const page = (await search(q, ['track'], n)).tracks as Paging<FullTrack | null> | undefined;
 	return (page?.items ?? [])
 		.filter((t): t is FullTrack & { id: string } => isFullTrack(t) && t.id !== null)
-		.map((t) => ({
-			id: t.id,
-			title: t.name,
-			artists: t.artists.map((a) => a.name).filter(Boolean),
-			album: t.album?.name ?? '',
-			isrc: t.external_ids?.isrc?.trim().toUpperCase() || undefined,
-			duration_ms: t.duration_ms,
-			cover: pickImage(t.album?.images),
-			explicit: t.explicit ?? false
-		}));
+		.map(toCatalogTrack);
+}
+
+/** A track of Spotify's, as the engine is handed it. */
+export function toCatalogTrack(t: FullTrack & { id: string }): CatalogTrack {
+	return {
+		id: t.id,
+		title: t.name,
+		artists: t.artists.map((a) => a.name).filter(Boolean),
+		album: t.album?.name ?? '',
+		isrc: t.external_ids?.isrc?.trim().toUpperCase() || undefined,
+		duration_ms: t.duration_ms,
+		cover: pickImage(t.album?.images),
+		explicit: t.explicit ?? false
+	};
 }

@@ -3,6 +3,8 @@
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import Cover from '$lib/components/Cover.svelte';
+	import DownloadButton from '$lib/components/DownloadButton.svelte';
+	import DownloadMissing from '$lib/components/DownloadMissing.svelte';
 	import FilterBar from '$lib/components/FilterBar.svelte';
 	import Pager from '$lib/components/Pager.svelte';
 	import SearchBox from '$lib/components/SearchBox.svelte';
@@ -11,10 +13,13 @@
 	import { LIBRARY_FILTERS } from '$lib/filters.ts';
 	import { longDuration, num, shortDate, trackTime } from '$lib/utils/format.ts';
 	import { trackHref, withParams } from '$lib/utils/qs.ts';
+	import { provideDownloads } from '$lib/downloads.svelte.ts';
 
 	let { data } = $props();
 
 	const c = $derived(data.composition);
+	const shown = $derived(data.rows.map((t) => t.representativeTrackId));
+	provideDownloads(() => ({ statuses: data.downloads, refs: shown.map((id) => ({ id })) }));
 
 	/** The table's own sorts, for a phone, where the rows have no header to click. */
 	const SORTS = [
@@ -66,6 +71,7 @@
 />
 
 <section class="card">
+	<div class="bulk"><DownloadMissing ids={shown} /></div>
 	<div class="scroll-x">
 		<table class="cards">
 			<thead>
@@ -92,6 +98,7 @@
 						dir={data.dir}
 						right
 					/>
+					<th class="dl"><span class="sr">Download</span></th>
 					<th class="r"><span class="sr">Spotify</span></th>
 				</tr>
 			</thead>
@@ -165,6 +172,7 @@
 						>
 							{shortDate(t.firstAddedAt)}
 						</td>
+						<td class="dl"><DownloadButton id={t.representativeTrackId} title={t.title} /></td>
 						<td class="r corner">
 							<SpotifyLink
 								kind="track"
@@ -175,7 +183,7 @@
 						</td>
 					</tr>
 				{:else}
-					<tr><td colspan="10" class="empty faint">No recordings match that search.</td></tr>
+					<tr><td colspan="11" class="empty faint">No recordings match that search.</td></tr>
 				{/each}
 			</tbody>
 		</table>
@@ -205,6 +213,9 @@
 	}
 	.card {
 		padding: var(--card-py) var(--card-px);
+	}
+	.bulk {
+		margin-bottom: 10px;
 	}
 	table {
 		width: 100%;

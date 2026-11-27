@@ -111,6 +111,7 @@ export async function getArtistAlbums(id: string): Promise<ArtistAlbum[]> {
 
 export interface ArtistTopTrack {
 	canonicalTrackId: string;
+	representativeTrackId: string;
 	title: string;
 	durationMs: number;
 	popularity: number | null;
@@ -126,6 +127,7 @@ export interface ArtistTopTrack {
 export async function getArtistTopTracks(id: string, limit = 20): Promise<ArtistTopTrack[]> {
 	return query<ArtistTopTrack>(sql`
 		select ct.id             as "canonicalTrackId",
+		       ct.representative_track_id as "representativeTrackId",
 		       ct.title,
 		       ct.duration_ms    as "durationMs",
 		       ct.max_popularity as popularity,

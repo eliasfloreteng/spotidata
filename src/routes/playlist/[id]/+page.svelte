@@ -2,12 +2,16 @@
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import Cover from '$lib/components/Cover.svelte';
+	import DownloadButton from '$lib/components/DownloadButton.svelte';
+	import DownloadMissing from '$lib/components/DownloadMissing.svelte';
+	import KeepPlaylist from '$lib/components/KeepPlaylist.svelte';
 	import PendingEntity from '$lib/components/PendingEntity.svelte';
 	import SpotifyLink from '$lib/components/SpotifyLink.svelte';
 	import StatTile from '$lib/components/StatTile.svelte';
 	import { CATEGORICAL } from '$lib/charts/index.ts';
 	import { num, longDuration, plainText, shortDate, trackTime } from '$lib/utils/format.ts';
 	import { trackHref } from '$lib/utils/qs.ts';
+	import { provideDownloads } from '$lib/downloads.svelte.ts';
 
 	let { data } = $props();
 
@@ -16,6 +20,13 @@
 	const description = $derived(plainText(p?.description));
 	const multiContributor = $derived((p?.contributorCount ?? 0) > 1);
 	const drifted = $derived(p != null && p.itemsSyncedSnapshotId !== p.snapshotId);
+	/** What the engine could get: a catalog track, not a local file. */
+	const gettable = $derived(items.flatMap((it) => (it.trackId && !it.isLocal ? [it.trackId] : [])));
+
+	provideDownloads(() => ({
+		statuses: data.pending ? {} : data.downloads,
+		refs: gettable.map((id) => ({ id }))
+	}));
 </script>
 
 <svelte:head><title>{p?.name ?? 'Playlist'} · Spotidata</title></svelte:head>
@@ -57,7 +68,12 @@
 				{#if data.refreshing}<Chip tone="warn">Refreshing from Spotify…</Chip>{/if}
 			</div>
 
-			<div class="actions"><SpotifyLink kind="playlist" id={p.id} /></div>
+			<div class="actions">
+				<SpotifyLink kind="playlist" id={p.id} />
+				{#if !data.pending}
+					<KeepPlaylist id={p.id} {...data.keeping} />
+				{/if}
+			</div>
 		</div>
 	</header>
 
@@ -90,8 +106,13 @@
 	</p>
 
 	<section class="card">
-		<h2>Tracks</h2>
-		<p class="faint sub">In playlist order. {num(p.storedTracks - p.resolvedTracks)} items have no catalog track (local files, episodes or withdrawn tracks).</p>
+		<header class="cardhead">
+			<div>
+				<h2>Tracks</h2>
+				<p class="faint sub">In playlist order. {num(p.storedTracks - p.resolvedTracks)} items have no catalog track (local files, episodes or withdrawn tracks).</p>
+			</div>
+			<DownloadMissing ids={gettable} />
+		</header>
 		<div class="scroll-x">
 			<table>
 				<thead>
@@ -102,6 +123,7 @@
 						<th class="r wide-only">Length</th>
 						<th class="r wide-only">Added</th>
 						{#if multiContributor}<th class="wide-only">By</th>{/if}
+						<th class="dl"><span class="sr">Download</span></th>
 						<th class="r wide-only"><span class="sr">Spotify</span></th>
 					</tr>
 				</thead>
@@ -144,6 +166,9 @@
 							{#if multiContributor}
 								<td class="muted small wide-only">{it.addedByName ?? it.addedById ?? '—'}</td>
 							{/if}
+							<td class="dl">
+								{#if it.trackId && !it.isLocal}<DownloadButton id={it.trackId} title={it.name} />{/if}
+							</td>
 							<td class="r wide-only">
 								{#if it.trackId}
 									<SpotifyLink kind="track" id={it.trackId} compact label="Open {it.name} in Spotify" />
@@ -217,6 +242,21 @@
 	}
 	.actions {
 		margin-top: 14px;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		flex-wrap: wrap;
+	}
+	.cardhead {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 4px 16px;
+		flex-wrap: wrap;
+		margin-bottom: 12px;
+	}
+	.cardhead .sub {
+		margin: 0;
 	}
 	.tiles {
 		display: grid;

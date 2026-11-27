@@ -72,6 +72,16 @@ const PLAYED: FilterGroup = {
 	]
 };
 
+/** Whether Deckhand's music folder (and so the DJ stick) holds the recording. */
+const DOWNLOADED: FilterGroup = {
+	param: 'downloaded',
+	label: 'Music folder',
+	options: [
+		{ value: 'yes', label: 'Downloaded', title: "In Deckhand's music folder, and so on the DJ stick" },
+		{ value: 'no', label: 'Not downloaded' }
+	]
+};
+
 export const LIBRARY_FILTERS: FilterGroup[] = [
 	{
 		param: 'source',
@@ -84,6 +94,7 @@ export const LIBRARY_FILTERS: FilterGroup[] = [
 		]
 	},
 	PLAYED,
+	DOWNLOADED,
 	COPIES,
 	EXPLICIT
 ];

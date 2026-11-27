@@ -7,6 +7,7 @@ import {
 	searchParam,
 	sortParam
 } from '$lib/server/entities/shared.ts';
+import { keptPlaylists } from '$lib/server/engine/downloads.ts';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url }) => {
@@ -23,5 +24,8 @@ export const load: PageServerLoad = async ({ url }) => {
 		filters
 	});
 
-	return { ...paged(rows, page, INDEX_PAGE_SIZE), q, sort: sort.key, dir: sort.dir, filters };
+	const keeping = await keptPlaylists(rows.map((r) => r.id));
+	const kept = rows.filter((r) => keeping[r.id]?.kept).map((r) => r.id);
+
+	return { ...paged(rows, page, INDEX_PAGE_SIZE), kept, q, sort: sort.key, dir: sort.dir, filters };
 };

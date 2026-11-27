@@ -136,6 +136,7 @@ export async function artistPlaySummary(artistId: string): Promise<PlaySummary> 
 
 export interface PlayedRecording {
 	canonicalTrackId: string;
+	representativeTrackId: string;
 	title: string;
 	plays: number;
 	msPlayed: number;
@@ -149,6 +150,7 @@ export interface PlayedRecording {
 export async function artistTopPlayed(artistId: string, limit = 10): Promise<PlayedRecording[]> {
 	return query<PlayedRecording>(sql`
 		select ct.id                    as "canonicalTrackId",
+		       ct.representative_track_id as "representativeTrackId",
 		       ct.title,
 		       c.plays,
 		       c.ms_played              as "msPlayed",

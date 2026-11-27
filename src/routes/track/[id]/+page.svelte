@@ -2,11 +2,14 @@
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import Cover from '$lib/components/Cover.svelte';
+	import DownloadButton from '$lib/components/DownloadButton.svelte';
 	import SpotifyLink from '$lib/components/SpotifyLink.svelte';
 	import StatTile from '$lib/components/StatTile.svelte';
 	import { AreaChart, CATEGORICAL } from '$lib/charts/index.ts';
 	import { longDuration, num, shortDate, trackTime, streamTime, relativeTime } from '$lib/utils/format.ts';
 	import { keyForCamelot } from '$lib/utils/music.ts';
+	import { invalidateAll } from '$app/navigation';
+	import { provideDownloads } from '$lib/downloads.svelte.ts';
 
 	let { data } = $props();
 
@@ -32,6 +35,28 @@
 	const file = $derived(data.file);
 	const ANALYSIS = { rekordbox: "rekordbox's analysis", rbxport: "rbxport's analysis" } as const;
 	const megabytes = (bytes: number) => `${(bytes / 1e6).toFixed(bytes < 1e7 ? 1 : 0)} MB`;
+
+	const downloads = provideDownloads(() => ({
+		statuses: data.downloads,
+		refs: [{ id: data.track.representativeTrackId, isrc: data.track.isrc }]
+	}));
+	/**
+	 * A download that lands while the page is open brings in the file, its
+	 * tempo and key, once the engine's scanner has read it: asked a few times,
+	 * since a file without an ISRC tag never shows here.
+	 */
+	let looked = $state({ id: '', times: 0 });
+	const landed = $derived(downloads.status(data.track.representativeTrackId).state === 'here' && !data.file);
+	$effect(() => {
+		const id = data.track.representativeTrackId;
+		if (looked.id !== id) looked = { id, times: 0 };
+		if (!landed || looked.times >= 6) return;
+		const timer = setTimeout(() => {
+			looked = { id, times: looked.times + 1 };
+			void invalidateAll();
+		}, 3000);
+		return () => clearTimeout(timer);
+	});
 </script>
 
 <svelte:head><title>{title} · Spotidata</title></svelte:head>
@@ -65,7 +90,6 @@
 			{/if}
 			{#if t.liked}<Chip tone="good">Liked {t.likedAt ? relativeTime(t.likedAt) : ''}</Chip>{/if}
 			{#if t.copyCount > 1}<Chip tone="accent">{t.copyCount} Spotify copies</Chip>{/if}
-			{#if file}<Chip tone="good">Downloaded</Chip>{/if}
 		</div>
 
 		<div class="actions">
@@ -73,6 +97,7 @@
 			<a class="radio" href="/radio/{t.representativeTrackId}" title="The playlist Spotify builds from this track">
 				Song radio →
 			</a>
+			<DownloadButton id={t.representativeTrackId} {title} variant="full" />
 		</div>
 	</div>
 </header>
@@ -106,7 +131,9 @@
 			? `${Math.round(file.bpm * 10) / 10} · ${file.camelot}`
 			: '—'}
 		sub={!file
-			? 'not downloaded'
+			? landed
+				? 'downloaded; not read yet'
+				: 'not downloaded'
 			: file.state === 'pending'
 				? 'downloaded; not analysed yet'
 				: file.bpm == null || !file.camelot

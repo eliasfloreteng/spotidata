@@ -1,6 +1,7 @@
 import { sql, type SQL } from 'drizzle-orm';
 import type { ActiveFilters } from '../../filters.ts';
 import { query } from '../db/index.ts';
+import { recordings } from '../engine/recordings.ts';
 import { cover, iso, like, thumb, total, trackArtistsJson, type ArtistRef } from './shared.ts';
 
 /**
@@ -102,6 +103,12 @@ const PLAYED_CLAUSES = {
 	never: sql`cps.canonical_track_id is null`
 };
 
+/** Matched on the ISRC, as everywhere Spotidata reads the music folder. */
+const DOWNLOADED_CLAUSES = (rec: SQL) => ({
+	yes: sql`exists (select 1 from ${rec} r where r.isrc = upper(ct.isrc))`,
+	no: sql`not exists (select 1 from ${rec} r where r.isrc = upper(ct.isrc))`
+});
+
 export async function libraryRecordings(opts: {
 	order: SQL;
 	limit: number;
@@ -116,7 +123,8 @@ export async function libraryRecordings(opts: {
 		clauseFor(opts.filters.source, LIBRARY_SOURCE_CLAUSES),
 		clauseFor(opts.filters.copies, COPIES_CLAUSES(sql`ct.copy_count`)),
 		clauseFor(opts.filters.explicit, EXPLICIT_CLAUSES(sql`ct.explicit`)),
-		clauseFor(opts.filters.played, PLAYED_CLAUSES)
+		clauseFor(opts.filters.played, PLAYED_CLAUSES),
+		clauseFor(opts.filters.downloaded, DOWNLOADED_CLAUSES(await recordings()))
 	]);
 	return query<LibraryRow>(sql`
 		select ${total},

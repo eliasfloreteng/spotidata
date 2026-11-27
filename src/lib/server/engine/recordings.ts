@@ -24,8 +24,11 @@ const EMPTY = sql.raw(`(select null::text as isrc, null::text as file, null::tex
 let present = false;
 let checkedAt = 0;
 
-/** `deckhand.recordings`, or the stand-in until the engine has created it. */
-export async function recordings(): Promise<SQL> {
+/**
+ * Whether the engine has created its schema in this database yet. Asked again
+ * at most once a minute while it has not; once it has, it stays.
+ */
+export async function engineSchema(): Promise<boolean> {
 	if (!present && Date.now() - checkedAt > 60_000) {
 		checkedAt = Date.now();
 		const { rows } = await db.execute<{ ok: boolean }>(
@@ -33,7 +36,12 @@ export async function recordings(): Promise<SQL> {
 		);
 		present = rows[0]?.ok ?? false;
 	}
-	return present ? sql`deckhand.recordings` : EMPTY;
+	return present;
+}
+
+/** `deckhand.recordings`, or the stand-in until the engine has created it. */
+export async function recordings(): Promise<SQL> {
+	return (await engineSchema()) ? sql`deckhand.recordings` : EMPTY;
 }
 
 /** Whose analysis a file's tempo and key are. */

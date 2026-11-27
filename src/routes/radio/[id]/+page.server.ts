@@ -1,5 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { radioFailure, songRadio, type SongRadio } from '$lib/server/entities/radio.ts';
+import { statusesFor } from '$lib/server/engine/downloads.ts';
 import type { PageServerLoad } from './$types';
 
 /** A track's Spotify radio, by the track's Spotify id. Read live; nothing is stored. */
@@ -16,5 +17,5 @@ export const load: PageServerLoad = async ({ params }) => {
 		error(failure.status, failure.message);
 	}
 	if (!radio) error(404, 'Spotify has no radio for that track.');
-	return { radio };
+	return { radio, downloads: await statusesFor(radio.tracks.map((t) => ({ id: t.id, isrc: t.isrc }))) };
 };

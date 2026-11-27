@@ -2,11 +2,14 @@
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import Cover from '$lib/components/Cover.svelte';
+	import DownloadButton from '$lib/components/DownloadButton.svelte';
+	import DownloadMissing from '$lib/components/DownloadMissing.svelte';
 	import SpotifyLink from '$lib/components/SpotifyLink.svelte';
 	import StatTile from '$lib/components/StatTile.svelte';
 	import { CATEGORICAL } from '$lib/charts/index.ts';
 	import { longDuration, num, plainText, trackTime } from '$lib/utils/format.ts';
 	import { trackHref } from '$lib/utils/qs.ts';
+	import { provideDownloads } from '$lib/downloads.svelte.ts';
 
 	let { data } = $props();
 
@@ -16,6 +19,10 @@
 	const liked = $derived(r.tracks.filter((t) => t.liked).length);
 	const played = $derived(r.tracks.filter((t) => t.plays > 0).length);
 	const duration = $derived(r.tracks.reduce((sum, t) => sum + t.duration_ms, 0));
+	provideDownloads(() => ({
+		statuses: data.downloads,
+		refs: data.radio.tracks.map((t) => ({ id: t.id, isrc: t.isrc }))
+	}));
 	/** A track the archive has grouped opens its recording; any other resolves on demand. */
 	const href = (t: (typeof r.tracks)[number]) =>
 		t.canonical_id ? trackHref(t.canonical_id) : `/track/spotify/${t.id}`;
@@ -63,11 +70,16 @@
 </section>
 
 <section class="card">
-	<h2>Tracks</h2>
-	<p class="faint sub">
-		In the radio's order. Highlighted rows are recordings your library already holds, matched on
-		the ISRC, so a different release of a song you keep still counts.
-	</p>
+	<header class="cardhead">
+		<div>
+			<h2>Tracks</h2>
+			<p class="faint sub">
+				In the radio's order. Highlighted rows are recordings your library already holds, matched on
+				the ISRC, so a different release of a song you keep still counts.
+			</p>
+		</div>
+		<DownloadMissing ids={r.tracks.map((t) => t.id)} />
+	</header>
 	<div class="scroll-x">
 		<table>
 			<thead>
@@ -77,6 +89,7 @@
 					<th>Album</th>
 					<th class="r">Length</th>
 					<th class="r">Plays</th>
+					<th class="dl"><span class="sr">Download</span></th>
 					<th class="r"><span class="sr">Spotify</span></th>
 				</tr>
 			</thead>
@@ -102,6 +115,7 @@
 						</td>
 						<td class="r num muted">{trackTime(t.duration_ms)}</td>
 						<td class="r num muted">{t.plays > 0 ? num(t.plays) : '—'}</td>
+						<td class="dl"><DownloadButton id={t.id} title={t.title} /></td>
 						<td class="r">
 							<SpotifyLink kind="track" id={t.id} compact label="Open {t.title} in Spotify" />
 						</td>
@@ -192,6 +206,17 @@
 	}
 	h2 {
 		margin-bottom: 2px;
+	}
+	.cardhead {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 4px 16px;
+		flex-wrap: wrap;
+		margin-bottom: 12px;
+	}
+	.cardhead .sub {
+		margin: 0;
 	}
 	.sub {
 		font-size: 0.8rem;

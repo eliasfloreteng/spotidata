@@ -1,6 +1,7 @@
 import { filterParams, LIBRARY_FILTERS } from '$lib/filters.ts';
 import { libraryComposition, libraryRecordings, LIBRARY_SORTS } from '$lib/server/entities/lists.ts';
 import { PAGE_SIZE, pageParam, paged, searchParam, sortParam } from '$lib/server/entities/shared.ts';
+import { statusesFor } from '$lib/server/engine/downloads.ts';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url }) => {
@@ -22,6 +23,7 @@ export const load: PageServerLoad = async ({ url }) => {
 
 	return {
 		...paged(rows, page, PAGE_SIZE),
+		downloads: await statusesFor(rows.map((r) => ({ id: r.representativeTrackId }))),
 		composition,
 		q,
 		sort: sort.key,

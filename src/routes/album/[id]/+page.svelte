@@ -2,11 +2,14 @@
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import Cover from '$lib/components/Cover.svelte';
+	import DownloadButton from '$lib/components/DownloadButton.svelte';
+	import DownloadMissing from '$lib/components/DownloadMissing.svelte';
 	import PendingEntity from '$lib/components/PendingEntity.svelte';
 	import SpotifyLink from '$lib/components/SpotifyLink.svelte';
 	import { num, shortDate, trackTime, longDuration } from '$lib/utils/format.ts';
 	import { trackHref } from '$lib/utils/qs.ts';
 	import type { AlbumEdition, AlbumTrack } from '$lib/server/entities/album.ts';
+	import { provideDownloads } from '$lib/downloads.svelte.ts';
 
 	let { data } = $props();
 
@@ -19,6 +22,11 @@
 	const totalTracks = $derived(album?.totalTracks ?? tracks.length);
 	const completion = $derived(totalTracks > 0 ? held / totalTracks : 0);
 	const runtime = $derived(tracks.reduce((a, t) => a + t.durationMs, 0));
+
+	provideDownloads(() => ({
+		statuses: data.pending ? {} : data.downloads,
+		refs: tracks.map((t) => ({ id: t.id }))
+	}));
 
 	/** Multi-disc releases get a heading per disc; single-disc ones do not. */
 	const discs = $derived.by(() => {
@@ -96,11 +104,16 @@
 	{/if}
 
 	<section class="card">
-		<h2>Tracks</h2>
-		<p class="faint sub">
-			A filled dot marks a track in your library; a hollow one means you hold the same recording on
-			another release.
-		</p>
+		<header class="cardhead">
+			<div>
+				<h2>Tracks</h2>
+				<p class="faint sub">
+					A filled dot marks a track in your library; a hollow one means you hold the same recording
+					on another release.
+				</p>
+			</div>
+			<DownloadMissing ids={tracks.map((t) => t.id)} />
+		</header>
 		<div class="scroll-x">
 			<table>
 				<thead>
@@ -112,13 +125,14 @@
 						<th class="r wide-only">Length</th>
 						<th class="r wide-only">Pop.</th>
 						<th class="r">Plays</th>
+						<th class="dl"><span class="sr">Download</span></th>
 						<th class="r wide-only"><span class="sr">Spotify</span></th>
 					</tr>
 				</thead>
 				<tbody>
 					{#each discs as [disc, list] (disc)}
 						{#if discs.length > 1}
-							<tr class="discrow"><td colspan="8" class="faint xs">Disc {disc}</td></tr>
+							<tr class="discrow"><td colspan="9" class="faint xs">Disc {disc}</td></tr>
 						{/if}
 						{#each list as t (t.id)}
 							<tr class:mine={t.inLibrary}>
@@ -157,6 +171,7 @@
 								>
 									{t.plays || '—'}
 								</td>
+								<td class="dl"><DownloadButton id={t.id} title={t.name} /></td>
 								<td class="r wide-only"><SpotifyLink kind="track" id={t.id} compact label="Open {t.name} in Spotify" /></td>
 							</tr>
 						{/each}
@@ -325,6 +340,17 @@
 	.sub {
 		font-size: 0.8rem;
 		margin: 0 0 12px;
+	}
+	.cardhead {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 4px 16px;
+		flex-wrap: wrap;
+		margin-bottom: 12px;
+	}
+	.cardhead .sub {
+		margin: 0;
 	}
 	table {
 		width: 100%;

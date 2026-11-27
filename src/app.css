@@ -285,6 +285,32 @@ select,
 	.cards [data-label].on {
 		color: #ddd6fe;
 	}
+	/* The download button sits in the top right too, left of the corner. */
+	.cards .dl {
+		position: absolute;
+		top: 9px;
+		right: -4px;
+		width: auto !important;
+	}
+	.cards .dl:has(~ .corner) {
+		right: 32px;
+	}
+	.cards .lead:has(~ .dl) {
+		padding-right: 40px !important;
+	}
+	.cards .lead:has(~ .dl ~ .corner) {
+		padding-right: 76px !important;
+	}
+}
+
+/* A table's download button: as narrow as the button, on every screen. */
+th.dl,
+td.dl {
+	width: 1%;
+	white-space: nowrap;
+	text-align: center;
+	padding-left: 4px;
+	padding-right: 4px;
 }
 
 .card {

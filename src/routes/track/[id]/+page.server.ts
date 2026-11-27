@@ -10,6 +10,7 @@ import {
 	trackPlaySummary,
 	trackPlaysByMonth
 } from '$lib/server/entities/play-stats.ts';
+import { statusesFor } from '$lib/server/engine/downloads.ts';
 import type { PageServerLoad } from './$types';
 
 /** A raw Spotify id is base62 and 22 chars; a canonical id always has a colon. */
@@ -27,7 +28,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		error(404, 'No recording with that id. It may have been regrouped by a newer sync.');
 	}
 
-	const [copies, playlists, plays, playsByMonth, recentPlays, file] = await Promise.all([
+	const [copies, playlists, plays, playsByMonth, recentPlays, file, downloads] = await Promise.all([
 		getTrackCopies(id),
 		getTrackPlaylists(id),
 		trackPlaySummary(id),
@@ -35,7 +36,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		// Six rows is what stands level with the chart beside it; the full log
 		// lives at /history/log and this is a glance, not a list.
 		recentPlaysFor(id, 6),
-		getRecordingFile(track.isrc)
+		getRecordingFile(track.isrc),
+		// Asked by the copy shown across the app; every copy shares the ISRC.
+		statusesFor([{ id: track.representativeTrackId, isrc: track.isrc }])
 	]);
-	return { track, copies, playlists, plays, playsByMonth, recentPlays, file };
+	return { track, copies, playlists, plays, playsByMonth, recentPlays, file, downloads };
 };

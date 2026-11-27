@@ -13,6 +13,7 @@
 		{ href: '/artists', label: 'Artists' },
 		{ href: '/albums', label: 'Albums' },
 		{ href: '/playlists', label: 'Playlists' },
+		{ href: '/downloads', label: 'Downloads' },
 		{ href: '/automations', label: 'Automations' }
 	];
 
@@ -67,7 +68,10 @@
 			{#each NAV as item (item.href)}
 				<li>
 					<a href={item.href} class:on={isActive(item.href)} aria-current={isActive(item.href) ? 'page' : undefined}>
-						{item.label}
+						{item.label}{#if item.href === '/downloads' && data.activeDownloads > 0}<span
+								class="count"
+								title="{data.activeDownloads} under way">{data.activeDownloads}</span
+							>{/if}
 					</a>
 				</li>
 			{/each}
@@ -185,6 +189,17 @@
 	nav ul a.on {
 		color: #ddd6fe;
 		background: var(--accent-soft);
+	}
+	.count {
+		display: inline-block;
+		margin-left: 6px;
+		padding: 0 6px;
+		border-radius: 999px;
+		font-size: 0.7rem;
+		line-height: 1.5;
+		font-variant-numeric: tabular-nums;
+		color: #fff;
+		background: linear-gradient(100deg, var(--accent), var(--accent-2));
 	}
 	.right {
 		margin-left: auto;

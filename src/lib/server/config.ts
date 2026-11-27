@@ -137,6 +137,18 @@ export const config = {
 		allowedOrigins: list('MCP_ALLOWED_ORIGINS')
 	},
 
+	/**
+	 * Deckhand's engine (engine/), for what only it can do: queue, retry and
+	 * stop downloads, keep playlists, change its settings. What it has done is
+	 * read from its schema directly; this is for asking it to do something.
+	 * Inside the stack it is `http://engine:8080`; a local engine (README ›
+	 * Deckhand's engine › Develop) listens on 8797.
+	 */
+	engine: {
+		url: (process.env.DECKHAND_URL || 'http://127.0.0.1:8797').replace(/\/+$/, ''),
+		timeoutMs: int('DECKHAND_TIMEOUT_MS', 10_000)
+	},
+
 	isProduction: process.env.NODE_ENV === 'production'
 };
 

@@ -7,6 +7,7 @@ import {
 } from '$lib/server/entities/artist.ts';
 import { artistPlaySummary, artistTopPlayed } from '$lib/server/entities/play-stats.ts';
 import { ensureEntity } from '$lib/server/ingest/ensure.ts';
+import { statusesFor } from '$lib/server/engine/downloads.ts';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -28,6 +29,7 @@ export const load: PageServerLoad = async ({ params }) => {
 		artistTopPlayed(id, 12)
 	]);
 
+	const shown = [...topPlayed, ...topTracks].map((t) => ({ id: t.representativeTrackId }));
 	return {
 		pending: false as const,
 		id,
@@ -37,6 +39,7 @@ export const load: PageServerLoad = async ({ params }) => {
 		topTracks,
 		plays,
 		topPlayed,
+		downloads: await statusesFor(shown),
 		refreshing: state.pending
 	};
 };
