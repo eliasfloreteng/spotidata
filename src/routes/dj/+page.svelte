@@ -359,8 +359,7 @@
 					<p class="faint xs note radio-note" class:warn={r.problem}>
 						{#if r.heard > 0}
 							Ranked with the radio of the last {r.heard === 1 ? 'track' : `${r.heard} tracks`}
-							({num(r.tracks)} records Spotify plays from {r.heard === 1 ? 'it' : 'them'}, the last
-							counting most).
+							({num(r.tracks)} records Spotify plays from {r.heard === 1 ? 'it' : 'them, the last counting most'}).
 						{/if}
 						{#if r.problem}
 							{r.heard > 0 ? 'Not all of it came in:' : 'Ranked without the radio:'} {r.problem}
