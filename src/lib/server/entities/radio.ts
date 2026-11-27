@@ -2,6 +2,13 @@ import { sql } from 'drizzle-orm';
 import { query } from '../db/index.ts';
 import { pickImage } from '../spotify/images.ts';
 import { BATCH, chunk, getTracks } from '../spotify/endpoints.ts';
+import {
+	SpotifyApiError,
+	SpotifyAuthExpired,
+	SpotifyForbidden,
+	SpotifyNotFound,
+	SpotifyRateLimited
+} from '../spotify/errors.ts';
 import type { FullTrack } from '../spotify/types.ts';
 import { webPlayerGet, WebPlayerError } from '../spotify/web-player.ts';
 import type { ArtistRef } from './shared.ts';
@@ -64,6 +71,43 @@ interface PlaylistV2 {
 		pictureSize?: Array<{ targetName?: string; url?: string }>;
 	};
 	contents?: { items?: Array<{ uri?: string }> };
+}
+
+/** Why a radio could not be fetched, as an HTTP status and a sentence for a person. */
+export interface RadioFailure {
+	status: number;
+	message: string;
+	retryAfterSeconds?: number;
+}
+
+/**
+ * Every way fetching a radio fails for a reason outside this app, as a status
+ * the page, the API route and the MCP tool all report the same way. Null for
+ * anything else, which is a bug and should stay a 500.
+ */
+export function radioFailure(err: unknown): RadioFailure | null {
+	if (err instanceof WebPlayerError) {
+		return {
+			status: err.status === 429 ? 503 : err.status === 504 ? 504 : 502,
+			message: `Spotify's web player failed (${err.status}) at ${err.path}.`,
+			retryAfterSeconds: err.retryAfterSeconds
+		};
+	}
+	if (err instanceof SpotifyRateLimited) {
+		return {
+			status: 503,
+			message: `The radio was found, but the Web API that fills in its tracks is rate limited until ${err.until.toISOString()}.`,
+			retryAfterSeconds: Math.max(1, err.retryAfterSeconds)
+		};
+	}
+	if (err instanceof SpotifyAuthExpired) {
+		return { status: 503, message: 'The Spotify sign-in has expired. Sign in to Spotidata again.' };
+	}
+	if (err instanceof SpotifyApiError || err instanceof SpotifyForbidden || err instanceof SpotifyNotFound) {
+		const status = err instanceof SpotifyApiError ? err.status : err instanceof SpotifyForbidden ? 403 : 404;
+		return { status: 502, message: `Spotify's Web API answered ${status} for ${err.path}.` };
+	}
+	return null;
 }
 
 const TRACK_URI = /^spotify:track:([A-Za-z0-9]{22})$/;

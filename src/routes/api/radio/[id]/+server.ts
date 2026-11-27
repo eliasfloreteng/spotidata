@@ -1,7 +1,5 @@
 import { error, json } from '@sveltejs/kit';
-import { songRadio } from '$lib/server/entities/radio.ts';
-import { spotifyFailure } from '$lib/server/spotify/errors.ts';
-import { WebPlayerError } from '$lib/server/spotify/web-player.ts';
+import { radioFailure, songRadio } from '$lib/server/entities/radio.ts';
 import type { RequestHandler } from './$types';
 
 /**
@@ -17,19 +15,9 @@ export const GET: RequestHandler = async ({ params }) => {
 		return json(radio, { headers: { 'cache-control': 'no-store' } });
 	} catch (err) {
 		const failure = radioFailure(err);
-		if (failure) return failure;
-		throw err;
+		if (!failure) throw err;
+		const headers: Record<string, string> = { 'content-type': 'text/plain; charset=utf-8' };
+		if (failure.retryAfterSeconds) headers['retry-after'] = String(failure.retryAfterSeconds);
+		return new Response(failure.message, { status: failure.status, headers });
 	}
 };
-
-function radioFailure(err: unknown): Response | null {
-	if (err instanceof WebPlayerError) {
-		const headers: Record<string, string> = { 'content-type': 'text/plain; charset=utf-8' };
-		if (err.retryAfterSeconds) headers['retry-after'] = String(err.retryAfterSeconds);
-		return new Response(`Spotify's web player answered ${err.status} for ${err.path}.`, {
-			status: err.status === 429 ? 503 : 502,
-			headers
-		});
-	}
-	return spotifyFailure(err);
-}

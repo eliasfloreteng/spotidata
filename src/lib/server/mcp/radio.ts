@@ -1,6 +1,4 @@
-import { songRadio } from '../entities/radio.ts';
-import { SpotifyAuthExpired, SpotifyRateLimited } from '../spotify/errors.ts';
-import { WebPlayerError } from '../spotify/web-player.ts';
+import { radioFailure, songRadio } from '../entities/radio.ts';
 import { parseSpotifyId } from '../../utils/spotify-uri.ts';
 
 /** The `song_radio` tool: a radio as JSON, or why there is none. */
@@ -18,19 +16,10 @@ export async function callSongRadio(input: string): Promise<{ text: string; isEr
 		const { image: _image, ...head } = radio;
 		return { text: JSON.stringify({ ...head, tracks }), isError: false };
 	} catch (err) {
-		if (err instanceof WebPlayerError) {
-			const wait = err.retryAfterSeconds ? ` Retry after ${err.retryAfterSeconds}s.` : '';
-			return { text: `Spotify's web-player API answered ${err.status} for ${err.path}.${wait}`, isError: true };
-		}
-		if (err instanceof SpotifyRateLimited) {
-			return {
-				text: `The radio was found, but filling in its tracks needs the Web API, which is rate limited until ${err.until.toISOString()}. Do not retry before then.`,
-				isError: true
-			};
-		}
-		if (err instanceof SpotifyAuthExpired) {
-			return { text: 'The Spotify grant has expired. The user has to sign in to Spotidata again.', isError: true };
-		}
-		throw err;
+		// A refused call is a tool result: the model reads why and decides what to do.
+		const failure = radioFailure(err);
+		if (!failure) throw err;
+		const wait = failure.retryAfterSeconds ? ` Do not retry for ${failure.retryAfterSeconds}s.` : '';
+		return { text: failure.message + wait, isError: true };
 	}
 }
