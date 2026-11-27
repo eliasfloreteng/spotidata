@@ -462,7 +462,7 @@
 			data={albumBars}
 			title="Top albums"
 			subtitle={albumView === 'played'
-				? 'Hours played; singles excluded'
+				? 'Hours played; singles and compilations excluded'
 				: albumView === 'saved'
 					? 'Most tracks saved'
 					: 'Largest share of the album saved, minimum 5 tracks'}

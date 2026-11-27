@@ -436,6 +436,19 @@ export interface PlayedAlbum {
 	imageUrl: string | null;
 }
 
+/**
+ * Albums by hours played, real releases only.
+ *
+ * A single is an album of one, and a compilation is someone else's sequencing:
+ * a playlist-style "Party Summer" otherwise tops the list on the strength of a
+ * few hits saved from it. Neither is what "which albums did I listen to" asks.
+ *
+ * A recording counts toward its primary album, which already prefers an
+ * original album over a compilation whenever the catalog holds one. Plays of a
+ * recording known only from a compilation therefore drop out here rather than
+ * move: re-crediting them would find a real album for about a sixth of those
+ * hours, for several times the cost of the query.
+ */
 export async function topPlayedAlbums(r: Range, limit = 15): Promise<PlayedAlbum[]> {
 	return query<PlayedAlbum>(sql`
 		select al.id, al.name,
@@ -449,7 +462,9 @@ export async function topPlayedAlbums(r: Range, limit = 15): Promise<PlayedAlbum
 		  join spotify_tracks st on st.id = p.track_id
 		  join canonical_tracks ct on ct.id = st.canonical_track_id
 		  join albums al on al.id = ct.primary_album_id
-		 where ${win(r)} and al.album_type is distinct from 'single'
+		 where ${win(r)}
+		   and al.album_type is distinct from 'single'
+		   and al.album_type is distinct from 'compilation'
 		 group by al.id, al.name
 		 order by "msPlayed" desc, plays desc, al.name
 		 limit ${limit}
