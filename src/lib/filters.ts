@@ -88,8 +88,6 @@ export const LIBRARY_FILTERS: FilterGroup[] = [
 	EXPLICIT
 ];
 
-export const LIKED_FILTERS: FilterGroup[] = [COPIES, EXPLICIT];
-
 export const ARTIST_FILTERS: FilterGroup[] = [
 	{
 		param: 'followed',

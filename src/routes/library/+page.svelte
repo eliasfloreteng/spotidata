@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import Cover from '$lib/components/Cover.svelte';
@@ -9,9 +10,20 @@
 	import SpotifyLink from '$lib/components/SpotifyLink.svelte';
 	import { LIBRARY_FILTERS } from '$lib/filters.ts';
 	import { longDuration, num, shortDate, trackTime } from '$lib/utils/format.ts';
-	import { trackHref } from '$lib/utils/qs.ts';
+	import { trackHref, withParams } from '$lib/utils/qs.ts';
 
 	let { data } = $props();
+
+	const c = $derived(data.composition);
+
+	/** The list with just this filter: the other filters and the search reset. */
+	const only = (params: Record<string, string>) =>
+		withParams(page.url, {
+			...Object.fromEntries(LIBRARY_FILTERS.map((g) => [g.param, null])),
+			q: null,
+			page: null,
+			...params
+		});
 </script>
 
 <svelte:head><title>Library · Spotidata</title></svelte:head>
@@ -19,10 +31,16 @@
 <header class="head">
 	<div>
 		<h1>Library</h1>
+		<!-- What the library is made of, each part a way into it: liked songs are
+		     the first link rather than a page of their own. -->
 		<p class="muted">
-			{num(data.total)} distinct recordings{#if data.q} matching “{data.q}”{/if} — liked songs
-			plus everything in a playlist you own, deduplicated by ISRC.
+			{num(c.recordings)} recordings:
+			<a href={only({ source: 'liked' })}>{num(c.liked)} liked</a>,
+			<a href={only({ source: 'playlist-only' })}>{num(c.playlistOnly)} only in your playlists</a>.
+			{num(c.trackIds - c.recordings)} more Spotify tracks are the same recordings again, folded in
+			by ISRC.
 		</p>
+
 	</div>
 	<SearchBox value={data.q} placeholder="Search recordings" />
 </header>
@@ -128,6 +146,12 @@
 		margin: 4px 0 0;
 		font-size: 0.86rem;
 		max-width: 62ch;
+	}
+	.head p a {
+		color: var(--text);
+		text-decoration: underline;
+		text-decoration-color: var(--hairline-strong);
+		text-underline-offset: 3px;
 	}
 	.card {
 		padding: var(--card-py) var(--card-px);

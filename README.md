@@ -135,7 +135,7 @@ to the minute, no track URIs. It is a strict subset of what the extended export
 says with no reliable way to match the overlap, so the importer names the file
 it found and explains what to request instead.
 
-![The liked songs table, sortable and searchable](docs/screenshots/liked-page.png)
+![The library table filtered to liked songs, sortable and searchable](docs/screenshots/library-page.png)
 
 **Bulk endpoints still work**, contrary to widespread claims. `/albums?ids=`
 takes 20 ids *and embeds each album's first 50 tracks*, which is why a full

@@ -27,47 +27,22 @@ function havingAll(parts: (SQL | null)[]): SQL {
 	return active.length ? sql`having ${sql.join(active, sql` and `)}` : sql``;
 }
 
-// ------------------------------------------------------------------ liked
+// ---------------------------------------------------------------- library
 
 /**
- * Play counts on the list pages read `canonical_play_stats`, not `plays`.
+ * The library list is one row per recording, liked or in a playlist you own:
+ * liked songs are `source=liked`, not a list of their own. Liking the single
+ * and the album cut of a song is one recording with two copies, and the
+ * copies column says so.
  *
- * The rollup is the whole reason that table exists: sorting 8.8k recordings by
- * play count would otherwise group 167k events on every page load, and a list
- * page has no time range to justify it — the range picker lives on the overview.
- * A recording with no plays has no row there, hence the coalesce everywhere.
+ * Play counts read `canonical_play_stats`, not `plays`. The rollup is the
+ * whole reason that table exists: sorting 9k recordings by play count would
+ * otherwise group 180k events on every page load, and a list page has no time
+ * range to justify it — the range picker lives on the overview. A recording
+ * with no plays has no row there, hence the coalesce everywhere.
  */
-export const LIKED_SORTS = {
-	added: 'sv.added_at',
-	name: 'st.name',
-	artist: 'pa.name',
-	popularity: 'st.popularity',
-	duration: 'st.duration_ms',
-	plays: 'coalesce(cps.plays, 0)',
-	listened: 'coalesce(cps.ms_played, 0)'
-} as const;
-export type LikedSort = keyof typeof LIKED_SORTS;
 
-export interface LikedRow {
-	total: number;
-	id: string;
-	name: string;
-	durationMs: number;
-	popularity: number | null;
-	explicit: boolean;
-	addedAt: string;
-	canonicalTrackId: string | null;
-	copyCount: number | null;
-	albumId: string | null;
-	albumName: string | null;
-	cover: string | null;
-	artists: ArtistRef[];
-	plays: number;
-	msPlayed: number;
-}
-
-/** `copies` counts the recording across the whole library, so a liked track with no
- *  canonical grouping (never resolved to an ISRC) counts as a single copy. */
+/** `copies` counts the recording under every Spotify track id it has. */
 const COPIES_CLAUSES = (expr: SQL) => ({
 	dupes: sql`${expr} > 1`,
 	unique: sql`${expr} = 1`
@@ -77,53 +52,6 @@ const EXPLICIT_CLAUSES = (expr: SQL) => ({
 	yes: sql`${expr}`,
 	no: sql`not ${expr}`
 });
-
-export async function likedTracks(opts: {
-	order: SQL;
-	limit: number;
-	offset: number;
-	q: string;
-	filters: ActiveFilters;
-}): Promise<LikedRow[]> {
-	const filter = opts.q
-		? sql`and (${like(sql`st.name`, opts.q)} or ${like(sql`pa.name`, opts.q)} or ${like(sql`al.name`, opts.q)})`
-		: sql``;
-	const where = andAll([
-		clauseFor(opts.filters.copies, COPIES_CLAUSES(sql`coalesce(ct.copy_count, 1)`)),
-		clauseFor(opts.filters.explicit, EXPLICIT_CLAUSES(sql`st.explicit`))
-	]);
-	return query<LikedRow>(sql`
-		select ${total},
-		       st.id,
-		       st.name,
-		       st.duration_ms        as "durationMs",
-		       st.popularity,
-		       st.explicit,
-		       ${iso('sv.added_at')} as "addedAt",
-		       st.canonical_track_id as "canonicalTrackId",
-		       ct.copy_count         as "copyCount",
-		       al.id                 as "albumId",
-		       al.name               as "albumName",
-		       ${thumb('album_images', 'album_id', 'al.id')} as cover,
-		       ${trackArtistsJson('st.id')} as artists,
-		       coalesce(cps.plays, 0)     as plays,
-		       coalesce(cps.ms_played, 0)::bigint as "msPlayed"
-		  from saved_tracks sv
-		  join spotify_tracks st on st.id = sv.track_id
-		  left join canonical_tracks ct on ct.id = st.canonical_track_id
-		  left join canonical_play_stats cps on cps.canonical_track_id = st.canonical_track_id
-		  left join albums al on al.id = st.album_id
-		  left join lateral (
-		    select ar.name from track_artists ta join artists ar on ar.id = ta.artist_id
-		     where ta.track_id = st.id order by ta.position limit 1
-		  ) pa on true
-		 where sv.removed_at is null ${filter}${where}
-		 order by ${opts.order}, st.id
-		 limit ${opts.limit} offset ${opts.offset}
-	`);
-}
-
-// ---------------------------------------------------------------- library
 
 export const LIBRARY_SORTS = {
 	added: 'lc.first_added_at',
@@ -226,6 +154,27 @@ export async function libraryRecordings(opts: {
 		 order by ${opts.order}, ct.id
 		 limit ${opts.limit} offset ${opts.offset}
 	`);
+}
+
+export interface LibraryComposition {
+	recordings: number;
+	liked: number;
+	/** In a playlist you own and not liked. */
+	playlistOnly: number;
+	/** Spotify track ids behind the recordings, duplicates included. */
+	trackIds: number;
+}
+
+/** What the library is made of, for the line above the list. */
+export async function libraryComposition(): Promise<LibraryComposition> {
+	const rows = await query<LibraryComposition>(sql`
+		select count(*)::int                                     as recordings,
+		       count(*) filter (where liked)::int                as liked,
+		       count(*) filter (where not liked)::int            as "playlistOnly",
+		       coalesce(sum(copy_count_in_library), 0)::int      as "trackIds"
+		  from library_canonical
+	`);
+	return rows[0] ?? { recordings: 0, liked: 0, playlistOnly: 0, trackIds: 0 };
 }
 
 // ----------------------------------------------------------- index pages

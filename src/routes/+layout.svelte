@@ -7,7 +7,6 @@
 	const NAV = [
 		{ href: '/', label: 'Overview' },
 		{ href: '/library', label: 'Library' },
-		{ href: '/liked', label: 'Liked' },
 		{ href: '/dj', label: 'DJ' },
 		{ href: '/artists', label: 'Artists' },
 		{ href: '/albums', label: 'Albums' },
