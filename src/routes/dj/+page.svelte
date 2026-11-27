@@ -210,8 +210,9 @@
 			<h1>Your set</h1>
 			<p class="muted">
 				{set.length} track{set.length === 1 ? '' : 's'} · {duration(runtime / 1000)}. Each suggestion
-				is ranked against the last track: key move first, then how little pitching it takes, then
-				how much you play it.
+				has to mix out of the last track, and is ranked by how safe the key move is, how little
+				pitching it takes, whether Spotify's radio of the set's last tracks plays it, and how much you
+				play it.
 			</p>
 		</div>
 		<a class="btn" href="/dj">New set</a>
@@ -325,8 +326,37 @@
 							>{m.label}</a>
 						{/each}
 					</div>
+					<div class="group">
+						<span class="lbl">Radio</span>
+						<a
+							class="pill"
+							class:on={data.useRadio}
+							title="Rank what Spotify's radio of the last tracks plays first"
+							href={withParams(page.url, { radio: null })}
+						>On</a>
+						<a
+							class="pill"
+							class:on={!data.useRadio}
+							title="Rank on key, tempo and plays alone"
+							href={withParams(page.url, { radio: 'off' })}
+						>Off</a>
+					</div>
 					<SearchBox value={data.q} placeholder="Where would a track fit?" />
 				</div>
+
+				{#if data.radio}
+					{@const r = data.radio}
+					<p class="faint xs note radio-note" class:warn={r.problem}>
+						{#if r.heard > 0}
+							Ranked with the radio of the last {r.heard === 1 ? 'track' : `${r.heard} tracks`}
+							({num(r.tracks)} records Spotify plays from {r.heard === 1 ? 'it' : 'them'}, the last
+							counting most).
+						{/if}
+						{#if r.problem}
+							{r.heard > 0 ? 'Not all of it came in:' : 'Ranked without the radio:'} {r.problem}
+						{/if}
+					</p>
+				{/if}
 
 				{#if data.q}
 					<p class="faint xs note">
@@ -352,6 +382,11 @@
 									<Chip title="{bpm(t.bpm)} BPM, pitched {tempoShift(t.tempoPct)} to match">
 										{bpm(t.bpm)} BPM · {tempoShift(t.tempoPct)}{#if factorLabel(t.tempoFactor)}&nbsp;({factorLabel(t.tempoFactor)}){/if}
 									</Chip>
+									{#if t.radio === 'track'}
+										<Chip tone="accent" title="Spotify's radio of the set plays this song">Radio</Chip>
+									{:else if t.radio === 'artist'}
+										<Chip title="Spotify's radio of the set plays this artist, not this song">Radio artist</Chip>
+									{/if}
 									{#if t.plays > 0}<span class="faint xs">{num(t.plays)} plays</span>{/if}
 								</div>
 							</div>
@@ -682,6 +717,12 @@
 	}
 	.note {
 		margin: 12px 0 0;
+	}
+	.radio-note {
+		margin: 0 0 8px;
+	}
+	.radio-note.warn {
+		color: var(--warn);
 	}
 	.notice {
 		padding: 10px 16px;

@@ -2,6 +2,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import { anyOf, notIn } from '../db/arrays.ts';
 import { query } from '../db/index.ts';
 import { recordings } from '../engine/recordings.ts';
+import type { RadioEntry } from './dj-radio.ts';
 import { movesFrom, type KeyMode, type KeyMove } from '../../utils/music.ts';
 import { like, thumb, total, type ArtistRef } from './shared.ts';
 
@@ -273,10 +274,14 @@ export async function setTracks(ids: string[]): Promise<SetTrack[]> {
 
 // -------------------------------------------------------------------- next
 
+/** Why a suggestion scored on the radio: the record itself, or only its artist. */
+export type RadioMatch = 'track' | 'artist';
+
 export interface NextTrack extends DjTrack {
 	move: KeyMove | null;
 	tempoPct: number;
 	tempoFactor: number;
+	radio: RadioMatch | null;
 	/** 0–1, the blend of everything below, for ranking and a bar. */
 	score: number;
 }
@@ -288,17 +293,48 @@ export interface NextOptions {
 	q: string;
 	exclude: string[];
 	limit: number;
+	/**
+	 * The set's radio (`dj-radio.ts`). Empty ranks on key, tempo and plays
+	 * alone, with the weights the score had before the radio.
+	 */
+	radio: RadioEntry[];
 }
+
+/**
+ * The score's weights. With a radio, "does it belong in this set" takes most
+ * of what play count had and a share of key and tempo: those two still gate,
+ * so everything ranked mixes, and among what mixes the record Spotify would
+ * play next should come before a stranger that happens to share the key.
+ */
+const WEIGHTS = {
+	plain: { key: 0.55, tempo: 0.35, radio: 0, plays: 0.1 },
+	radio: { key: 0.4, tempo: 0.25, radio: 0.3, plays: 0.05 }
+} as const;
+
+/**
+ * An artist in the radio is a weaker sign than the record: it says the sound
+ * is close, not that this track is. Their score is capped at this share of a
+ * track match, reached when the artist plays twice in the last track's radio.
+ */
+const ARTIST_SHARE = 0.6;
+const ARTIST_SATURATION = 2;
 
 /**
  * What could follow `seed`, best first.
  *
  * The score weighs, in order: how safe the key move is, how little pitching it
- * takes, and — lightly — whether it is a record you actually play. The key and
- * the tempo are gates as well as weights; play count only ranks.
+ * takes, whether the set's radio plays it, and — lightly — whether it is a
+ * record you actually play. The key and the tempo are gates as well as
+ * weights; the radio and play count only rank.
  *
  * A folded tempo (½× or 2×) is a real mix but a riskier one, so it gives up a
  * little of its tempo score.
+ *
+ * The radio matches a candidate by recording, or by song — a radio plays the
+ * radio edit, the library holds the extended mix, and that is the same record
+ * to a DJ. Each of the set's radios counts once however many copies of the
+ * song it plays, and a song in several of them adds up: that is a record the
+ * whole set leads to, not only the last track.
  */
 export async function nextTracks(seed: string, opts: NextOptions): Promise<NextTrack[]> {
 	const pool = POOL(await recordings());
@@ -310,6 +346,16 @@ export async function nextTracks(seed: string, opts: NextOptions): Promise<NextT
 	const searching = opts.q !== '';
 	const moves = movesFrom(s.code, searching ? 'any' : opts.keyMode);
 	const tol = opts.tolerance;
+	const w = opts.radio.length > 0 ? WEIGHTS.radio : WEIGHTS.plain;
+	const radio = opts.radio.map((r) => ({
+		seed: r.seed,
+		w: r.weight,
+		id: r.id,
+		canonical: r.canonicalId,
+		title: r.title,
+		artist: r.artistIds[0] ?? null,
+		artists: r.artistIds
+	}));
 
 	const gates: SQL[] = [sql`c.id ${notIn(opts.exclude)}`];
 	if (!searching) gates.push(sql`abs(t.pct) <= ${tol}`);
@@ -330,6 +376,19 @@ export async function nextTracks(seed: string, opts: NextOptions): Promise<NextT
 		  select * from jsonb_to_recordset(${JSON.stringify(moves)}::jsonb)
 		    as m(code text, move text, weight real)
 		),
+		rad as materialized (
+		  select r.seed, r.w, r.canonical, r.artists,
+		         (coalesce(nullif(spotidata.song_title_key(r.title), ''), r.canonical, r.id)
+		          || '|' || coalesce(r.artist, '')) as song
+		    from jsonb_to_recordset(${JSON.stringify(radio)}::jsonb)
+		      as r(seed int, w real, id text, canonical text, title text, artist text, artists jsonb)
+		),
+		rad_artist as materialized (
+		  select a.id, sum(r.w) as w
+		    from rad r
+		    cross join jsonb_array_elements_text(r.artists) as a(id)
+		   group by a.id
+		),
 		gated as materialized (
 		  select c.*, m.move, m.weight as key_score, t.pct, t.factor
 		    from p c
@@ -338,29 +397,49 @@ export async function nextTracks(seed: string, opts: NextOptions): Promise<NextT
 		    cross join ${TEMPO_FOLD(sql`seed.bpm`, sql`c.bpm`)} t
 		   where ${sql.join(gates, sql` and `)}
 		),
+		keyed as materialized (
+		  select c.*, ${SONG('ct')} as song
+		    from gated c
+		    join canonical_tracks ct on ct.id = c.id
+		),
 		scored as (
 		  select c.*,
-		         greatest(0, 1 - abs(c.pct) / ${tol}) * case when c.factor = 1 then 1 else 0.8 end as tempo_score
-		    from gated c
+		         greatest(0, 1 - abs(c.pct) / ${tol}) * case when c.factor = 1 then 1 else 0.8 end as tempo_score,
+		         -- least() skips nulls, so the sum of no radios has to be 0 first.
+		         least(1, coalesce((
+		           select sum(hit.w) from (
+		             select max(r.w) as w from rad r
+		              where r.canonical = c.id or r.song = c.song
+		              group by r.seed
+		           ) hit
+		         ), 0)) as radio_track,
+		         ${ARTIST_SHARE} * least(1, coalesce((
+		           select sum(ra.w) from canonical_track_artists cta
+		             join rad_artist ra on ra.id = cta.artist_id
+		            where cta.canonical_track_id = c.id and cta.on_representative
+		         ), 0) / ${ARTIST_SATURATION}) as radio_artist
+		    from keyed c
 		),
 		ranked as (
-		  select distinct on (${SONG('ct')})
-		         sc.*, ${SONG('ct')} as song,
-		         (0.55 * sc.key_score
-		        + 0.35 * sc.tempo_score
-		        + 0.10 * least(1, ln(1 + sc.plays) / ln(50)))::real as score
+		  select distinct on (sc.song)
+		         sc.*,
+		         case when sc.radio_track > 0 then 'track'
+		              when sc.radio_artist > 0 then 'artist' end as radio,
+		         (${w.key} * sc.key_score
+		        + ${w.tempo} * sc.tempo_score
+		        + ${w.radio} * greatest(sc.radio_track, sc.radio_artist)
+		        + ${w.plays} * least(1, ln(1 + sc.plays) / ln(50)))::real as score
 		    from scored sc
-		    join canonical_tracks ct on ct.id = sc.id
-		   where ${SONG('ct')} not in (
+		   where sc.song not in (
 		           select ${SONG('x')} from canonical_tracks x where x.id = ${anyOf(opts.exclude)}
 		         )
-		   order by ${SONG('ct')}, score desc, sc.id
+		   order by sc.song, score desc, sc.id
 		)
 		select r.id as "canonicalTrackId",
 		       r.bpm, r.code as camelot,
 		       r.liked, r.plays,
 		       r.move, r.pct as "tempoPct", r.factor as "tempoFactor",
-		       r.score,
+		       r.radio, r.score,
 		       ${DISPLAY}
 		  from ranked r
 		  join canonical_tracks ct on ct.id = r.id

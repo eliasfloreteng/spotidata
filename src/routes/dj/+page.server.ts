@@ -8,6 +8,7 @@ import {
 	setTracks,
 	type BrowseFilters
 } from '$lib/server/entities/dj.ts';
+import { setRadio, type SetRadio } from '$lib/server/entities/dj-radio.ts';
 import { INDEX_PAGE_SIZE, pageParam, paged, searchParam } from '$lib/server/entities/shared.ts';
 import { saveSetAsPlaylist } from '$lib/server/playlists/dj.ts';
 import { canWritePlaylists, readAuthState } from '$lib/server/spotify/auth.ts';
@@ -54,19 +55,29 @@ export const load: PageServerLoad = async ({ url }) => {
 	const keysRaw = url.searchParams.get('keys') ?? '';
 	const keyMode: KeyMode = keysRaw in KEY_MODES ? (keysRaw as KeyMode) : 'harmonic';
 
+	// On unless turned off: the radio is what tells a record that mixes from
+	// one that belongs in the set.
+	const useRadio = url.searchParams.get('radio') !== 'off';
+
 	if (ids.length > 0) {
 		const [set, auth] = await Promise.all([setTracks(ids), readAuthState()]);
 		const seed = set.at(-1) ?? null;
-		const next =
-			seed && seed.bpm != null && seed.camelot
-				? await nextTracks(seed.canonicalTrackId, {
-						tolerance,
-						keyMode,
-						q,
-						exclude: set.map((t) => t.canonicalTrackId),
-						limit: SUGGESTIONS
-					})
-				: [];
+		const mixable = seed != null && seed.bpm != null && seed.camelot != null;
+		// Newest first; a track without a file still has a radio worth asking.
+		const radio: SetRadio | null =
+			mixable && useRadio
+				? await setRadio(set.map((t) => t.representativeTrackId).reverse())
+				: null;
+		const next = mixable
+			? await nextTracks(seed.canonicalTrackId, {
+					tolerance,
+					keyMode,
+					q,
+					exclude: set.map((t) => t.canonicalTrackId),
+					limit: SUGGESTIONS,
+					radio: radio?.entries ?? []
+				})
+			: [];
 		return {
 			mode: 'set' as const,
 			set,
@@ -75,6 +86,13 @@ export const load: PageServerLoad = async ({ url }) => {
 			q,
 			tolerance,
 			keyMode,
+			useRadio,
+			radio: radio && {
+				heard: radio.heard,
+				asked: radio.asked,
+				tracks: radio.entries.length,
+				problem: radio.problem
+			},
 			maxSet: MAX_SET,
 			canWrite: canWritePlaylists(auth?.scope) && !auth?.needsReauth
 		};

@@ -190,9 +190,10 @@ Deckhand has downloaded, with the tempo and key of the file itself (below).
 Browse it by a Camelot wheel and a
 tempo strip that each count under every filter but their own, pick a record
 to start a set, and every suggestion after that is ranked against the last
-track: how safe the key move is, how little pitching it takes, then, lightly,
-whether you play it. Key and tempo are gates as well as weights (±3/6/10%,
-harmonic or with the +2/+7 energy moves); play count only ranks. Tempo is
+track: how safe the key move is, how little pitching it takes, whether
+Spotify's radio of the set plays it, then, lightly, whether you play it. Key
+and tempo are gates as well as weights (±3/6/10%, harmonic or with the +2/+7
+energy moves); the radio and play count only rank. Tempo is
 matched with octaves folded, because thirty seconds of an 87 BPM record can
 read as 174 and a DJ mixes across that anyway.
 
@@ -219,6 +220,20 @@ Suggestions collapse to one per *song* (`song_title_key`), so the radio edit
 and the extended mix are not both offered, nor either once the other is in
 the set. "Save to Spotify" writes the set as a new private playlist, which is
 also the way onto the DJ stick: Deckhand copies any playlist.
+
+**The radio says what belongs in the set.** Key and tempo say whether two
+records *can* be mixed, not whether they should: after a tech-house track, a
+Pitbull single at the same key and tempo ranked first. Spotify withdrew every
+API that knew better (recommendations, related artists, audio features), but
+a song's radio (below) is still its judgement of what comes next. So the
+radios of the set's last three tracks, weighted 1, ½ and ¼, feed the score
+with 30% of it: a suggestion scores fully when a radio plays the recording or
+another release of the song, and up to 60% of that when a radio plays its
+artist. The same seed, ranked with and without it, goes from Pitbull, Lana
+Del Rey and Florence + The Machine to Chris Lake, FISHER and Mau P. Radios are
+cached in memory for six hours, since every track added reloads the page; the
+page waits at most five seconds for them and ranks on whatever came in,
+saying so, and `?radio=off` ranks without them.
 
 **Analytics are raw SQL, no materialized views.** Every chart is a `GROUP BY`
 over `library_canonical` (8.8k rows, resident in shared buffers) — all sixteen
@@ -381,9 +396,10 @@ scrapes that token (no cookie, no account) and the radio is the one anyone
 would get, not one tuned to this account. The tracks are then filled in by the
 ordinary `/tracks?ids=` (one request per 50, through the bucket) and marked
 with what the library holds, matched on the ISRC so a different release of a
-song you keep still counts. Nothing is stored; Spotify regenerates radios.
+song you keep still counts. Nothing is stored; Spotify regenerates radios (the DJ tab keeps a six-hour in-memory cache).
 It is at `/radio/<track id>` (linked from every track page), at
-`/api/radio/<track id>` as JSON, and as the MCP tool `song_radio`.
+`/api/radio/<track id>` as JSON, as the MCP tool `song_radio`, and behind the
+DJ tab's suggestions.
 
 ## Deckhand's engine
 
