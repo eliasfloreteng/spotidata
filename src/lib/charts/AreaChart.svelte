@@ -97,7 +97,12 @@
 	const hasBars = $derived(prepared.some((s) => s.render === 'bar'));
 
 	const yMax = $derived(max(allPoints, (p) => p.value) ?? 0);
-	const yTicks = $derived(niceTicks(0, yMax || 1, 4));
+	// Counts have no fractions: a series of whole numbers gets only whole ticks,
+	// or a peak of 1 is labelled 0, 0, 0, 1, 1, 1 after rounding.
+	const wholeOnly = $derived(allPoints.every((p) => Number.isInteger(p.value)));
+	const yTicks = $derived(
+		niceTicks(0, yMax || 1, 4).filter((t) => !wholeOnly || Number.isInteger(t))
+	);
 	const yTop = $derived(Math.max(yTicks[yTicks.length - 1] ?? 1, yMax, 1));
 
 	const xDomain = $derived.by<[Date, Date]>(() => {

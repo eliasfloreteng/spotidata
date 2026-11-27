@@ -15,6 +15,16 @@
 		minute: '2-digit'
 	});
 
+	// A phone groups the log by day, so a row needs only the time.
+	const dayFmt = new Intl.DateTimeFormat('en-GB', {
+		weekday: 'long',
+		day: 'numeric',
+		month: 'long',
+		year: 'numeric'
+	});
+	const timeFmt = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' });
+	const dayOf = (iso: string) => dayFmt.format(new Date(iso));
+
 	const END_LABELS: Record<string, string> = {
 		trackdone: 'played out',
 		fwdbtn: 'skipped',
@@ -47,7 +57,7 @@
 
 <section class="card">
 	<div class="scroll-x">
-		<table>
+		<table class="cards">
 			<thead>
 				<tr>
 					<th class="wide-only">Played</th>
@@ -55,16 +65,20 @@
 					<th class="wide-only">Artist</th>
 					<th class="wide-only">Album</th>
 					<th class="r">Listened</th>
-					<th class="wide-only">How it ended</th>
-					<th class="wide-only">Device</th>
+					<th>How it ended</th>
+					<th>Device</th>
 				</tr>
 			</thead>
 			<tbody>
-				{#each data.rows as p (p.id)}
+				{#each data.rows as p, i (p.id)}
 					{@const ended = END_LABELS[p.reasonEnd ?? ''] ?? p.reasonEnd ?? '—'}
-					<tr>
+					{@const day = dayOf(p.playedAt)}
+					{#if i === 0 || dayOf(data.rows[i - 1].playedAt) !== day}
+						<tr class="day narrow-only"><td class="lead" colspan="7">{day}</td></tr>
+					{/if}
+					<tr class:bare={!p.reasonEnd && !p.platform}>
 						<td class="muted small nowrap wide-only">{stamp.format(new Date(p.playedAt))}</td>
-						<td>
+						<td class="lead">
 							<div class="cell">
 								<Cover src={p.cover} alt="{p.title} cover" size={30} />
 								<div class="lines">
@@ -78,12 +92,8 @@
 										{/if}
 										{#if p.shuffle}<span class="tag" title="Played on shuffle">⤮</span>{/if}
 									</div>
-									<!-- A phone has room for the track and its length: the rest
-									     of the row folds into a line under the title. -->
-									<span class="narrow-only muted small ellipsis">
-										{p.artist ?? '—'} · {stamp.format(new Date(p.playedAt))}{#if p.reasonEnd}
-											· {ended}{/if}
-									</span>
+									<span class="narrow-only muted small ellipsis">{p.artist ?? '—'}</span>
+									{#if p.album}<span class="narrow-only faint small ellipsis">{p.album}</span>{/if}
 								</div>
 							</div>
 						</td>
@@ -94,14 +104,16 @@
 							</span>
 						</td>
 						<td class="muted small wide-only"><span class="ellipsis">{p.album ?? '—'}</span></td>
+						<td class="narrow-only num when" data-label="Time">{timeFmt.format(new Date(p.playedAt))}</td>
 						<td
-							class="r num nowrap"
+							class="r num nowrap len"
+							data-label="Listened"
 							title={p.estimated ? 'Estimated from the gap to the previous play' : ''}
 						>
 							{streamTime(p.msPlayed, p.estimated)}
 						</td>
-						<td class="faint small wide-only">{ended}</td>
-						<td class="faint small wide-only" title={p.platform ?? ''}>
+						<td class="faint small" data-label="Ended">{ended}</td>
+						<td class="faint small" data-label="Device" title={p.platform ?? ''}>
 							<span class="ellipsis">{p.platform ?? '—'}</span>
 						</td>
 					</tr>
@@ -174,6 +186,11 @@
 	td.r {
 		text-align: right;
 	}
+	/* The right-aligned length would otherwise run into how the play ended. */
+	th.r + th,
+	td.r + td {
+		padding-left: 14px;
+	}
 	.cell {
 		display: flex;
 		align-items: center;
@@ -218,19 +235,68 @@
 		padding: 26px 0;
 		text-align: center;
 	}
+	/* Phone: a row card (app.css › Rows as cards) under a heading for its
+	   day, so each row needs only the time; the artist and album are lines of
+	   their own, cut short rather than wrapped. */
 	@media (max-width: 640px) {
+		/* The time and length sit at the right of the title, where a log is
+		   scanned; how it ended and on what is a row under it, for the plays
+		   that know (the archive's do, the API's do not). */
 		table {
-			min-width: 0;
-			table-layout: fixed;
+			--card-cols: minmax(0, 1fr) minmax(0, 1fr) auto;
 		}
-		th.r {
-			width: 4.5em;
+		tr:not(.day) .lead {
+			grid-column: 1 / 3 !important;
+			grid-row: 1 / span 2;
 		}
-		td.r {
-			padding-right: 0;
+		.when,
+		.len {
+			grid-column: 3;
+			text-align: right !important;
+		}
+		.when {
+			grid-row: 1;
+			color: var(--text);
+		}
+		.len {
+			grid-row: 2;
+			color: var(--text-muted);
+			font-size: 0.8rem;
+		}
+		.when::before,
+		.len::before {
+			display: none !important;
+		}
+		tr.bare td[data-label='Ended'],
+		tr.bare td[data-label='Device'] {
+			display: none;
+		}
+		tr.day {
+			padding: 18px 0 2px !important;
+			border-bottom: 0 !important;
+		}
+		tr.day:first-child {
+			padding-top: 4px !important;
+		}
+		tr.day td {
+			font-size: 0.78rem;
+			font-weight: 600;
+			color: var(--text-muted);
+		}
+		.cell {
+			align-items: flex-start;
+		}
+		.cell :global(img),
+		.cell :global(.placeholder) {
+			width: 44px !important;
+			height: 44px !important;
 		}
 		.ellipsis {
 			max-width: none;
+			display: block;
+		}
+		.lines {
+			flex: 1;
 		}
 	}
 </style>

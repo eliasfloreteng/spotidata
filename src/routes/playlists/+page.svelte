@@ -6,7 +6,7 @@
 	import SearchBox from '$lib/components/SearchBox.svelte';
 	import SpotifyLink from '$lib/components/SpotifyLink.svelte';
 	import { PLAYLIST_FILTERS } from '$lib/filters.ts';
-	import { longDuration, num, plainText, shortDate } from '$lib/utils/format.ts';
+	import { duration, longDuration, num, plainText, shortDate } from '$lib/utils/format.ts';
 
 	let { data } = $props();
 
@@ -45,10 +45,10 @@
 />
 
 <section class="card">
-	<ul class="list">
+	<ul class="list cards">
 		{#each data.rows as p (p.id)}
 			<li>
-				<a class="pl" href="/playlist/{p.id}">
+				<a class="pl lead" href="/playlist/{p.id}">
 					<Cover src={p.cover} alt="{p.name} cover" size={56} />
 					<span class="body">
 						<span class="row1">
@@ -60,7 +60,10 @@
 						{#if p.description}
 							<span class="desc faint">{plainText(p.description)}</span>
 						{/if}
-						<span class="stats faint xs">
+						<span class="narrow-only faint xs clip">
+							{p.ownerName ?? p.ownerId ?? 'unknown owner'}
+						</span>
+						<span class="stats faint xs wide-only">
 							<span class="num">{num(p.tracks)}</span> tracks ·
 							<span class="num">{longDuration(p.durationMs)}</span> ·
 							<span class="num">{num(p.libraryTracks)}</span> in library ·
@@ -75,7 +78,28 @@
 						</span>
 					</span>
 				</a>
-				<SpotifyLink kind="playlist" id={p.id} compact label="Open {p.name} in Spotify" />
+				<!-- A phone lays the same facts out as labelled stats, aligned down the list. -->
+				<span class="narrow-only" data-label="Tracks" class:on={data.sort === 'tracks'}>{num(p.tracks)}</span>
+				<span class="narrow-only" data-label="In library" class:on={data.sort === 'library'}>
+					{num(p.libraryTracks)}
+				</span>
+				<span class="narrow-only" data-label="Length" class:on={data.sort === 'duration'}>
+					{duration(p.durationMs / 1000)}
+				</span>
+				<span
+					class="narrow-only"
+					class:faint={p.plays === 0}
+					data-label="Played"
+					class:on={data.sort === 'listened'}
+				>
+					{p.plays > 0 ? duration(p.msPlayed / 1000) : '—'}
+				</span>
+				<span class="narrow-only" data-label="Last add" class:on={data.sort === 'added'}>
+					{shortDate(p.lastAddedAt)}
+				</span>
+				<span class="corner">
+					<SpotifyLink kind="playlist" id={p.id} compact label="Open {p.name} in Spotify" />
+				</span>
 			</li>
 		{:else}
 			<li class="empty faint">No playlists match that search.</li>
@@ -152,27 +176,29 @@
 		justify-content: center;
 	}
 
+	.clip {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	/* Phone: a row card (app.css › Rows as cards). The stats line was five
+	   facts strung together and wrapped wherever it ran out; they become
+	   labelled stats that line up down the list, the owner a line of its own. */
 	@media (max-width: 640px) {
-		.list li {
-			gap: 10px;
-			align-items: flex-start;
+		.list {
+			--card-cols: minmax(0, 0.75fr) minmax(0, 0.9fr) repeat(2, minmax(0, 1fr)) minmax(0, 1.65fr);
+			--card-gap: 10px;
 		}
 		.pl {
-			gap: 10px;
 			align-items: flex-start;
 		}
 		.pl :global(img),
 		.pl :global(.placeholder) {
-			max-width: 44px;
-			max-height: 44px;
+			width: 52px !important;
+			height: 52px !important;
 		}
-		.name {
-			font-size: 0.9rem;
-		}
-		/* The stats line is five facts long; on a phone it wraps to two rows
-		   rather than being truncated, since the last of them is the owner. */
 		.desc {
-			font-size: 0.76rem;
+			font-size: 0.78rem;
 		}
 	}
 </style>

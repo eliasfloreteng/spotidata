@@ -126,7 +126,9 @@ export function pageParam(url: URL, param = 'page'): number {
 export function sortParam<K extends string>(
 	url: URL,
 	allowed: Record<K, string>,
-	fallback: K,
+	// NoInfer: the key type comes from the allowed sorts, not the default, or
+	// every other key reads as impossible to the pages comparing against it.
+	fallback: NoInfer<K>,
 	defaultDir: 'asc' | 'desc' = 'desc'
 ): { key: K; dir: 'asc' | 'desc'; clause: ReturnType<typeof sql.raw> } {
 	const raw = url.searchParams.get('sort') as K | null;

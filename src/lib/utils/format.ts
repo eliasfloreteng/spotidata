@@ -21,7 +21,7 @@ export function longDuration(ms: number | null | undefined): string {
 	const days = Math.floor(totalMinutes / 1440);
 	const hours = Math.floor((totalMinutes % 1440) / 60);
 	const minutes = totalMinutes % 60;
-	if (days > 0) return `${nf.format(days)} days ${hours} hr`;
+	if (days > 0) return `${nf.format(days)} ${days === 1 ? 'day' : 'days'} ${hours} hr`;
 	if (hours > 0) return `${hours} hr ${minutes} min`;
 	return `${minutes} min`;
 }

@@ -6,7 +6,7 @@
 	import SelectFilter from '$lib/components/SelectFilter.svelte';
 	import SpotifyLink from '$lib/components/SpotifyLink.svelte';
 	import { ARTIST_FILTERS } from '$lib/filters.ts';
-	import { num, longDuration } from '$lib/utils/format.ts';
+	import { duration, num, longDuration } from '$lib/utils/format.ts';
 
 	let { data } = $props();
 
@@ -38,7 +38,14 @@
 	<SearchBox value={data.q} placeholder="Search artists" />
 </header>
 
-<FilterBar groups={ARTIST_FILTERS} active={data.filters} sorts={SORTS} sort={data.sort} dir={data.dir}>
+<FilterBar
+	groups={ARTIST_FILTERS}
+	active={data.filters}
+	sorts={SORTS}
+	sort={data.sort}
+	dir={data.dir}
+	extraActive={data.genre ? 1 : 0}
+>
 	<SelectFilter
 		param="genre"
 		label="Genre"
@@ -49,15 +56,18 @@
 </FilterBar>
 
 <section class="card">
-	<ol class="list" start={(data.page - 1) * data.pageSize + 1}>
+	<ol class="list cards" start={(data.page - 1) * data.pageSize + 1}>
 		{#each data.rows as a (a.id)}
 			<li>
-				<span class="rank num faint">{a.tracks}</span>
-				<a class="who" href="/artist/{a.id}">
+				<span class="rank num faint wide-only">{a.tracks}</span>
+				<a class="who lead" href="/artist/{a.id}">
 					<Cover src={a.image} alt="{a.name} photo" size={44} round />
 					<span class="names">
 						<span class="name">{a.name}</span>
-						<span class="faint xs">
+						<span class="faint xs narrow-only clip">
+							{a.genre ?? 'no genre'}{#if a.followed}{' · '}<span class="follow">followed</span>{/if}
+						</span>
+						<span class="faint xs wide-only">
 							{a.genre ?? 'no genre'} · {num(a.albums)} albums · {longDuration(a.durationMs)}
 							{#if a.plays > 0}
 								· <span
@@ -70,11 +80,27 @@
 						</span>
 					</span>
 				</a>
-				<span class="bar" aria-hidden="true">
+				<span class="bar wide-only" aria-hidden="true">
 					<span class="fill" style="width:{(a.tracks / peak) * 100}%"></span>
 				</span>
-				<span class="pop num faint" title="Spotify popularity">{a.popularity ?? '—'}</span>
-				<SpotifyLink kind="artist" id={a.id} compact label="Open {a.name} in Spotify" />
+				<span class="pop num faint wide-only" title="Spotify popularity">{a.popularity ?? '—'}</span>
+				<!-- A phone lays the same facts out as labelled stats, aligned down the list. -->
+				<span class="narrow-only" data-label="Recordings" class:on={data.sort === 'tracks'}>{num(a.tracks)}</span>
+				<span class="narrow-only" data-label="Albums" class:on={data.sort === 'albums'}>{num(a.albums)}</span>
+				<span class="narrow-only" data-label="Pop." class:on={data.sort === 'popularity'}>{a.popularity ?? '—'}</span>
+				<span class="narrow-only" data-label="Saved" class:on={data.sort === 'duration'}>{duration(a.durationMs / 1000)}</span>
+				<span
+					class="narrow-only"
+					class:faint={a.plays === 0}
+					data-label="Played"
+					class:on={data.sort === 'listened' || data.sort === 'plays'}
+					title="{num(a.plays)} plays"
+				>
+					{a.plays > 0 ? duration(a.msPlayed / 1000) : '—'}
+				</span>
+				<span class="corner">
+					<SpotifyLink kind="artist" id={a.id} compact label="Open {a.name} in Spotify" />
+				</span>
 			</li>
 		{:else}
 			<li class="empty faint">No artists match that search.</li>
@@ -171,23 +197,23 @@
 		justify-content: center;
 	}
 
-	/* Phone: the row keeps its identity column and drops the comparison bar —
-	   60px of track next to a photo and a name compares nothing, and the count
-	   it duplicates is already the first thing in the row. */
+	.clip {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	/* Phone: a row card (app.css › Rows as cards). The comparison bar goes —
+	   60px of track next to a photo compares nothing — and the facts the
+	   sub-line strung together become stats that line up down the list. */
 	@media (max-width: 640px) {
-		.list li {
-			gap: 10px;
-			padding: 10px 0;
+		.list {
+			--card-cols: minmax(0, 1.2fr) minmax(0, 0.8fr) minmax(0, 0.6fr) repeat(2, minmax(0, 1.15fr));
 		}
-		.bar {
-			display: none;
+		.name {
+			font-size: 0.98rem;
 		}
-		.rank {
-			width: 34px;
-			font-size: 0.88rem;
-		}
-		.who {
-			flex: 1 1 auto;
+		.xs {
+			font-size: 0.8rem;
 		}
 	}
 </style>

@@ -10,6 +10,8 @@
 		options: { value: string; label: string }[];
 	}
 	let { param, label, value, anyLabel = 'Any', options }: Props = $props();
+	// The filter bar draws its controls twice (inline, and in the phone's sheet).
+	const uid = $props.id();
 
 	/**
 	 * Some vocabularies are too long for chips. A GET form keeps this in the same
@@ -26,9 +28,9 @@
 	{#each carried as [name, v], i (i)}
 		<input type="hidden" {name} value={v} />
 	{/each}
-	<label class="lbl" for="filter-{param}">{label}</label>
+	<label class="lbl" for="{uid}-{param}">{label}</label>
 	<select
-		id="filter-{param}"
+		id="{uid}-{param}"
 		name={param}
 		class:on={value !== ''}
 		{value}
@@ -89,14 +91,15 @@
 		   control on a phone — it just needs a row of its own to be tappable. */
 		.wrap {
 			display: flex;
+			flex-direction: column;
+			align-items: stretch;
 			width: 100%;
 			gap: 8px;
 		}
 		select {
-			flex: 1;
 			max-width: none;
 			min-width: 0;
-			padding: 8px 12px;
+			padding: 10px 14px;
 		}
 	}
 </style>

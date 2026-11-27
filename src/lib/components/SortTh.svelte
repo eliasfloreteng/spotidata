@@ -31,6 +31,11 @@
 		padding-bottom: 8px;
 		border-bottom: 1px solid var(--hairline);
 		white-space: nowrap;
+		/* The cells' own gutter, so a right-aligned header sits over its numbers. */
+		padding-right: 10px;
+	}
+	th:last-child {
+		padding-right: 0;
 	}
 	th.r {
 		text-align: right;

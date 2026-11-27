@@ -181,6 +181,10 @@
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 			gap: 10px;
 		}
+		/* An odd tile out takes the whole last row instead of leaving a hole. */
+		.tiles > :global(:last-child:nth-child(odd)) {
+			grid-column: 1 / -1;
+		}
 	}
 	.card {
 		padding: var(--card-py) var(--card-px);

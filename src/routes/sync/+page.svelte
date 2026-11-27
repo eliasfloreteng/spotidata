@@ -174,7 +174,7 @@
 <section class="card">
 	<h2>Phases</h2>
 	<div class="scroll-x">
-		<table>
+		<table class="cards phases">
 			<thead>
 				<tr>
 					<th>Phase</th><th>Status</th>
@@ -185,9 +185,9 @@
 			<tbody>
 				{#each status.phases as p (p.key)}
 					<tr class:dim={p.status === 'pending' || p.status === 'skipped'}>
-						<td>{p.label}</td>
-						<td><span class="pill {toneFor(p.status)}">{p.status}</span></td>
-						<td class="r">
+						<td class="lead">{p.label}</td>
+						<td class="corner"><span class="pill {toneFor(p.status)}">{p.status}</span></td>
+						<td class="r prog" data-label="Progress">
 							<div class="bar-row">
 								<div class="bar">
 									<div
@@ -198,9 +198,9 @@
 							<span class="num small">{num(p.done)}/{num(p.total)}</span>
 						</div>
 					</td>
-					<td class="r num">{p.items > 0 ? num(p.items) : '—'}</td>
-					<td class="r num small">{p.rate ? `${p.rate.toFixed(1)}/s` : '—'}</td>
-					<td class="r num small">{duration(p.etaSeconds)}</td>
+					<td class="r num" data-label="Rows">{p.items > 0 ? num(p.items) : '—'}</td>
+					<td class="r num small" data-label="Rate">{p.rate ? `${p.rate.toFixed(1)}/s` : '—'}</td>
+					<td class="r num small" data-label="ETA">{duration(p.etaSeconds)}</td>
 				</tr>
 				{/each}
 			</tbody>
@@ -261,18 +261,18 @@
 <section class="card">
 	<h2>Recent runs</h2>
 	<div class="scroll-x">
-		<table>
+		<table class="cards runs">
 			<thead>
 				<tr><th>#</th><th>Mode</th><th>Status</th><th class="r">Requests</th><th class="r">Started</th></tr>
 			</thead>
 			<tbody>
 				{#each data.runs as r (r.id)}
 					<tr>
-						<td class="num">{r.id}</td>
-						<td>{r.mode}</td>
-						<td><span class="pill {toneFor(r.status)}">{r.status}</span></td>
-						<td class="r num">{r.apiRequests > 0 ? num(r.apiRequests) : '—'}</td>
-						<td class="r faint small">{relativeTime(r.startedAt)}</td>
+						<td class="num wide-only">{r.id}</td>
+						<td class="lead"><span class="narrow-only faint">#{r.id} · </span>{r.mode}</td>
+						<td class="corner"><span class="pill {toneFor(r.status)}">{r.status}</span></td>
+						<td class="r num" data-label="Requests">{r.apiRequests > 0 ? num(r.apiRequests) : '—'}</td>
+						<td class="r faint small" data-label="Started">{relativeTime(r.startedAt)}</td>
 					</tr>
 					{/each}
 				</tbody>
@@ -304,6 +304,38 @@
 	   phone left it three words wide. Title, then summary, then the actions —
 	   which get the full width, since starting a resync is the reason to be
 	   on this page from a phone at all. */
+	/* Phone: row cards (app.css › Rows as cards), the status pill in the
+	   corner. A phase that has not started has no numbers yet: just its name. */
+	@media (max-width: 640px) {
+		table.phases {
+			--card-cols: minmax(0, 1.7fr) repeat(3, minmax(0, 1fr));
+		}
+		table.runs {
+			--card-cols: repeat(2, minmax(0, 1fr));
+		}
+		table.cards tr.dim {
+			padding: 9px 0 !important;
+		}
+		table.cards tr.dim td[data-label] {
+			display: none;
+		}
+		.cards .corner {
+			top: 11px;
+			right: 0;
+		}
+		.cards .lead {
+			padding-right: 100px !important;
+		}
+		.prog .bar-row {
+			flex-direction: column-reverse;
+			align-items: stretch;
+			gap: 5px;
+		}
+		.prog .bar {
+			flex: none;
+			min-width: 0;
+		}
+	}
 	@media (max-width: 640px) {
 		.head {
 			flex-direction: column;

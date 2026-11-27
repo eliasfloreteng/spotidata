@@ -11,7 +11,7 @@
 
 	let { data } = $props();
 
-	/** The table's own sorts, as chips for a phone, where most columns fold away. */
+	/** The table's own sorts, for a phone, where the rows have no header to click. */
 	const SORTS = [
 		{ key: 'tracks', label: 'Yours' },
 		{ key: 'listened', label: 'Listened' },
@@ -47,7 +47,7 @@
 
 <section class="card">
 	<div class="scroll-x">
-		<table>
+		<table class="cards">
 			<thead>
 				<tr>
 					<th class="idx wide-only">#</th>
@@ -61,12 +61,12 @@
 						class="wide-only"
 					/>
 					<th class="wide-only">Type</th>
-					<SortTh key="released" label="Released" active={data.sort} dir={data.dir} right class="wide-only" />
-					<SortTh key="tracks" label="Yours" active={data.sort} dir={data.dir} right class="wide-only" />
+					<SortTh key="released" label="Released" active={data.sort} dir={data.dir} right />
+					<SortTh key="tracks" label="Yours" active={data.sort} dir={data.dir} right />
 					<SortTh key="coverage" label="Coverage" active={data.sort} dir={data.dir} class="wide-only" />
-					<SortTh key="popularity" label="Pop." active={data.sort} dir={data.dir} right class="wide-only" />
+					<SortTh key="popularity" label="Pop." active={data.sort} dir={data.dir} right />
 					<SortTh key="listened" label="Listened" active={data.sort} dir={data.dir} right />
-					<th class="r wide-only"><span class="sr">Spotify</span></th>
+					<th class="r"><span class="sr">Spotify</span></th>
 				</tr>
 			</thead>
 			<tbody>
@@ -74,14 +74,14 @@
 					{@const share = a.totalTracks ? Math.min(1, a.tracks / a.totalTracks) : 0}
 					<tr>
 						<td class="idx num faint wide-only">{(data.page - 1) * data.pageSize + i + 1}</td>
-						<td>
+						<td class="lead">
 							<a class="cell" href="/album/{a.id}">
 								<Cover src={a.cover} alt="{a.name} cover" size={40} />
 								<span class="lines">
 									<span class="name">{a.name}</span>
-									<span class="narrow-only faint small">
-										{a.artist ?? '—'} · {a.albumType ?? 'album'}{#if a.saved}, saved{/if}{#if a.releaseDate}
-											· {a.releaseDate.slice(0, 4)}{/if} · {a.tracks}/{num(a.totalTracks)}
+									<span class="narrow-only muted small clip">{a.artist ?? '—'}</span>
+									<span class="narrow-only faint small clip">
+										{a.albumType ?? 'album'}{#if a.saved}<span class="saved"> · saved</span>{/if}
 									</span>
 								</span>
 							</a>
@@ -96,22 +96,39 @@
 								<span class="faint small">{a.albumType ?? '—'}</span>
 							{/if}
 						</td>
-						<td class="r num muted small nowrap wide-only">{a.releaseDate ?? '—'}</td>
-						<td class="r num wide-only">{a.tracks}<span class="faint">/{num(a.totalTracks)}</span></td>
+						<td
+							class="r num muted small nowrap"
+							data-label="Released"
+							class:on={data.sort === 'released'}
+						>
+							{a.releaseDate ?? '—'}
+						</td>
+						<td
+							class="r num"
+							data-label="Yours"
+							class:on={data.sort === 'tracks' || data.sort === 'coverage'}
+							title="{Math.round(share * 100)}% of the album"
+						>
+							{a.tracks}<span class="faint">/{num(a.totalTracks)}</span>
+						</td>
 						<td class="cov wide-only">
 							<span class="bar" aria-label="{Math.round(share * 100)}% of the album">
 								<span class="fill" style="width:{share * 100}%"></span>
 							</span>
 						</td>
-						<td class="r num wide-only">{a.popularity ?? '—'}</td>
+						<td class="r num" data-label="Pop." class:on={data.sort === 'popularity'}>
+							{a.popularity ?? '—'}
+						</td>
 						<td
 							class="r num small nowrap"
+							data-label="Listened"
+							class:on={data.sort === 'listened'}
 							class:faint={a.plays === 0}
 							title={a.plays > 0 ? `${num(a.plays)} plays` : 'Never played'}
 						>
 							{a.plays > 0 ? longDuration(a.msPlayed) : '—'}
 						</td>
-						<td class="r wide-only"><SpotifyLink kind="album" id={a.id} compact label="Open {a.name} in Spotify" /></td>
+						<td class="r corner"><SpotifyLink kind="album" id={a.id} compact label="Open {a.name} in Spotify" /></td>
 					</tr>
 				{:else}
 					<tr><td colspan="10" class="empty faint">No albums match that search.</td></tr>
@@ -153,6 +170,8 @@
 		padding-bottom: 8px;
 		border-bottom: 1px solid var(--hairline);
 		white-space: nowrap;
+		/* The cells' own gutter, so a right-aligned header sits over its numbers. */
+		padding-right: 10px;
 	}
 	td {
 		padding: 7px 10px 7px 0;
@@ -232,9 +251,33 @@
 	}
 	/* Phone: the album and how long it was played; the rest is folded under the
 	   title and the other sorts are chips above the table. */
+	.lines {
+		min-width: 0;
+	}
+	.clip {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.saved {
+		color: var(--good);
+	}
+	/* Phone: a row card (app.css › Rows as cards). Coverage is the Yours
+	   fraction already, so its bar stays on the wide screen. */
 	@media (max-width: 640px) {
 		table {
-			min-width: 0;
+			--card-cols: minmax(0, 1.3fr) minmax(0, 0.9fr) minmax(0, 0.7fr) minmax(0, 1.6fr);
+		}
+		.cell {
+			align-items: flex-start;
+		}
+		.cell :global(img),
+		.cell :global(.placeholder) {
+			width: 48px !important;
+			height: 48px !important;
+		}
+		.name {
+			font-size: 0.95rem;
 		}
 	}
 </style>

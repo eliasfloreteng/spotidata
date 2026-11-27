@@ -203,6 +203,90 @@ select,
 	}
 }
 
+/* ── Rows as cards ──────────────────────────────────────────────────────
+   A list that is a table on a wide screen becomes a stack of rows on a phone:
+   the `lead` cell (cover, title, who) across the full width, then every cell
+   with a `data-label` as a labelled stat in a grid under it. The grid is the
+   same on every row, so the numbers line up down the list the way a column
+   would, without a column's width. A `corner` cell (the Spotify link) sits at
+   the top right. A list can set its own grid with --card-cols. Works on a
+   <table class="cards"> and on a <ul|ol class="cards"> of <li> rows. */
+@media (max-width: 640px) {
+	table.cards {
+		display: block;
+		min-width: 0 !important;
+	}
+	table.cards thead {
+		display: none;
+	}
+	table.cards tbody {
+		display: block;
+	}
+	table.cards tbody tr,
+	ul.cards > li,
+	ol.cards > li {
+		/* !important: a list's own row styles are scoped, so they outrank these. */
+		position: relative;
+		display: grid !important;
+		grid-template-columns: var(--card-cols, repeat(4, minmax(0, 1fr))) !important;
+		gap: 10px var(--card-gap, 12px) !important;
+		align-items: start !important;
+		padding: 13px 0 !important;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+	}
+	table.cards tbody tr:last-child,
+	ul.cards > li:last-child,
+	ol.cards > li:last-child {
+		border-bottom: 0;
+	}
+	table.cards td {
+		display: block;
+		min-width: 0;
+		padding: 0 !important;
+		border: 0 !important;
+		text-align: left !important;
+	}
+	.cards .lead,
+	.cards .full,
+	.cards td.empty {
+		grid-column: 1 / -1;
+	}
+	ul.cards > li.empty,
+	ol.cards > li.empty {
+		display: block !important;
+		text-align: center;
+	}
+	.cards .lead:has(~ .corner) {
+		padding-right: 34px !important;
+	}
+	.cards .corner {
+		position: absolute;
+		top: 9px;
+		right: -4px;
+	}
+	.cards [data-label] {
+		min-width: 0;
+		font-size: 0.86rem;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		font-variant-numeric: tabular-nums;
+	}
+	.cards [data-label]::before {
+		content: attr(data-label);
+		display: block;
+		margin-bottom: 1px;
+		font-size: 0.68rem;
+		font-weight: 400;
+		letter-spacing: 0.01em;
+		color: var(--text-faint);
+	}
+	/* The stat the list is sorted by. */
+	.cards [data-label].on {
+		color: #ddd6fe;
+	}
+}
+
 .card {
 	background: var(--card);
 	border: 1px solid var(--hairline);

@@ -250,8 +250,9 @@
 		</p>
 	</div>
 	<div class="headright">
-		<a class="chip" href="/history/log">The log →</a>
-		<a class="chip" href="/history/import">Import</a>
+		<!-- A phone reaches both from the More sheet. -->
+		<a class="chip wide-only" href="/history/log">The log →</a>
+		<a class="chip wide-only" href="/history/import">Import</a>
 		<RangePicker days={data.range.days} />
 	</div>
 </header>

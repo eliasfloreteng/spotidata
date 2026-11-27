@@ -1,6 +1,8 @@
 <script lang="ts">
 	import '../app.css';
 	import { page } from '$app/state';
+	import Icon, { type IconName } from '$lib/components/Icon.svelte';
+	import Sheet from '$lib/components/Sheet.svelte';
 
 	let { children, data } = $props();
 
@@ -19,22 +21,39 @@
 	const isActive = (href: string) =>
 		href === '/' ? current === '/' || current.startsWith('/history') : current.startsWith(href);
 
-	let navList = $state<HTMLUListElement | null>(null);
-
 	/**
-	 * On a phone the destinations live in a lane that scrolls sideways, so the
-	 * current one can start out of view — the page then gives no sign of where
-	 * you are. Centre it in the lane, adjusting the lane's own scroll offset
-	 * rather than calling scrollIntoView, which would also move the page.
-	 * A no-op wherever the lane is wide enough to show everything.
+	 * A phone gets a tab bar along the bottom instead: four destinations a thumb
+	 * reaches without looking, and the rest one tap further in a sheet. A detail
+	 * page lights the tab of the list it belongs to.
 	 */
+	const TABS: { href: string; label: string; icon: IconName; match: string[] }[] = [
+		{ href: '/', label: 'Overview', icon: 'overview', match: ['/history'] },
+		{ href: '/library', label: 'Library', icon: 'library', match: ['/library', '/track', '/liked'] },
+		{ href: '/artists', label: 'Artists', icon: 'artists', match: ['/artist'] },
+		{ href: '/playlists', label: 'Playlists', icon: 'playlists', match: ['/playlist', '/radio'] }
+	];
+	const MORE: { href: string; label: string; icon: IconName; note: string }[] = [
+		{ href: '/albums', label: 'Albums', icon: 'albums', note: 'Every album in the library' },
+		{ href: '/dj', label: 'DJ', icon: 'dj', note: 'Build a set by key and tempo' },
+		{ href: '/automations', label: 'Automations', icon: 'automations', note: 'Playlists that collect from others' },
+		{ href: '/history/log', label: 'Play log', icon: 'log', note: 'Every play, newest first' },
+		{ href: '/history/import', label: 'Listening history', icon: 'import', note: 'Import Spotify’s streaming archive' },
+		{ href: '/sync', label: 'Sync', icon: 'sync', note: 'Runs, phases and the event log' },
+		{ href: '/settings', label: 'Settings', icon: 'settings', note: 'Account, links, display and sync' }
+	];
+
+	const tabOn = (tab: (typeof TABS)[number]) =>
+		tab.href === '/'
+			? current === '/' || tab.match.some((m) => current.startsWith(m))
+			: tab.match.some((m) => current.startsWith(m));
+	const moreOn = (href: string) => current === href || current.startsWith(href + '/') || (href === '/albums' && current.startsWith('/album/'));
+	const inMore = $derived(!TABS.some(tabOn));
+
+	let moreOpen = $state(false);
+	// Following a link out of the sheet lands on a new page: the sheet goes.
 	$effect(() => {
 		current;
-		const link = navList?.querySelector<HTMLElement>('a.on');
-		if (!navList || !link) return;
-		const lane = navList.getBoundingClientRect();
-		const target = link.getBoundingClientRect();
-		navList.scrollLeft += target.left - lane.left - (lane.width - target.width) / 2;
+		moreOpen = false;
 	});
 </script>
 
@@ -44,7 +63,7 @@
 			<span class="mark" aria-hidden="true"></span>
 			<span>Spotidata</span>
 		</a>
-		<ul bind:this={navList}>
+		<ul>
 			{#each NAV as item (item.href)}
 				<li>
 					<a href={item.href} class:on={isActive(item.href)} aria-current={isActive(item.href) ? 'page' : undefined}>
@@ -57,7 +76,7 @@
 			<a href="/sync" class="chip" class:live={data.activeSync}>
 				{#if data.activeSync}<span class="dot" aria-hidden="true"></span>Syncing{:else}Sync{/if}
 			</a>
-			<a href="/settings" class="chip">Settings</a>
+			<a href="/settings" class="chip settings">Settings</a>
 		</div>
 	</nav>
 
@@ -74,6 +93,41 @@
 
 	<main>{@render children?.()}</main>
 </div>
+
+<nav class="tabs" aria-label="Sections">
+	{#each TABS as tab (tab.href)}
+		{@const on = tabOn(tab)}
+		<a href={tab.href} class:on aria-current={on ? 'page' : undefined}>
+			<Icon name={tab.icon} size={22} />
+			<span>{tab.label}</span>
+		</a>
+	{/each}
+	<button type="button" class:on={inMore} aria-haspopup="dialog" onclick={() => (moreOpen = true)}>
+		<Icon name="more" size={22} />
+		<span>More</span>
+	</button>
+</nav>
+
+<Sheet bind:open={moreOpen} title="More">
+	<ul class="more">
+		{#each MORE as item (item.href)}
+			{@const on = moreOn(item.href)}
+			<li>
+				<a href={item.href} class:on aria-current={on ? 'page' : undefined}>
+					<span class="glyph"><Icon name={item.icon} /></span>
+					<span class="text">
+						<span class="label">
+							{item.label}
+							{#if item.href === '/sync' && data.activeSync}<span class="dot" aria-label="running"></span>{/if}
+						</span>
+						<span class="note">{item.note}</span>
+					</span>
+					<Icon name="chevron" size={16} />
+				</a>
+			</li>
+		{/each}
+	</ul>
+</Sheet>
 
 <style>
 	.app {
@@ -189,58 +243,128 @@
 		text-decoration: underline;
 	}
 
-	/* ── Phone header ──────────────────────────────────────────────────────
-	   Six destinations do not fit one phone row, and wrapping them pushed the
-	   bar to three lines. Instead the links become their own full-bleed lane
-	   that scrolls sideways, under a compact brand row — and the whole bar
-	   sticks, because every page here is long enough to lose the nav. */
+	/* The tab bar and its sheet exist on a phone only. */
+	.tabs {
+		display: none;
+	}
+	.more {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+	.more a {
+		display: flex;
+		align-items: center;
+		gap: 14px;
+		padding: 11px 4px;
+		color: var(--text-faint);
+		border-bottom: 1px solid var(--hairline);
+	}
+	.more li:last-child a {
+		border-bottom: 0;
+	}
+	.glyph {
+		display: grid;
+		place-items: center;
+		width: 38px;
+		height: 38px;
+		border-radius: 11px;
+		background: rgba(255, 255, 255, 0.04);
+		color: var(--text-muted);
+	}
+	.more a.on .glyph {
+		background: var(--accent-soft);
+		color: #ddd6fe;
+	}
+	.text {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+	}
+	.label {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		color: var(--text);
+		font-size: 0.95rem;
+	}
+	.more a.on .label {
+		color: #ddd6fe;
+	}
+	.note {
+		font-size: 0.78rem;
+		color: var(--text-faint);
+	}
+
+	/* ── Phone ─────────────────────────────────────────────────────────────
+	   Seven destinations never fit one phone row, and a sideways-scrolling
+	   lane of them hid where you were. The header keeps the brand and the sync
+	   state; the destinations move to a tab bar on the bottom edge, where the
+	   thumb already is, with the rest in a sheet behind More. */
 	@media (max-width: 760px) {
-		nav {
-			position: sticky;
-			top: 0;
-			z-index: 20;
-			gap: 10px;
-			padding: calc(10px + env(safe-area-inset-top)) 0 8px;
-			margin-inline: calc(max(var(--page-px), env(safe-area-inset-left)) * -1);
-			padding-inline: max(var(--page-px), env(safe-area-inset-left));
-			background: color-mix(in srgb, var(--bg) 86%, transparent);
-			backdrop-filter: blur(14px);
-			-webkit-backdrop-filter: blur(14px);
-			border-bottom: 1px solid var(--hairline);
+		.app {
+			padding-bottom: calc(96px + env(safe-area-inset-bottom));
 		}
-		nav ul {
-			order: 3;
-			flex: 1 0 100%;
+		nav:not(.tabs) {
+			padding: calc(12px + env(safe-area-inset-top)) 0 14px;
 			flex-wrap: nowrap;
-			overflow-x: auto;
-			overscroll-behavior-x: contain;
-			scroll-snap-type: x proximity;
-			scrollbar-width: none;
-			/* Full-bleed lane: the active pill can sit flush to the screen edge,
-			   which is what makes it read as scrollable. */
-			margin-inline: calc(max(var(--page-px), env(safe-area-inset-left)) * -1);
-			padding-inline: max(var(--page-px), env(safe-area-inset-left));
 		}
-		nav ul::-webkit-scrollbar {
+		nav:not(.tabs) ul,
+		.settings {
 			display: none;
-		}
-		nav ul li {
-			flex: none;
-			scroll-snap-align: center;
-		}
-		nav ul a {
-			padding: 8px 14px;
-			font-size: 0.92rem;
 		}
 		.brand {
 			font-size: 0.98rem;
 		}
 		.chip {
-			padding: 8px 14px;
+			padding: 7px 14px;
 			font-size: 0.85rem;
 		}
+		.tabs {
+			position: fixed;
+			z-index: 30;
+			inset: auto 0 0;
+			display: grid;
+			grid-template-columns: repeat(5, 1fr);
+			gap: 0;
+			padding: 6px max(6px, env(safe-area-inset-left)) calc(6px + env(safe-area-inset-bottom))
+				max(6px, env(safe-area-inset-right));
+			background: color-mix(in srgb, var(--bg) 88%, transparent);
+			backdrop-filter: blur(16px) saturate(1.4);
+			-webkit-backdrop-filter: blur(16px) saturate(1.4);
+			border-top: 1px solid var(--hairline-strong);
+		}
+		.tabs a,
+		.tabs button {
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			gap: 3px;
+			min-height: 50px;
+			padding: 6px 0 4px;
+			border: 0;
+			border-radius: 12px;
+			background: none;
+			color: var(--text-faint);
+			font: inherit;
+			font-size: 0.68rem;
+			font-weight: 500;
+			letter-spacing: 0.01em;
+			cursor: pointer;
+		}
+		.tabs .on {
+			color: #ddd6fe;
+		}
+		.tabs .on :global(svg) {
+			filter: drop-shadow(0 2px 8px rgba(124, 58, 237, 0.55));
+		}
+		.tabs a:active,
+		.tabs button:active {
+			background: rgba(255, 255, 255, 0.05);
+		}
 		.alert {
-			margin-top: 12px;
+			margin-top: 0;
 		}
 	}
 </style>

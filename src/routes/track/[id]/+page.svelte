@@ -169,22 +169,22 @@
 		regional releases all collapse here.
 	</p>
 	<div class="scroll-x">
-		<table>
+		<table class="cards copies">
 			<thead>
 				<tr>
 					<th>Title</th>
-					<th>Album</th>
-					<th class="wide-only">Released</th>
+					<th class="wide-only">Album</th>
+					<th>Released</th>
 					<th class="r">Length</th>
-					<th class="r wide-only">Pop.</th>
+					<th class="r">Pop.</th>
 					<th class="state">State</th>
-					<th class="r wide-only"><span class="sr">Spotify</span></th>
+					<th class="r"><span class="sr">Spotify</span></th>
 				</tr>
 			</thead>
 			<tbody>
 				{#each copies as c (c.id)}
 					<tr class:rep={c.isRepresentative}>
-						<td>
+						<td class="lead">
 							<div class="cell">
 								<Cover src={c.albumCover} alt="{c.albumName ?? c.name} cover" size={34} />
 								<div>
@@ -196,10 +196,17 @@
 										{c.artists.map((a) => a.name).join(', ') || '—'}
 										{#if c.linkedFromId}<span title="Track relinking substituted this id"> · relinked</span>{/if}
 									</div>
+									<!-- A phone has no album column: the album is a line of the title's. -->
+									{#if c.albumId}
+										<div class="narrow-only xs">
+											<a href="/album/{c.albumId}">{c.albumName || '(untitled album)'}</a>
+											<span class="faint">· {c.albumType ?? '—'} · disc {c.discNumber}, track {c.trackNumber}</span>
+										</div>
+									{/if}
 								</div>
 							</div>
 						</td>
-						<td>
+						<td class="wide-only">
 							{#if c.albumId}
 								<a href="/album/{c.albumId}">{c.albumName || '(untitled album)'}</a>
 								<div class="faint xs">{c.albumType ?? '—'} · disc {c.discNumber}, track {c.trackNumber}</div>
@@ -207,10 +214,10 @@
 								<span class="faint">—</span>
 							{/if}
 						</td>
-						<td class="num muted nowrap wide-only">{c.albumReleaseDate ?? '—'}</td>
-						<td class="r num muted">{trackTime(c.durationMs)}</td>
-						<td class="r num wide-only">{c.popularity ?? '—'}</td>
-						<td class="state">
+						<td class="num muted nowrap" data-label="Released">{c.albumReleaseDate ?? '—'}</td>
+						<td class="r num muted" data-label="Length">{trackTime(c.durationMs)}</td>
+						<td class="r num" data-label="Pop.">{c.popularity ?? '—'}</td>
+						<td class="state" data-label="State">
 							<div class="chips tight">
 								{#if c.likedAt}<Chip tone="good" title="Liked {shortDate(c.likedAt)}">Liked</Chip>{/if}
 								{#if c.inLibrary && !c.likedAt}<Chip tone="accent">Library</Chip>{/if}
@@ -218,7 +225,7 @@
 								{#if !c.inLibrary && c.playlistCount === 0}<span class="faint xs">—</span>{/if}
 							</div>
 						</td>
-						<td class="r wide-only"><SpotifyLink kind="track" id={c.id} compact label="Open {c.name || 'track'} in Spotify" /></td>
+						<td class="r corner"><SpotifyLink kind="track" id={c.id} compact label="Open {c.name || 'track'} in Spotify" /></td>
 					</tr>
 				{/each}
 			</tbody>
@@ -231,7 +238,7 @@
 	{#if data.playlists.length === 0}
 		<p class="faint sub">Not in any playlist you follow or own.</p>
 	{:else}
-		<table>
+		<table class="cards lists">
 			<thead>
 				<tr>
 					<th>Playlist</th><th>Owner</th><th class="r">Times</th><th class="r">Added</th>
@@ -240,19 +247,19 @@
 			<tbody>
 				{#each data.playlists as p (p.id)}
 					<tr>
-						<td>
+						<td class="lead">
 							<a href="/playlist/{p.id}">{p.name}</a>
 							{#if p.collaborative}<span class="faint xs"> · collaborative</span>{/if}
 						</td>
-						<td>
+						<td data-label="Owner">
 							{#if p.isOwned}
 								<Chip tone="accent">Yours</Chip>
 							{:else}
 								<span class="muted small">{p.addedByName ?? p.addedById ?? 'followed'}</span>
 							{/if}
 						</td>
-						<td class="r num">{p.occurrences}</td>
-						<td class="r muted small nowrap" title={p.addedAt ?? ''}>{p.addedAt ? shortDate(p.addedAt) : '—'}</td>
+						<td class="r num" data-label="Times">{p.occurrences}</td>
+						<td class="r muted small nowrap" data-label="Added" title={p.addedAt ?? ''}>{p.addedAt ? shortDate(p.addedAt) : '—'}</td>
 					</tr>
 				{/each}
 			</tbody>
@@ -368,6 +375,10 @@
 		.tiles {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 			gap: 10px;
+		}
+		/* An odd tile out takes the whole last row instead of leaving a hole. */
+		.tiles > :global(:last-child:nth-child(odd)) {
+			grid-column: 1 / -1;
 		}
 	}
 	.card {
@@ -491,5 +502,23 @@
 	}
 	.nowrap {
 		white-space: nowrap;
+	}
+	/* Phone: row cards (app.css › Rows as cards). */
+	@media (max-width: 640px) {
+		table.copies {
+			--card-cols: minmax(0, 1.25fr) minmax(0, 0.8fr) minmax(0, 0.6fr) minmax(0, 1.5fr);
+		}
+		table.lists {
+			--card-cols: minmax(0, 1.6fr) minmax(0, 0.7fr) minmax(0, 1.2fr);
+		}
+		tr.rep {
+			background: none;
+		}
+		.state {
+			white-space: normal !important;
+		}
+		.cell {
+			align-items: flex-start;
+		}
 	}
 </style>

@@ -175,30 +175,27 @@
 	}
 
 	/* ── Phone ──────────────────────────────────────────────────────────────
-	   Seven presets never fit a phone row. Rather than wrapping the pill group
-	   into a lumpy two-line blob, it keeps its shape and scrolls, full width so
-	   it reads as a control strip instead of a stray right-aligned cluster. */
+	   The seven options share the full width as one segmented control, every
+	   one visible: no wrapping into a lumpy second line, and no sideways lane
+	   hiding Custom off the edge. Auto tracks split the spare room evenly. */
 	@media (max-width: 640px) {
-		/* min-width: 0 lets the pill scroll inside its row; without it a flex
-		   parent sizes the picker to every preset laid end to end. */
+		/* min-width: 0 keeps a flex parent from sizing the picker to every
+		   option laid end to end. */
 		.picker {
 			align-items: stretch;
 			width: 100%;
 			min-width: 0;
 		}
 		.range {
-			display: flex;
-			overflow-x: auto;
-			overscroll-behavior-x: contain;
-			scrollbar-width: none;
-		}
-		.range::-webkit-scrollbar {
-			display: none;
+			display: grid;
+			grid-auto-flow: column;
+			grid-auto-columns: auto;
+			gap: 0;
 		}
 		.opt {
-			flex: none;
-			padding: 8px 14px;
-			font-size: 0.85rem;
+			padding: 9px 4px;
+			font-size: 0.84rem;
+			white-space: nowrap;
 		}
 		.span {
 			justify-content: flex-start;

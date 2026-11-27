@@ -205,7 +205,7 @@
 	</header>
 
 	<div class="scroll-x">
-		<table>
+		<table class="cards">
 			<thead>
 				<tr>
 					<th>Archive</th>
@@ -221,22 +221,22 @@
 			<tbody>
 				{#each data.imports as i (i.id)}
 					<tr>
-						<td class="ellipsis" title={i.label}>{i.label}</td>
-						<td>
+						<td class="ellipsis lead" title={i.label}>{i.label}</td>
+						<td class="full">
 							<span class="pill {i.status}">{STATUS_LABEL[i.status] ?? i.status}</span>
 							{#if i.status === 'running' && i.files > 0}
 								<span class="faint small">{i.filesDone}/{i.files} files</span>
 							{/if}
 							{#if i.error}<div class="err small">{i.error}</div>{/if}
 						</td>
-						<td class="r num">{num(i.rowsRead)}</td>
-						<td class="r num">{num(i.playsInserted)}</td>
-						<td class="r num faint">{num(i.duplicates)}</td>
-						<td class="faint small nowrap pad">
+						<td class="r num" data-label="Read">{num(i.rowsRead)}</td>
+						<td class="r num" data-label="New">{num(i.playsInserted)}</td>
+						<td class="r num faint" data-label="Already had">{num(i.duplicates)}</td>
+						<td class="faint small nowrap pad" data-label="Period covered">
 							{#if i.firstPlayedAt}{i.firstPlayedAt} → {i.lastPlayedAt}{:else}—{/if}
 						</td>
-						<td class="faint small nowrap">{relativeTime(i.createdAt)}</td>
-						<td class="r">
+						<td class="faint small nowrap" data-label="When">{relativeTime(i.createdAt)}</td>
+						<td class="r corner">
 							{#if i.livePlays > 0}
 								<form method="POST" action="?/undo" use:enhance>
 									<input type="hidden" name="id" value={i.id} />
@@ -534,5 +534,22 @@
 		padding: 1px 5px;
 		border-radius: 4px;
 		background: rgba(255, 255, 255, 0.06);
+	}
+	/* Phone: a row card (app.css › Rows as cards), the period across two
+	   columns since it is two dates. */
+	@media (max-width: 640px) {
+		table {
+			--card-cols: repeat(3, minmax(0, 1fr));
+		}
+		td.pad {
+			grid-column: span 2;
+		}
+		.ellipsis {
+			max-width: none;
+		}
+		.cards .corner {
+			top: 6px;
+			right: 0;
+		}
 	}
 </style>

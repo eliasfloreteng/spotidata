@@ -7,6 +7,7 @@
 	import Cover from '$lib/components/Cover.svelte';
 	import Pager from '$lib/components/Pager.svelte';
 	import SearchBox from '$lib/components/SearchBox.svelte';
+	import SortLink from '$lib/components/SortLink.svelte';
 	import SortTh from '$lib/components/SortTh.svelte';
 	import SpotifyLink from '$lib/components/SpotifyLink.svelte';
 	import { duration, num, pct, trackTime } from '$lib/utils/format.ts';
@@ -154,8 +155,15 @@
 				<a class="clear" href="/dj">Clear all</a>
 			{/if}
 		</header>
+		<!-- A phone's rows have no header to click: the same sorts, as chips. -->
+		<div class="phone-sorts narrow-only">
+			<span class="lbl">Sort</span>
+			<SortLink key="bpm" label="BPM" active={data.sort} dir={data.dir} initial="asc" chip />
+			<SortLink key="key" label="Key" active={data.sort} dir={data.dir} initial="asc" chip />
+			<SortLink key="plays" label="Plays" active={data.sort} dir={data.dir} chip />
+		</div>
 		<div class="scroll-x">
-			<table>
+			<table class="cards pool">
 				<thead>
 					<tr>
 						<th>Recording</th>
@@ -168,7 +176,7 @@
 				<tbody>
 					{#each data.rows as t (t.canonicalTrackId)}
 						<tr>
-							<td>
+							<td class="lead">
 								<div class="cell">
 									<Cover src={t.cover} alt="{t.title} cover" size={34} />
 									<div class="min">
@@ -180,14 +188,16 @@
 									</div>
 								</div>
 							</td>
-							<td class="r num">
+							<td class="r num" data-label="BPM" class:on={data.sort === 'bpm'}>
 								{bpm(t.bpm)}
 							</td>
-							<td class="nowrap">
+							<td class="nowrap" data-label="Key" class:on={data.sort === 'key'}>
 								<a class="code" href={withParams(page.url, { key: t.camelot, page: null })} title={keyForCamelot(t.camelot) ?? ''}>{t.camelot}</a>
 							</td>
-							<td class="r num" class:faint={t.plays === 0}>{t.plays || '—'}</td>
-							<td class="r">
+							<td class="r num" data-label="Plays" class:on={data.sort === 'plays'} class:faint={t.plays === 0}>
+								{t.plays || '—'}
+							</td>
+							<td class="r start">
 								<a class="btn small" href="/dj?s={encodeURIComponent(t.canonicalTrackId)}">Start set</a>
 							</td>
 						</tr>
@@ -816,6 +826,30 @@
 	@media (max-width: 640px) {
 		.score {
 			display: none;
+		}
+	}
+	.phone-sorts {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px;
+		margin: 4px 0 6px;
+	}
+	.phone-sorts .lbl {
+		font-size: 0.72rem;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: var(--text-faint);
+		margin-right: 4px;
+	}
+	/* Phone: a row card (app.css › Rows as cards), the set's starting button
+	   on the end of the stats row. */
+	@media (max-width: 640px) {
+		table.pool {
+			--card-cols: repeat(3, minmax(0, 1fr)) auto;
+		}
+		td.start {
+			align-self: center;
 		}
 	}
 </style>

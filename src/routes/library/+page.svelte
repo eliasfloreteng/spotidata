@@ -16,7 +16,7 @@
 
 	const c = $derived(data.composition);
 
-	/** The table's own sorts, as chips for a phone, where most columns fold away. */
+	/** The table's own sorts, for a phone, where the rows have no header to click. */
 	const SORTS = [
 		{ key: 'added', label: 'First added' },
 		{ key: 'plays', label: 'Plays' },
@@ -67,7 +67,7 @@
 
 <section class="card">
 	<div class="scroll-x">
-		<table>
+		<table class="cards">
 			<thead>
 				<tr>
 					<th class="idx wide-only">#</th>
@@ -81,9 +81,9 @@
 						class="wide-only"
 					/>
 					<th class="wide-only">Album</th>
-					<SortTh key="copies" label="Copies" active={data.sort} dir={data.dir} right class="wide-only" />
-					<SortTh key="duration" label="Length" active={data.sort} dir={data.dir} right class="wide-only" />
-					<SortTh key="popularity" label="Pop." active={data.sort} dir={data.dir} right class="wide-only" />
+					<SortTh key="copies" label="Copies" active={data.sort} dir={data.dir} right />
+					<SortTh key="duration" label="Length" active={data.sort} dir={data.dir} right />
+					<SortTh key="popularity" label="Pop." active={data.sort} dir={data.dir} right />
 					<SortTh key="plays" label="Plays" active={data.sort} dir={data.dir} right />
 					<SortTh
 						key="added"
@@ -91,26 +91,30 @@
 						active={data.sort}
 						dir={data.dir}
 						right
-						class="wide-only"
 					/>
-					<th class="r wide-only"><span class="sr">Spotify</span></th>
+					<th class="r"><span class="sr">Spotify</span></th>
 				</tr>
 			</thead>
 			<tbody>
 				{#each data.rows as t, i (t.canonicalTrackId)}
 					<tr>
 						<td class="idx num faint wide-only">{(data.page - 1) * data.pageSize + i + 1}</td>
-						<td>
+						<td class="lead">
 							<div class="cell">
 								<Cover src={t.cover} alt="{t.albumName ?? t.title} cover" size={34} />
-								<div>
+								<div class="lines">
 									<div class="title">
 										<a href={trackHref(t.canonicalTrackId)}>{t.title}</a>
 										{#if t.liked}<span class="heart" title="Liked">♥</span>{/if}
 										{#if t.explicit}<span class="ex" title="Explicit">E</span>{/if}
 									</div>
-									<div class="faint xs">
-										<span class="narrow-only"><ArtistLinks artists={t.artists} /> ·</span>
+									<!-- A phone has no artist or album column: they are lines of
+									     their own, each cut short rather than wrapped. -->
+									<div class="narrow-only muted xs clip"><ArtistLinks artists={t.artists} /></div>
+									<div class="faint xs clip">
+										<span class="narrow-only">
+											{#if t.albumId}<a href="/album/{t.albumId}">{t.albumName}</a> ·{/if}
+										</span>
 										{#if t.kind === 'fallback'}
 											<span title="No ISRC — grouped by heuristic">heuristic group</span> ·
 										{/if}
@@ -127,7 +131,7 @@
 						<td class="muted small wide-only">
 							{#if t.albumId}<a href="/album/{t.albumId}">{t.albumName}</a>{:else}—{/if}
 						</td>
-						<td class="r wide-only">
+						<td class="r" data-label="Copies" class:on={data.sort === 'copies'}>
 							{#if t.copyCount > 1}
 								<Chip tone="accent" title="{t.copyCountInLibrary} of them in your library">
 									{t.copyCount}
@@ -136,10 +140,16 @@
 								<span class="faint num">1</span>
 							{/if}
 						</td>
-						<td class="r num muted wide-only">{trackTime(t.durationMs)}</td>
-						<td class="r num wide-only">{t.popularity ?? '—'}</td>
+						<td class="r num muted" data-label="Length" class:on={data.sort === 'duration'}>
+							{trackTime(t.durationMs)}
+						</td>
+						<td class="r num" data-label="Pop." class:on={data.sort === 'popularity'}>
+							{t.popularity ?? '—'}
+						</td>
 						<td
 							class="r num"
+							data-label="Plays"
+							class:on={data.sort === 'plays'}
 							class:faint={t.plays === 0}
 							title={t.plays > 0
 								? `${longDuration(t.msPlayed)} listened, last ${shortDate(t.lastPlayedAt)}`
@@ -147,8 +157,15 @@
 						>
 							{t.plays || '—'}
 						</td>
-						<td class="r muted small nowrap wide-only" title={t.firstAddedAt}>{shortDate(t.firstAddedAt)}</td>
-						<td class="r wide-only">
+						<td
+							class="r muted small nowrap"
+							data-label="First added"
+							class:on={data.sort === 'added'}
+							title={t.firstAddedAt}
+						>
+							{shortDate(t.firstAddedAt)}
+						</td>
+						<td class="r corner">
 							<SpotifyLink
 								kind="track"
 								id={t.representativeTrackId}
@@ -204,6 +221,8 @@
 		padding-bottom: 8px;
 		border-bottom: 1px solid var(--hairline);
 		white-space: nowrap;
+		/* The cells' own gutter, so a right-aligned header sits over its numbers. */
+		padding-right: 10px;
 	}
 	td {
 		padding: 7px 10px 7px 0;
@@ -274,11 +293,34 @@
 	.nowrap {
 		white-space: nowrap;
 	}
-	/* Phone: the recording and its plays; the rest is folded under the title
-	   and the other sorts are chips above the table. */
+	.lines {
+		min-width: 0;
+	}
+	.clip {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	/* Phone: each recording is a row card (app.css › Rows as cards) — the
+	   title, its artists and album, then the five numbers in one aligned row,
+	   the date given the room a date needs. */
 	@media (max-width: 640px) {
 		table {
-			min-width: 0;
+			--card-cols: repeat(4, minmax(0, 1fr)) minmax(0, 1.7fr);
+		}
+		.cell {
+			align-items: flex-start;
+		}
+		.cell :global(img),
+		.cell :global(.placeholder) {
+			width: 48px !important;
+			height: 48px !important;
+		}
+		.title {
+			font-size: 0.95rem;
+		}
+		.xs {
+			font-size: 0.78rem;
 		}
 	}
 </style>
