@@ -134,7 +134,7 @@
 					{num(p.completed)} of {num(p.plays)} streams ran past 30 seconds.
 				</p>
 			</div>
-			<a class="more" href="/history">All listening →</a>
+			<a class="more" href="/">All listening →</a>
 		</header>
 
 		<div class="playgrid">

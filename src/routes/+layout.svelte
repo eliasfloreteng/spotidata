@@ -6,7 +6,6 @@
 
 	const NAV = [
 		{ href: '/', label: 'Overview' },
-		{ href: '/history', label: 'Listening' },
 		{ href: '/library', label: 'Library' },
 		{ href: '/liked', label: 'Liked' },
 		{ href: '/dj', label: 'DJ' },
@@ -17,8 +16,9 @@
 	];
 
 	const current = $derived(page.url.pathname);
+	// The log and the importer are the overview's own subpages.
 	const isActive = (href: string) =>
-		href === '/' ? current === '/' : current.startsWith(href);
+		href === '/' ? current === '/' || current.startsWith('/history') : current.startsWith(href);
 
 	let navList = $state<HTMLUListElement | null>(null);
 

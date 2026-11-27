@@ -179,9 +179,12 @@
 	   into a lumpy two-line blob, it keeps its shape and scrolls, full width so
 	   it reads as a control strip instead of a stray right-aligned cluster. */
 	@media (max-width: 640px) {
+		/* min-width: 0 lets the pill scroll inside its row; without it a flex
+		   parent sizes the picker to every preset laid end to end. */
 		.picker {
 			align-items: stretch;
 			width: 100%;
+			min-width: 0;
 		}
 		.range {
 			display: flex;

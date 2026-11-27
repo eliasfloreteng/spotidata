@@ -34,7 +34,7 @@ function havingAll(parts: (SQL | null)[]): SQL {
  *
  * The rollup is the whole reason that table exists: sorting 8.8k recordings by
  * play count would otherwise group 167k events on every page load, and a list
- * page has no time range to justify it — the range picker lives on /history.
+ * page has no time range to justify it — the range picker lives on the overview.
  * A recording with no plays has no row there, hence the coalesce everywhere.
  */
 export const LIKED_SORTS = {
@@ -302,7 +302,7 @@ export async function artistIndex(opts: {
 		  left join followed_artists fa on fa.artist_id = a.id and fa.removed_at is null
 		  -- Counted over EVERY recording credited to the artist, not just the ones
 		  -- in the library: half of what you play by an artist you never saved,
-		  -- and a column that quietly excluded it would contradict /history.
+		  -- and a column that quietly excluded it would contradict the overview.
 		  left join lateral (
 		    select coalesce(sum(c.plays), 0) as plays, coalesce(sum(c.ms_played), 0) as ms
 		      from canonical_play_stats c

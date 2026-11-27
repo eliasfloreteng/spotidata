@@ -10,10 +10,10 @@ same stack and the same database.
 Bun · TypeScript · SvelteKit 2 (Svelte 5 runes) · Postgres 18 · Drizzle v1 ·
 Graphile Worker · d3 v7 · Rust (the engine).
 
-![The dashboard: library totals, then a per-year calendar of tracks added](docs/screenshots/dashboard-hero.png)
+![The overview: listening and library totals, then how saved recordings met the listening](docs/screenshots/dashboard-hero.png)
 
-*Top of the dashboard — [see the whole page](docs/screenshots/dashboard.png), sixteen
-charts over a 8.8k-recording library.*
+*Top of the overview — [see the whole page](docs/screenshots/dashboard.png): what was
+saved and what was played, over one range, a 9.1k-recording library and 184k plays.*
 
 ## Why local ingest
 
@@ -93,7 +93,11 @@ are ingested in full but excluded from library statistics.
 17% of this account's plays are of recordings it never saved, and 801 saved
 recordings have never been played at all. `plays` is one row per stream event,
 keyed on `spotify_tracks.id` — never on the canonical id, so a regrouping
-cannot orphan one — and `/history` reads it in hours rather than saves.
+cannot orphan one. The overview shows both halves under one range picker: where
+they answer the same question (top artists, the calendar, the bump chart) one
+card switches between hours played and recordings saved, and a card of its own
+shows where they meet — how many saves were heard first, kept on first listen,
+kept unheard or never played, and how much of the library has gone quiet.
 
 Two sources feed it, and they describe the same play differently. The extended
 streaming history export is the whole record back to the first play, with how
@@ -603,7 +607,7 @@ src/lib/server/    db/ spotify/ ingest/ import/ queue/ stats/ entities/
 engine/            Deckhand's engine, a Cargo workspace: server/ (the binary,
                    its migrations/) and model/ (the manifest the apps read)
 src/lib/charts/    d3 computes, Svelte renders — no d3-selection
-src/routes/        dashboard, entity pages, /history, /dj, /automations, /sync,
+src/routes/        overview, entity pages, /history/{log,import}, /dj, /automations, /sync,
                    /settings, /api
 scripts/           probe-api, apply-sql, check-migration, check-sql-conventions,
                    backup, restore-auth, spike-worker

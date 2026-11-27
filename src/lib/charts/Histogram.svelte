@@ -6,6 +6,7 @@
   surface gap so neighbours separate without a stroke.
 -->
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { bin, extent, max, mean, median } from 'd3-array';
 	import { scaleLinear } from 'd3-scale';
 	import ChartFrame from './ChartFrame.svelte';
@@ -34,6 +35,8 @@
 		color?: string;
 		/** Draw a dashed marker at the median. */
 		showMedian?: boolean;
+		/** Controls parked at the top right of the header. */
+		actions?: Snippet;
 	};
 
 	let {
@@ -49,7 +52,8 @@
 		xLabel = 'value',
 		unit = 'items',
 		color = CATEGORICAL[0],
-		showMedian = true
+		showMedian = true,
+		actions
 	}: Props = $props();
 
 	const clean = $derived(values.filter((v) => Number.isFinite(v)));
@@ -100,6 +104,7 @@
 
 <ChartFrame
 	{title}
+	{actions}
 	subtitle={subtitle ?? (clean.length > 0 ? `${fmtInt(clean.length)} ${unit} · median ${xFormat(mid)}` : undefined)}
 	ariaLabel={label}
 	{height}

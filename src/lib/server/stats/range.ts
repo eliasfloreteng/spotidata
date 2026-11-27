@@ -22,16 +22,19 @@ export const PRESETS = [
 /**
  * What "all time" means depends on what is being counted: the library began
  * with its first save, the listening log with its first play — and an import
- * routinely pushes the latter years earlier than the former.
+ * routinely pushes the latter years earlier than the former. The overview
+ * counts both, so its all time starts at whichever came first.
  */
-export type RangeScope = 'library' | 'history';
+export type RangeScope = 'library' | 'history' | 'both';
 
 /** Earliest datum per scope; cached because it only moves on a sync or import. */
 const earliest = new Map<RangeScope, { value: Date; at: number }>();
 
 const SCOPE_QUERY: Record<RangeScope, ReturnType<typeof sql>> = {
 	library: sql`select min(first_added_at)::text as first from library_canonical`,
-	history: sql`select min(played_at)::text as first from plays`
+	history: sql`select min(played_at)::text as first from plays`,
+	both: sql`select least((select min(first_added_at) from library_canonical), -- sql-lint: internal
+	                       (select min(played_at) from plays))::text as first`
 };
 
 export async function scopeStart(scope: RangeScope = 'library'): Promise<Date> {

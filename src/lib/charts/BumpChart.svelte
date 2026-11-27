@@ -15,6 +15,7 @@
   the members of a hue's family are ranks apart rather than adjacent.
 -->
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { line, curveBumpX } from 'd3-shape';
 	import { scalePoint, scaleLinear } from 'd3-scale';
 	import ChartFrame from './ChartFrame.svelte';
@@ -36,6 +37,8 @@
 		unit?: string;
 		/** Label for a datum's `delta` row; omitted when no datum carries one. */
 		deltaLabel?: string;
+		/** Controls parked at the top right of the header. */
+		actions?: Snippet;
 	};
 
 	let {
@@ -47,7 +50,8 @@
 		height = 340,
 		valueFormat = fmtInt,
 		unit = 'plays',
-		deltaLabel = 'new this period'
+		deltaLabel = 'new this period',
+		actions
 	}: Props = $props();
 
 	const DOT_R = 4.5;
@@ -237,6 +241,7 @@
 
 <ChartFrame
 	{title}
+	{actions}
 	{subtitle}
 	ariaLabel={label}
 	{height}

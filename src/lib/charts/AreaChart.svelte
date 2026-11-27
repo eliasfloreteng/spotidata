@@ -8,6 +8,7 @@
   scale stays shared.
 -->
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { bisectCenter, extent, max } from 'd3-array';
 	import { area, line } from 'd3-shape';
 	import { scaleLinear, scaleTime } from 'd3-scale';
@@ -40,6 +41,8 @@
 		/** d3-time-format spec for the x ticks. */
 		tickFormat?: string;
 		unit?: string;
+		/** Controls parked at the top right of the header. */
+		actions?: Snippet;
 	};
 
 	let {
@@ -51,7 +54,8 @@
 		height = 260,
 		valueFormat = fmtInt,
 		tickFormat = '%b %Y',
-		unit = 'plays'
+		unit = 'plays',
+		actions
 	}: Props = $props();
 
 	const fmtX = $derived(timeFormat(tickFormat));
@@ -199,6 +203,7 @@
 
 <ChartFrame
 	{title}
+	{actions}
 	{subtitle}
 	ariaLabel={label}
 	{height}

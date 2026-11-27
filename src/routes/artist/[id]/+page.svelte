@@ -101,7 +101,7 @@
 							{unsavedTop} of these you never saved{/if}.
 					</p>
 				</div>
-				<a class="more" href="/history">All listening →</a>
+				<a class="more" href="/">All listening →</a>
 			</header>
 			<div class="scroll-x">
 				<table>

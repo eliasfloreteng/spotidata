@@ -148,7 +148,7 @@ export const syncRecentPlays: Task = async (payload, helpers) => {
  * few hundred requests against ~26k unique URIs — worth it, because it is what
  * lets a play join an artist, an album and a recording rather than sitting in
  * the log as a name. Ids that come back empty are marked attempted and never
- * asked about again; /history has the button that clears those marks.
+ * asked about again; /history/import has the button that clears those marks.
  */
 export const seedPlaysResolve: Task = async (payload, helpers) => {
 	const { runId } = payload as { runId: number };

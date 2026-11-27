@@ -7,6 +7,7 @@
   pad angle in surface colour), never a stroke around the mark.
 -->
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { arc, pie } from 'd3-shape';
 	import ChartFrame from './ChartFrame.svelte';
 	import Legend from './Legend.svelte';
@@ -28,6 +29,8 @@
 		centerLabel?: string;
 		valueFormat?: (n: number) => string;
 		unit?: string;
+		/** Controls parked at the top right of the header. */
+		actions?: Snippet;
 	};
 
 	let {
@@ -40,7 +43,8 @@
 		centerValue,
 		centerLabel = 'total',
 		valueFormat = fmtInt,
-		unit = 'plays'
+		unit = 'plays',
+		actions
 	}: Props = $props();
 
 	type Slice = { key: string; label: string; value: number; color: string; share: number };
@@ -95,6 +99,7 @@
 
 <ChartFrame
 	{title}
+	{actions}
 	{subtitle}
 	ariaLabel={label}
 	{height}

@@ -3,62 +3,87 @@ import * as q from '$lib/server/stats/queries.ts';
 import * as p from '$lib/server/stats/plays.ts';
 import type { PageServerLoad } from './$types';
 
+/**
+ * The overview: what was saved and what was played, over one window.
+ *
+ * The range picks saves by when they were first added and plays by when they
+ * were played, so "the last 90 days" means both at once. Wherever the two
+ * answer the same question (top artists, the calendar, the bump chart) the
+ * page shows one card that switches between them rather than two cards.
+ */
 export const load: PageServerLoad = async ({ url, locals, setHeaders }) => {
-	const range = await resolveRange(url, locals.settings['ui.timezone']);
+	// 'both': all time starts at the first save or the first play, whichever
+	// is earlier, so neither half is clipped.
+	const range = await resolveRange(url, locals.settings['ui.timezone'], 'both');
 
-	// Every chart is a GROUP BY over ≤20k rows that fit in shared buffers, so
-	// the whole dashboard is one round of parallel queries (~130ms measured).
+	// Every query is a GROUP BY over tables that sit in shared buffers (~9k
+	// library rows, ~180k plays), so the whole page is one parallel round.
 	const [
-		totals,
-		byDay,
+		library,
+		listening,
+		meet,
+		coverage,
+		addsByDay,
+		minutesByDay,
 		growth,
-		bump,
-		artists,
-		albumsByPct,
+		byMonth,
+		bumpSaved,
+		bumpPlayed,
+		artistsSaved,
+		artistsPlayed,
+		tracksPlayed,
+		tracksUnsaved,
+		albumsPlayed,
 		albumsBySaved,
-		playlists,
-		recent,
+		albumsByPct,
 		labels,
+		playlists,
+		split,
+		discovery,
+		lag,
 		releaseYears,
 		durations,
-		clock,
-		lag,
-		split,
-		duplicates,
-		streaks,
-		popularity,
-		listening,
-		played
+		devices,
+		countries,
+		ends,
+		saveStreaks,
+		listenStreaks,
+		recentAdds,
+		recentPlays
 	] = await Promise.all([
 		q.totals(range),
+		p.listeningTotals(range),
+		p.savedVsHeard(range),
+		p.coverage(),
 		q.additionsByDay(range),
+		p.minutesByDay(range),
 		q.growth(range),
+		p.listeningByMonth(range),
 		// Ten places per year. The union across years is what becomes lines and it
 		// runs well past the palette, so the chart cycles hues across dash passes.
 		q.topArtistsByYear(range, 10),
+		p.topArtistsByYearPlayed(range, 10),
 		q.topArtists(range, 15),
-		q.albumCompletion(range, { limit: 12, orderBy: 'pct' }),
+		p.topPlayedArtists(range, 15),
+		p.topPlayedTracks(range, { limit: 15 }),
+		p.topPlayedTracks(range, { limit: 15, inLibrary: false }),
+		p.topPlayedAlbums(range, 12),
 		q.albumCompletion(range, { limit: 12, orderBy: 'saved', minTracks: 1 }),
-		q.topPlaylists(range, 10),
-		q.recentAdditions(range, 12),
+		q.albumCompletion(range, { limit: 12, orderBy: 'pct' }),
 		q.topLabels(range, 10),
+		q.topPlaylists(range, 10),
+		q.newVsDeepening(range),
+		p.discoveryVsRepeat(range),
+		q.discoveryLag(range),
 		q.releaseYears(range),
 		q.trackDurations(range),
-		q.addTimeHeatmap(range),
-		q.discoveryLag(range),
-		q.newVsDeepening(range),
-		q.duplicates(range, 10),
+		p.deviceShare(range),
+		p.countryShare(range),
+		p.endReasons(range),
 		q.streaks(range),
-		q.popularityDistribution(range),
-		// The range picker here works in "when it was added", and listening is
-		// keyed on when it was played — so these two deliberately answer the
-		// whole-history question and link out rather than pretending to share a
-		// window. /history is where listening gets a range of its own.
-		p.listeningTotals({ ...range, from: new Date(0), to: new Date(8.64e15), isAllTime: true }),
-		p.topPlayedTracks(
-			{ ...range, from: new Date(0), to: new Date(8.64e15), isAllTime: true },
-			{ limit: 10 }
-		)
+		p.listeningStreaks(range),
+		q.recentAdditions(range, 12),
+		p.playLog(range, { limit: 12, offset: 0, withTotal: false })
 	]);
 
 	// Data only changes when a sync commits, so a matching ETag turns a
@@ -78,27 +103,37 @@ export const load: PageServerLoad = async ({ url, locals, setHeaders }) => {
 			}
 		},
 		version: await dataVersion(),
-		totals,
-		byDay,
+		library,
+		listening,
+		meet,
+		coverage,
+		addsByDay,
+		minutesByDay,
 		growth,
-		bump,
-		artists,
-		albumsByPct,
+		byMonth,
+		bumpSaved,
+		bumpPlayed,
+		artistsSaved,
+		artistsPlayed,
+		tracksPlayed,
+		tracksUnsaved,
+		albumsPlayed,
 		albumsBySaved,
-		playlists,
-		recent,
+		albumsByPct,
 		labels,
+		playlists,
+		split,
+		discovery,
+		lag,
 		releaseYears,
 		durations,
-		clock,
-		lag,
-		split,
-		duplicates,
-		streaks,
-		// Guarded per the probe finding: popularity reads 0 without a user token.
-		popularity: popularity.some((b) => b.bucket > 0) ? popularity : [],
-		listening,
-		played,
+		devices,
+		countries,
+		ends,
+		saveStreaks,
+		listenStreaks,
+		recentAdds,
+		recentPlays,
 		weekStart: locals.settings['ui.weekStart']
 	};
 };

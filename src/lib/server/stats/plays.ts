@@ -65,6 +65,10 @@ export interface ListeningTotals {
 	activeDays: number;
 	spanDays: number;
 	inLibraryPlays: number;
+	/** Listening time on recordings the library holds. */
+	libraryMs: number;
+	/** Distinct recordings heard that the library holds. */
+	libraryRecordings: number;
 	firstPlayed: string | null;
 	lastPlayed: string | null;
 }
@@ -82,6 +86,9 @@ export async function listeningTotals(r: Range): Promise<ListeningTotals> {
 		       (extract(epoch from (${r.to}::timestamptz - ${r.from}::timestamptz)) / 86400)::int
 		                                                         as "spanDays",
 		       count(*) filter (where lc.canonical_track_id is not null)::int as "inLibraryPlays",
+		       coalesce(sum(${MS_LISTENED}) filter (
+		         where lc.canonical_track_id is not null), 0)::bigint as "libraryMs",
+		       count(distinct lc.canonical_track_id)::int        as "libraryRecordings",
 		       ${iso('min(p.played_at)')}                        as "firstPlayed",
 		       ${iso('max(p.played_at)')}                        as "lastPlayed",
 		       -- A separate scan rather than another join: the artist credits are
@@ -111,8 +118,78 @@ export async function listeningTotals(r: Range): Promise<ListeningTotals> {
 			activeDays: 0,
 			spanDays: 0,
 			inLibraryPlays: 0,
+			libraryMs: 0,
+			libraryRecordings: 0,
 			firstPlayed: null,
 			lastPlayed: null
+		}
+	);
+}
+
+// ------------------------------------------------- where saving meets listening
+
+export interface SavedVsHeard {
+	/** Recordings first added inside the window. */
+	saved: number;
+	/** Heard more than a day before the save. */
+	heardFirst: number;
+	/** First heard within a day either side of the save: kept on first listen. */
+	onFirstListen: number;
+	/** Saved, and only heard more than a day later. */
+	savedFirst: number;
+	neverPlayed: number;
+	/** Median days from first hearing to saving, over `heardFirst`. */
+	medianLagDays: number;
+	/** Median lifetime plays of a saved recording that has any. */
+	medianPlays: number;
+	/** Played at some point, but not in the twelve months to now. */
+	dormant: number;
+}
+
+/**
+ * How each recording saved in the window relates to its listening: whether it
+ * was heard before it was kept, kept on first hearing, kept unheard, or never
+ * played at all, and whether it is still being played.
+ *
+ * The window picks the saves; the listening is the recording's whole life in
+ * the log (`canonical_play_stats`), since "when did I first hear it" cannot be
+ * answered inside the window that only contains the save. A day either side
+ * of the save counts as the same listen: the log stamps a stream's end, and a
+ * save made while a track plays often lands before that stamp.
+ */
+export async function savedVsHeard(r: Range): Promise<SavedVsHeard> {
+	const rows = await query<SavedVsHeard>(sql`
+		select count(*)::int as saved,
+		       count(*) filter (
+		         where c.first_played_at < lc.first_added_at - interval '1 day')::int as "heardFirst",
+		       count(*) filter (
+		         where c.first_played_at between lc.first_added_at - interval '1 day'
+		                                     and lc.first_added_at + interval '1 day')::int
+		         as "onFirstListen",
+		       count(*) filter (
+		         where c.first_played_at > lc.first_added_at + interval '1 day')::int as "savedFirst",
+		       count(*) filter (where c.first_played_at is null)::int as "neverPlayed",
+		       coalesce(percentile_cont(0.5) within group (
+		         order by extract(epoch from lc.first_added_at - c.first_played_at) / 86400
+		       ) filter (where c.first_played_at < lc.first_added_at - interval '1 day'), 0)::float8
+		         as "medianLagDays",
+		       coalesce(percentile_cont(0.5) within group (order by c.plays)
+		         filter (where c.plays > 0), 0)::float8 as "medianPlays",
+		       count(*) filter (where c.last_played_at < now() - interval '1 year')::int as dormant
+		  from library_canonical lc
+		  left join canonical_play_stats c on c.canonical_track_id = lc.canonical_track_id
+		 where lc.first_added_at >= ${r.from} and lc.first_added_at < ${r.to}
+	`);
+	return (
+		rows[0] ?? {
+			saved: 0,
+			heardFirst: 0,
+			onFirstListen: 0,
+			savedFirst: 0,
+			neverPlayed: 0,
+			medianLagDays: 0,
+			medianPlays: 0,
+			dormant: 0
 		}
 	);
 }
@@ -545,7 +622,7 @@ export interface PlayRow {
  */
 export async function playLog(
 	r: Range,
-	opts: { limit: number; offset: number; q?: string }
+	opts: { limit: number; offset: number; q?: string; withTotal?: boolean }
 ): Promise<PlayRow[]> {
 	const q = (opts.q ?? '').trim();
 	const search = q
@@ -553,7 +630,9 @@ export async function playLog(
 		        or coalesce(ar.name, p.artist_name) ilike ${'%' + q.replace(/[\\%_]/g, (c) => '\\' + c) + '%'})`
 		: sql``;
 	return query<PlayRow>(sql`
-		select (count(*) over ())::int          as total,
+		-- The window count has to see every row in the range, which costs the
+		-- limit its early exit; a page that does not paginate skips it.
+		select ${opts.withTotal === false ? sql`0` : sql`(count(*) over ())::int`} as total,
 		       p.id,
 		       ${iso('p.played_at')}            as "playedAt",
 		       ${MS_LISTENED}                   as "msPlayed",

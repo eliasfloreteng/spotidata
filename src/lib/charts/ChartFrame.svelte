@@ -155,11 +155,14 @@
 		min-width: 0;
 	}
 
+	/* The controls share the title's line while the title keeps ~16rem, and
+	   drop under it on a narrow card rather than crushing it. */
 	header {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: flex-start;
 		justify-content: space-between;
-		gap: 16px;
+		gap: 8px 16px;
 	}
 
 	@media (max-width: 640px) {
@@ -167,11 +170,12 @@
 			gap: 10px;
 		}
 		header {
-			gap: 10px;
+			gap: 8px 10px;
 		}
 	}
 
 	.titles {
+		flex: 1 1 16rem;
 		min-width: 0;
 	}
 

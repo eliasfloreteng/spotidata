@@ -41,6 +41,8 @@ for (const root of ROOTS) {
 			lines.forEach((line, i) => {
 				if (!/date_trunc\(|::date\b|extract\(\s*\w+\s+from/i.test(line)) return;
 				if (DATE_COLUMNS.test(line)) return;
+				// An epoch is a count of seconds, the same in every zone.
+				if (/extract\(\s*epoch\s+from/i.test(line) && !/date_trunc\(|::date\b/i.test(line)) return;
 				const prev = lines[i - 1] ?? '';
 				if (!/at time zone/i.test(line) && !/at time zone/i.test(prev)) {
 					problems.push(`${rel}:${i + 1} date bucket without AT TIME ZONE`);

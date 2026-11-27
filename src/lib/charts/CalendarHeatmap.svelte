@@ -7,6 +7,7 @@
   (listening days are heavily skewed — quantiles keep the busy end readable).
 -->
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { max, quantile } from 'd3-array';
 	import { timeFormat } from 'd3-time-format';
 	import { timeDay, timeMonday, timeMonth, timeSunday } from 'd3-time';
@@ -27,6 +28,8 @@
 		valueFormat?: (n: number) => string;
 		/** Noun for the value, e.g. "plays". */
 		unit?: string;
+		/** Controls parked at the top right of the header. */
+		actions?: Snippet;
 	};
 
 	let {
@@ -37,7 +40,8 @@
 		ariaLabel,
 		groupByYear = true,
 		valueFormat = fmtInt,
-		unit = 'plays'
+		unit = 'plays',
+		actions
 	}: Props = $props();
 
 	const BUCKETS = 5;
@@ -193,6 +197,7 @@
 
 <ChartFrame
 	{title}
+	{actions}
 	{subtitle}
 	ariaLabel={label}
 	{height}
