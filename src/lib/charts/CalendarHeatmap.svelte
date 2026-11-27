@@ -118,7 +118,9 @@
 
 		const ranges: { label: string; from: Date; to: Date }[] = [];
 		if (groupByYear) {
-			for (let y = first.date.getFullYear(); y <= last.date.getFullYear(); y++) {
+			// Newest year first: the year you are in is the one you came to read,
+			// and the history runs down the page behind it.
+			for (let y = last.date.getFullYear(); y >= first.date.getFullYear(); y--) {
 				ranges.push({
 					label: String(y),
 					from: new Date(Math.max(new Date(y, 0, 1).getTime(), first.date.getTime())),
