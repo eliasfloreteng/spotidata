@@ -108,11 +108,11 @@
 						<th class="c"><span class="sr">In library</span></th>
 						<th class="idx">#</th>
 						<th>Title</th>
-						<th>Artists</th>
-						<th class="r">Length</th>
-						<th class="r">Pop.</th>
+						<th class="wide-only">Artists</th>
+						<th class="r wide-only">Length</th>
+						<th class="r wide-only">Pop.</th>
 						<th class="r">Plays</th>
-						<th class="r"><span class="sr">Spotify</span></th>
+						<th class="r wide-only"><span class="sr">Spotify</span></th>
 					</tr>
 				</thead>
 				<tbody>
@@ -139,12 +139,15 @@
 										{t.name}
 									{/if}
 									{#if t.explicit}<span class="ex" title="Explicit">E</span>{/if}
+									<div class="narrow-only faint xs">
+										<ArtistLinks artists={t.artists} /> · {trackTime(t.durationMs)}
+									</div>
 								</td>
-								<td class="muted small">
+								<td class="muted small wide-only">
 									<ArtistLinks artists={t.artists} />
 								</td>
-								<td class="r num muted">{trackTime(t.durationMs)}</td>
-								<td class="r num">{t.popularity ?? '—'}</td>
+								<td class="r num muted wide-only">{trackTime(t.durationMs)}</td>
+								<td class="r num wide-only">{t.popularity ?? '—'}</td>
 								<td
 									class="r num"
 									class:faint={t.plays === 0}
@@ -154,7 +157,7 @@
 								>
 									{t.plays || '—'}
 								</td>
-								<td class="r"><SpotifyLink kind="track" id={t.id} compact label="Open {t.name} in Spotify" /></td>
+								<td class="r wide-only"><SpotifyLink kind="track" id={t.id} compact label="Open {t.name} in Spotify" /></td>
 							</tr>
 						{/each}
 					{/each}
@@ -329,6 +332,12 @@
 		font-size: 0.9rem;
 		/* Under this the columns crush each other; the lane scrolls instead. */
 		min-width: 640px;
+	}
+	/* Phone: the track and one number; the rest folds under the title. */
+	@media (max-width: 640px) {
+		table {
+			min-width: 0;
+		}
 	}
 	th {
 		text-align: left;

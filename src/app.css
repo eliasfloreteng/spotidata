@@ -186,6 +186,23 @@ select,
 	}
 }
 
+/* A table on a phone keeps one or two columns and folds the rest into a line
+   under the title: `wide-only` marks a cell (and its header) that only a
+   wider screen shows, `narrow-only` what stands in for them on a phone (that
+   folded line, sort chips for the folded columns). Each only ever hides, so
+   an element keeps its own display where it shows; !important because a
+   component's scoped display must not bring a hidden cell back. */
+@media (min-width: 641px) {
+	.narrow-only {
+		display: none !important;
+	}
+}
+@media (max-width: 640px) {
+	.wide-only {
+		display: none !important;
+	}
+}
+
 .card {
 	background: var(--card);
 	border: 1px solid var(--hairline);

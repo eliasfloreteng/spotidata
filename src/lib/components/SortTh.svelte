@@ -10,13 +10,15 @@
 		/** Direction applied when the column is first clicked. */
 		initial?: 'asc' | 'desc';
 		right?: boolean;
+		/** Extra classes for the cell, e.g. `wide-only`. */
+		class?: string;
 	}
-	let { key, label, active, dir, initial = 'desc', right = false }: Props = $props();
+	let { key, label, active, dir, initial = 'desc', right = false, class: cls }: Props = $props();
 
 	const on = $derived(active === key);
 </script>
 
-<th class:r={right} aria-sort={on ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+<th class={[cls, { r: right }]} aria-sort={on ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
 	<SortLink {key} {label} {active} {dir} {initial} />
 </th>
 

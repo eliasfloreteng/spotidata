@@ -16,6 +16,17 @@
 
 	const c = $derived(data.composition);
 
+	/** The table's own sorts, as chips for a phone, where most columns fold away. */
+	const SORTS = [
+		{ key: 'added', label: 'First added' },
+		{ key: 'plays', label: 'Plays' },
+		{ key: 'popularity', label: 'Popularity' },
+		{ key: 'copies', label: 'Copies' },
+		{ key: 'duration', label: 'Length' },
+		{ key: 'name', label: 'Name', initial: 'asc' as const },
+		{ key: 'artist', label: 'Artist', initial: 'asc' as const }
+	];
+
 	/** The list with just this filter: the other filters and the search reset. */
 	const only = (params: Record<string, string>) =>
 		withParams(page.url, {
@@ -45,29 +56,50 @@
 	<SearchBox value={data.q} placeholder="Search recordings" />
 </header>
 
-<FilterBar groups={LIBRARY_FILTERS} active={data.filters} />
+<FilterBar
+	groups={LIBRARY_FILTERS}
+	active={data.filters}
+	sorts={SORTS}
+	sortsNarrowOnly
+	sort={data.sort}
+	dir={data.dir}
+/>
 
 <section class="card">
 	<div class="scroll-x">
 		<table>
 			<thead>
 				<tr>
-					<th class="idx">#</th>
+					<th class="idx wide-only">#</th>
 					<SortTh key="name" label="Recording" active={data.sort} dir={data.dir} initial="asc" />
-					<SortTh key="artist" label="Artist" active={data.sort} dir={data.dir} initial="asc" />
-					<th>Album</th>
-					<SortTh key="copies" label="Copies" active={data.sort} dir={data.dir} right />
-					<SortTh key="duration" label="Length" active={data.sort} dir={data.dir} right />
-					<SortTh key="popularity" label="Pop." active={data.sort} dir={data.dir} right />
+					<SortTh
+						key="artist"
+						label="Artist"
+						active={data.sort}
+						dir={data.dir}
+						initial="asc"
+						class="wide-only"
+					/>
+					<th class="wide-only">Album</th>
+					<SortTh key="copies" label="Copies" active={data.sort} dir={data.dir} right class="wide-only" />
+					<SortTh key="duration" label="Length" active={data.sort} dir={data.dir} right class="wide-only" />
+					<SortTh key="popularity" label="Pop." active={data.sort} dir={data.dir} right class="wide-only" />
 					<SortTh key="plays" label="Plays" active={data.sort} dir={data.dir} right />
-					<SortTh key="added" label="First added" active={data.sort} dir={data.dir} right />
-					<th class="r"><span class="sr">Spotify</span></th>
+					<SortTh
+						key="added"
+						label="First added"
+						active={data.sort}
+						dir={data.dir}
+						right
+						class="wide-only"
+					/>
+					<th class="r wide-only"><span class="sr">Spotify</span></th>
 				</tr>
 			</thead>
 			<tbody>
 				{#each data.rows as t, i (t.canonicalTrackId)}
 					<tr>
-						<td class="idx num faint">{(data.page - 1) * data.pageSize + i + 1}</td>
+						<td class="idx num faint wide-only">{(data.page - 1) * data.pageSize + i + 1}</td>
 						<td>
 							<div class="cell">
 								<Cover src={t.cover} alt="{t.albumName ?? t.title} cover" size={34} />
@@ -78,6 +110,7 @@
 										{#if t.explicit}<span class="ex" title="Explicit">E</span>{/if}
 									</div>
 									<div class="faint xs">
+										<span class="narrow-only"><ArtistLinks artists={t.artists} /> ·</span>
 										{#if t.kind === 'fallback'}
 											<span title="No ISRC — grouped by heuristic">heuristic group</span> ·
 										{/if}
@@ -88,13 +121,13 @@
 								</div>
 							</div>
 						</td>
-						<td class="muted small">
+						<td class="muted small wide-only">
 							<ArtistLinks artists={t.artists} />
 						</td>
-						<td class="muted small">
+						<td class="muted small wide-only">
 							{#if t.albumId}<a href="/album/{t.albumId}">{t.albumName}</a>{:else}—{/if}
 						</td>
-						<td class="r">
+						<td class="r wide-only">
 							{#if t.copyCount > 1}
 								<Chip tone="accent" title="{t.copyCountInLibrary} of them in your library">
 									{t.copyCount}
@@ -103,8 +136,8 @@
 								<span class="faint num">1</span>
 							{/if}
 						</td>
-						<td class="r num muted">{trackTime(t.durationMs)}</td>
-						<td class="r num">{t.popularity ?? '—'}</td>
+						<td class="r num muted wide-only">{trackTime(t.durationMs)}</td>
+						<td class="r num wide-only">{t.popularity ?? '—'}</td>
 						<td
 							class="r num"
 							class:faint={t.plays === 0}
@@ -114,8 +147,8 @@
 						>
 							{t.plays || '—'}
 						</td>
-						<td class="r muted small nowrap" title={t.firstAddedAt}>{shortDate(t.firstAddedAt)}</td>
-						<td class="r">
+						<td class="r muted small nowrap wide-only" title={t.firstAddedAt}>{shortDate(t.firstAddedAt)}</td>
+						<td class="r wide-only">
 							<SpotifyLink
 								kind="track"
 								id={t.representativeTrackId}
@@ -240,5 +273,12 @@
 	}
 	.nowrap {
 		white-space: nowrap;
+	}
+	/* Phone: the recording and its plays; the rest is folded under the title
+	   and the other sorts are chips above the table. */
+	@media (max-width: 640px) {
+		table {
+			min-width: 0;
+		}
 	}
 </style>

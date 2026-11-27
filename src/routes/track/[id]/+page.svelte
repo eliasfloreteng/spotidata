@@ -174,11 +174,11 @@
 				<tr>
 					<th>Title</th>
 					<th>Album</th>
-					<th>Released</th>
+					<th class="wide-only">Released</th>
 					<th class="r">Length</th>
-					<th class="r">Pop.</th>
+					<th class="r wide-only">Pop.</th>
 					<th class="state">State</th>
-					<th class="r"><span class="sr">Spotify</span></th>
+					<th class="r wide-only"><span class="sr">Spotify</span></th>
 				</tr>
 			</thead>
 			<tbody>
@@ -207,9 +207,9 @@
 								<span class="faint">—</span>
 							{/if}
 						</td>
-						<td class="num muted nowrap">{c.albumReleaseDate ?? '—'}</td>
+						<td class="num muted nowrap wide-only">{c.albumReleaseDate ?? '—'}</td>
 						<td class="r num muted">{trackTime(c.durationMs)}</td>
-						<td class="r num">{c.popularity ?? '—'}</td>
+						<td class="r num wide-only">{c.popularity ?? '—'}</td>
 						<td class="state">
 							<div class="chips tight">
 								{#if c.likedAt}<Chip tone="good" title="Liked {shortDate(c.likedAt)}">Liked</Chip>{/if}
@@ -218,7 +218,7 @@
 								{#if !c.inLibrary && c.playlistCount === 0}<span class="faint xs">—</span>{/if}
 							</div>
 						</td>
-						<td class="r"><SpotifyLink kind="track" id={c.id} compact label="Open {c.name || 'track'} in Spotify" /></td>
+						<td class="r wide-only"><SpotifyLink kind="track" id={c.id} compact label="Open {c.name || 'track'} in Spotify" /></td>
 					</tr>
 				{/each}
 			</tbody>

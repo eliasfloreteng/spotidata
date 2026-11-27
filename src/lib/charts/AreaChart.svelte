@@ -162,15 +162,46 @@
 		return clamp(w, 2, 24);
 	}
 
+	/** Approximate advance of one x-tick character (10px tabular type). */
+	const TICK_CHAR_W = 6.2;
+	const TICK_PAD = 8;
+
 	/**
 	 * d3's time ticks can return a single value on a short/narrow plot, which
-	 * leaves the axis unreadable. Fall back to the domain ends when that happens.
+	 * leaves the axis unreadable — fall back to the domain ends then. The ends
+	 * are anchored inward so they stay inside the plot, which can push the last
+	 * label onto its neighbour on a phone ("Jan 2024Jan 2026"); a label that
+	 * would touch the one before it is dropped rather than drawn over it.
+	 * Ticks that all fall on 1 January say only the year.
 	 */
-	function xTicks(scale: ReturnType<typeof xScale>, innerW: number): Date[] {
+	function xTicks(
+		scale: ReturnType<typeof xScale>,
+		innerW: number
+	): { t: Date; x: number; text: string; anchor: 'start' | 'middle' | 'end' }[] {
 		const want = Math.max(2, Math.min(7, Math.floor(innerW / 90)));
 		const out = scale.ticks(want);
-		return out.length >= 2 ? out : xDomain.slice();
+		const ticks = out.length >= 2 ? out : xDomain.slice();
+		const yearly =
+			ticks.length >= 2 && ticks.every((t) => t.getMonth() === 0 && t.getDate() === 1);
+		const fmt = yearly ? fmtYear : fmtX;
+
+		const kept: { t: Date; x: number; text: string; anchor: 'start' | 'middle' | 'end' }[] = [];
+		// Walk from the right so the newest date — the one a reader looks for —
+		// always survives.
+		let nextLeft = Infinity;
+		for (const t of [...ticks].reverse()) {
+			const x = scale(t);
+			const text = fmt(t);
+			const anchor = x < 26 ? 'start' : x > innerW - 26 ? 'end' : 'middle';
+			const w = text.length * TICK_CHAR_W;
+			const left = anchor === 'start' ? x : anchor === 'end' ? x - w : x - w / 2;
+			if (left + w + TICK_PAD > nextLeft) continue;
+			nextLeft = left;
+			kept.unshift({ t, x, text, anchor });
+		}
+		return kept;
 	}
+	const fmtYear = timeFormat('%Y');
 
 	let hoverIdx = $state<number | null>(null);
 	let plotW = $state(0);
@@ -234,14 +265,9 @@
 			<text class="y-tick" x="-10" y={y(t) + 4}>{fmtCompact(t)}</text>
 		{/each}
 
-		{#each xTicks(x, g.innerWidth) as t (t.getTime())}
-			{@const tx = x(t)}
-			<text
-				class="x-tick"
-				x={tx}
-				y={g.innerHeight + 18}
-				style:text-anchor={tx < 26 ? 'start' : tx > g.innerWidth - 26 ? 'end' : 'middle'}
-				>{fmtX(t)}</text
+		{#each xTicks(x, g.innerWidth) as tick (tick.t.getTime())}
+			<text class="x-tick" x={tick.x} y={g.innerHeight + 18} style:text-anchor={tick.anchor}
+				>{tick.text}</text
 			>
 		{/each}
 

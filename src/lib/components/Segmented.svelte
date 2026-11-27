@@ -50,8 +50,18 @@
 			background 0.15s ease,
 			color 0.15s ease;
 	}
-	button:hover {
-		color: var(--text);
+	@media (hover: hover) {
+		button:hover {
+			color: var(--text);
+		}
+	}
+	/* A 23px pill is a cursor target, not a finger one — same floor as the
+	   filter chips. */
+	@media (pointer: coarse) {
+		button {
+			padding: 7px 13px;
+			font-size: 0.8rem;
+		}
 	}
 	button.on {
 		background: var(--accent-soft);

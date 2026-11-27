@@ -640,37 +640,45 @@
 			<table>
 				<thead>
 					<tr>
-						<th>Played</th><th>Track</th><th>Artist</th><th class="r">Listened</th><th>Ended</th>
+						<th class="wide-only">Played</th><th>Track</th><th class="wide-only">Artist</th><th
+							class="r wide-only">Listened</th
+						><th class="wide-only">Ended</th>
 					</tr>
 				</thead>
 				<tbody>
 					{#each data.recentPlays as p (p.id)}
+						{@const ended = END_LABELS[p.reasonEnd ?? ''] ?? p.reasonEnd ?? '—'}
 						<tr>
-							<td class="faint small nowrap" title={p.playedAt}>{relativeTime(p.playedAt)}</td>
+							<td class="faint small nowrap wide-only" title={p.playedAt}>{relativeTime(p.playedAt)}</td>
 							<td>
-								{#if p.canonicalTrackId}
-									<a class="rec" href="/track/{p.canonicalTrackId}">
-										<Cover src={p.cover} alt="{p.title} cover" size={28} />
-										<span class="ellipsis">{p.title}</span>
-									</a>
-								{:else}
-									<span class="rec">
-										<Cover src={null} alt="" size={28} />
-										<span class="ellipsis" title="Not in the catalog">{p.title}</span>
-									</span>
-								{/if}
+								<div class="rec">
+									<Cover src={p.canonicalTrackId ? p.cover : null} alt="" size={28} />
+									<div class="lines">
+										{#if p.canonicalTrackId}
+											<a class="ellipsis" href="/track/{p.canonicalTrackId}">{p.title}</a>
+										{:else}
+											<span class="ellipsis" title="Not in the catalog">{p.title}</span>
+										{/if}
+										<!-- A phone has room for one column: the rest of the row
+										     folds into a line under the title. -->
+										<span class="narrow-only faint small ellipsis">
+											{p.artist ?? '—'} · <span title={p.playedAt}>{relativeTime(p.playedAt)}</span
+											>{#if p.reasonEnd} · {ended}{/if}
+										</span>
+									</div>
+								</div>
 							</td>
-							<td class="muted ellipsis">
+							<td class="muted ellipsis wide-only">
 								{#if p.artistId}<a href="/artist/{p.artistId}">{p.artist}</a>{:else}{p.artist ??
 										'—'}{/if}
 							</td>
 							<td
-								class="r num"
+								class="r num wide-only"
 								title={p.estimated ? 'Estimated from the gap to the previous play' : ''}
 							>
 								{streamTime(p.msPlayed, p.estimated)}
 							</td>
-							<td class="faint small">{END_LABELS[p.reasonEnd ?? ''] ?? p.reasonEnd ?? '—'}</td>
+							<td class="faint small wide-only">{ended}</td>
 						</tr>
 					{:else}
 						<tr><td class="faint" colspan="5">Nothing played in this range.</td></tr>
@@ -890,8 +898,13 @@
 		gap: 10px;
 		min-width: 0;
 	}
-	a.rec:hover .ellipsis {
+	.rec a:hover {
 		text-decoration: underline;
+	}
+	.lines {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
 	}
 	.ellipsis {
 		overflow: hidden;
@@ -924,7 +937,21 @@
 	td.r {
 		text-align: right;
 	}
+	/* A right-aligned number would otherwise run straight into the words after it. */
+	th.r + th,
+	td.r + td {
+		padding-left: 14px;
+	}
 	.small {
 		font-size: 0.78rem;
+	}
+	@media (max-width: 640px) {
+		table {
+			min-width: 0;
+			table-layout: fixed;
+		}
+		.ellipsis {
+			max-width: none;
+		}
 	}
 </style>

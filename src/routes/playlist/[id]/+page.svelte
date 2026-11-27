@@ -98,11 +98,11 @@
 					<tr>
 						<th class="idx">#</th>
 						<th>Title</th>
-						<th>Album</th>
-						<th class="r">Length</th>
-						<th class="r">Added</th>
-						{#if multiContributor}<th>By</th>{/if}
-						<th class="r"><span class="sr">Spotify</span></th>
+						<th class="wide-only">Album</th>
+						<th class="r wide-only">Length</th>
+						<th class="r wide-only">Added</th>
+						{#if multiContributor}<th class="wide-only">By</th>{/if}
+						<th class="r wide-only"><span class="sr">Spotify</span></th>
 					</tr>
 				</thead>
 				<tbody>
@@ -129,19 +129,22 @@
 											{:else}
 												{it.localArtist ?? (it.isLocal ? 'local file' : 'unavailable')}
 											{/if}
+											{#if it.durationMs != null}<span class="narrow-only">
+													· {trackTime(it.durationMs)}</span
+												>{/if}
 										</div>
 									</div>
 								</div>
 							</td>
-							<td class="muted small">
+							<td class="muted small wide-only">
 								{#if it.albumId}<a href="/album/{it.albumId}">{it.albumName}</a>{:else}<span class="faint">—</span>{/if}
 							</td>
-							<td class="r num muted">{it.durationMs == null ? '—' : trackTime(it.durationMs)}</td>
-							<td class="r muted small nowrap">{it.addedAt ? shortDate(it.addedAt) : '—'}</td>
+							<td class="r num muted wide-only">{it.durationMs == null ? '—' : trackTime(it.durationMs)}</td>
+							<td class="r muted small nowrap wide-only">{it.addedAt ? shortDate(it.addedAt) : '—'}</td>
 							{#if multiContributor}
-								<td class="muted small">{it.addedByName ?? it.addedById ?? '—'}</td>
+								<td class="muted small wide-only">{it.addedByName ?? it.addedById ?? '—'}</td>
 							{/if}
-							<td class="r">
+							<td class="r wide-only">
 								{#if it.trackId}
 									<SpotifyLink kind="track" id={it.trackId} compact label="Open {it.name} in Spotify" />
 								{/if}
@@ -251,6 +254,12 @@
 		font-size: 0.9rem;
 		/* Under this the columns crush each other; the lane scrolls instead. */
 		min-width: 660px;
+	}
+	/* Phone: the track and one number; the rest folds under the title. */
+	@media (max-width: 640px) {
+		table {
+			min-width: 0;
+		}
 	}
 	th {
 		text-align: left;

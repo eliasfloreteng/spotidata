@@ -29,6 +29,12 @@
 		 * data (a year of calendar cells, a decade of bump periods).
 		 */
 		minWidth?: number;
+		/**
+		 * Where a scrolling plot opens. Time runs left to right, so a chart of
+		 * years opens on the newest ('end') — on a phone the first screen
+		 * otherwise shows only the oldest year, which is the least looked-for.
+		 */
+		scrollStart?: 'start' | 'end';
 		/** Overrides merged over DEFAULT_MARGIN; may depend on measured width. */
 		margin?: Partial<Margin> | ((width: number) => Partial<Margin>);
 		/** 'svg' wraps children in <svg><g transform>; 'flow' renders plain HTML. */
@@ -59,6 +65,7 @@
 		ariaLabel,
 		height,
 		minWidth = 0,
+		scrollStart = 'start',
 		margin,
 		layout = 'svg',
 		semantic = false,
@@ -87,6 +94,21 @@
 		innerHeight,
 		margin: m
 	});
+	let lane = $state<HTMLDivElement | null>(null);
+
+	/**
+	 * Jump to the newest end on first layout and whenever the plot is redrawn at
+	 * another size (a resize, another cut of the data) — the old offset would
+	 * point at an arbitrary year of the new drawing anyway.
+	 */
+	$effect(() => {
+		if (scrollStart !== 'end' || !lane || minWidth <= 0) return;
+		void width;
+		void svgHeight;
+		void empty;
+		lane.scrollLeft = lane.scrollWidth;
+	});
+
 	const fallbackHeight = $derived(typeof height === 'function' ? 180 : height);
 </script>
 
@@ -105,7 +127,7 @@
 		<div class="legend">{@render legend()}</div>
 	{/if}
 
-	<div class="lane" class:scrolls={minWidth > 0}>
+	<div class="lane" class:scrolls={minWidth > 0} bind:this={lane}>
 		<div
 			class="plot"
 			bind:clientWidth={width}

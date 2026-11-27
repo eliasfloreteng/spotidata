@@ -11,12 +11,25 @@
 		active: ActiveFilters;
 		/** Sort controls for pages whose rows are a list rather than a table. */
 		sorts?: { key: string; label: string; initial?: 'asc' | 'desc' }[];
+		/**
+		 * Show the sort chips on a phone only: for a table whose headers sort on
+		 * a wide screen but fold away on a narrow one.
+		 */
+		sortsNarrowOnly?: boolean;
 		sort?: string;
 		dir?: 'asc' | 'desc';
 		/** Controls that don't fit the closed-vocabulary chip model, e.g. a long select. */
 		children?: Snippet;
 	}
-	let { groups, active, sorts = [], sort = '', dir = 'desc', children }: Props = $props();
+	let {
+		groups,
+		active,
+		sorts = [],
+		sortsNarrowOnly = false,
+		sort = '',
+		dir = 'desc',
+		children
+	}: Props = $props();
 
 	/** Every filter link resets the page: row 340 of the old result set means nothing in the new one. */
 	const href = (param: string, value: string | null) =>
@@ -33,7 +46,7 @@
 
 <div class="bar">
 	{#if sorts.length}
-		<div class="group">
+		<div class={['group', { 'narrow-only': sortsNarrowOnly }]}>
 			<span class="lbl">Sort</span>
 			{#each sorts as s (s.key)}
 				<SortLink key={s.key} label={s.label} active={sort} {dir} initial={s.initial} chip />

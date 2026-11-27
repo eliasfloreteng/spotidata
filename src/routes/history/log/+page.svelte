@@ -50,45 +50,60 @@
 		<table>
 			<thead>
 				<tr>
-					<th>Played</th>
+					<th class="wide-only">Played</th>
 					<th>Track</th>
-					<th>Artist</th>
-					<th>Album</th>
+					<th class="wide-only">Artist</th>
+					<th class="wide-only">Album</th>
 					<th class="r">Listened</th>
-					<th>How it ended</th>
-					<th>Device</th>
+					<th class="wide-only">How it ended</th>
+					<th class="wide-only">Device</th>
 				</tr>
 			</thead>
 			<tbody>
 				{#each data.rows as p (p.id)}
+					{@const ended = END_LABELS[p.reasonEnd ?? ''] ?? p.reasonEnd ?? '—'}
 					<tr>
-						<td class="muted small nowrap">{stamp.format(new Date(p.playedAt))}</td>
+						<td class="muted small nowrap wide-only">{stamp.format(new Date(p.playedAt))}</td>
 						<td>
 							<div class="cell">
 								<Cover src={p.cover} alt="{p.title} cover" size={30} />
-								{#if p.canonicalTrackId}
-									<a class="ellipsis" href="/track/{p.canonicalTrackId}">{p.title}</a>
-								{:else}
-									<span class="ellipsis faint" title="Not in the catalog — the log's own label">
-										{p.title}
+								<div class="lines">
+									<div class="titleline">
+										{#if p.canonicalTrackId}
+											<a class="ellipsis" href="/track/{p.canonicalTrackId}">{p.title}</a>
+										{:else}
+											<span class="ellipsis faint" title="Not in the catalog — the log's own label">
+												{p.title}
+											</span>
+										{/if}
+										{#if p.shuffle}<span class="tag" title="Played on shuffle">⤮</span>{/if}
+									</div>
+									<!-- A phone has room for the track and its length: the rest
+									     of the row folds into a line under the title. -->
+									<span class="narrow-only muted small ellipsis">
+										{p.artist ?? '—'} · {stamp.format(new Date(p.playedAt))}{#if p.reasonEnd}
+											· {ended}{/if}
 									</span>
-								{/if}
-								{#if p.shuffle}<span class="tag" title="Played on shuffle">⤮</span>{/if}
+								</div>
 							</div>
 						</td>
-						<td class="muted small ellipsis">
-							{#if p.artistId}<a href="/artist/{p.artistId}">{p.artist}</a>{:else}{p.artist ??
-									'—'}{/if}
+						<td class="muted small wide-only">
+							<span class="ellipsis">
+								{#if p.artistId}<a href="/artist/{p.artistId}">{p.artist}</a>{:else}{p.artist ??
+										'—'}{/if}
+							</span>
 						</td>
-						<td class="muted small ellipsis">{p.album ?? '—'}</td>
+						<td class="muted small wide-only"><span class="ellipsis">{p.album ?? '—'}</span></td>
 						<td
-							class="r num"
+							class="r num nowrap"
 							title={p.estimated ? 'Estimated from the gap to the previous play' : ''}
 						>
 							{streamTime(p.msPlayed, p.estimated)}
 						</td>
-						<td class="faint small">{END_LABELS[p.reasonEnd ?? ''] ?? p.reasonEnd ?? '—'}</td>
-						<td class="faint small ellipsis" title={p.platform ?? ''}>{p.platform ?? '—'}</td>
+						<td class="faint small wide-only">{ended}</td>
+						<td class="faint small wide-only" title={p.platform ?? ''}>
+							<span class="ellipsis">{p.platform ?? '—'}</span>
+						</td>
 					</tr>
 				{:else}
 					<tr><td colspan="7" class="empty faint">No plays in this range.</td></tr>
@@ -126,6 +141,13 @@
 		align-items: center;
 		gap: 8px;
 		flex-wrap: wrap;
+		/* Lets the range picker scroll inside the row instead of widening it. */
+		min-width: 0;
+	}
+	@media (max-width: 640px) {
+		.headright {
+			width: 100%;
+		}
 	}
 	.card {
 		padding: var(--card-py) var(--card-px);
@@ -175,6 +197,18 @@
 	.small {
 		font-size: 0.78rem;
 	}
+	.lines,
+	.titleline {
+		display: flex;
+		min-width: 0;
+	}
+	.lines {
+		flex-direction: column;
+	}
+	.titleline {
+		align-items: center;
+		gap: 8px;
+	}
 	.tag {
 		flex: none;
 		color: var(--text-muted);
@@ -183,5 +217,20 @@
 	.empty {
 		padding: 26px 0;
 		text-align: center;
+	}
+	@media (max-width: 640px) {
+		table {
+			min-width: 0;
+			table-layout: fixed;
+		}
+		th.r {
+			width: 4.5em;
+		}
+		td.r {
+			padding-right: 0;
+		}
+		.ellipsis {
+			max-width: none;
+		}
 	}
 </style>

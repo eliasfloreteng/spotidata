@@ -246,6 +246,7 @@
 	ariaLabel={label}
 	{height}
 	{minWidth}
+	scrollStart="end"
 	{margin}
 	legend={keyable ? legendRow : undefined}
 	empty={series.length === 0 || periods.length === 0}

@@ -107,14 +107,16 @@
 				<table>
 					<thead>
 						<tr>
-							<th class="idx">#</th><th>Track</th>
-							<th class="r">Plays</th><th class="r">Listened</th><th class="r">Last</th>
+							<th class="idx wide-only">#</th><th>Track</th>
+							<th class="r">Plays</th><th class="r wide-only">Listened</th><th class="r wide-only"
+								>Last</th
+							>
 						</tr>
 					</thead>
 					<tbody>
 						{#each data.topPlayed as t, i (t.canonicalTrackId)}
 							<tr>
-								<td class="idx num faint">{i + 1}</td>
+								<td class="idx num faint wide-only">{i + 1}</td>
 								<td>
 									<div class="cell">
 										<Cover src={t.cover} alt="{t.title} cover" size={32} />
@@ -123,12 +125,15 @@
 											{#if !t.inLibrary}
 												<span class="faint xs" title="Played, but never saved"> · not saved</span>
 											{/if}
+											<div class="narrow-only faint xs">
+												{longDuration(t.msPlayed)} · last {relativeTime(t.lastPlayedAt)}
+											</div>
 										</div>
 									</div>
 								</td>
 								<td class="r num">{num(t.plays)}</td>
-								<td class="r num muted small">{longDuration(t.msPlayed)}</td>
-								<td class="r muted small nowrap">{relativeTime(t.lastPlayedAt)}</td>
+								<td class="r num muted small wide-only">{longDuration(t.msPlayed)}</td>
+								<td class="r muted small nowrap wide-only">{relativeTime(t.lastPlayedAt)}</td>
 							</tr>
 						{/each}
 					</tbody>
@@ -147,14 +152,16 @@
 				<table>
 					<thead>
 						<tr>
-							<th class="idx">#</th><th>Track</th><th>Album</th>
-							<th class="r">Length</th><th class="r">Pop.</th><th class="r">Added</th>
+							<th class="idx wide-only">#</th><th>Track</th><th class="wide-only">Album</th>
+							<th class="r wide-only">Length</th><th class="r">Pop.</th><th class="r wide-only"
+								>Added</th
+							>
 						</tr>
 					</thead>
 					<tbody>
 						{#each data.topTracks as t, i (t.canonicalTrackId)}
 							<tr>
-								<td class="idx num faint">{i + 1}</td>
+								<td class="idx num faint wide-only">{i + 1}</td>
 								<td>
 									<div class="cell">
 										<Cover src={t.cover} alt="{t.albumName ?? t.title} cover" size={32} />
@@ -162,15 +169,18 @@
 											<a href={trackHref(t.canonicalTrackId)}>{t.title}</a>
 											{#if t.liked}<span class="heart" title="Liked">♥</span>{/if}
 											{#if t.copyCount > 1}<span class="faint xs"> · {t.copyCount} copies</span>{/if}
+											<div class="narrow-only faint xs">
+												{t.albumName ?? '—'} · {trackTime(t.durationMs)}
+											</div>
 										</div>
 									</div>
 								</td>
-								<td class="muted small">
+								<td class="muted small wide-only">
 									{#if t.albumId}<a href="/album/{t.albumId}">{t.albumName}</a>{:else}—{/if}
 								</td>
-								<td class="r num muted">{trackTime(t.durationMs)}</td>
+								<td class="r num muted wide-only">{trackTime(t.durationMs)}</td>
 								<td class="r num">{t.popularity ?? '—'}</td>
-								<td class="r muted small nowrap">{shortDate(t.firstAddedAt)}</td>
+								<td class="r muted small nowrap wide-only">{shortDate(t.firstAddedAt)}</td>
 							</tr>
 						{/each}
 					</tbody>
@@ -304,6 +314,12 @@
 		font-size: 0.9rem;
 		/* Under this the columns crush each other; the lane scrolls instead. */
 		min-width: 620px;
+	}
+	/* Phone: the track and one number; the rest folds under the title. */
+	@media (max-width: 640px) {
+		table {
+			min-width: 0;
+		}
 	}
 	th {
 		text-align: left;

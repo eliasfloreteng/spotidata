@@ -10,6 +10,17 @@
 	import { longDuration, num } from '$lib/utils/format.ts';
 
 	let { data } = $props();
+
+	/** The table's own sorts, as chips for a phone, where most columns fold away. */
+	const SORTS = [
+		{ key: 'tracks', label: 'Yours' },
+		{ key: 'listened', label: 'Listened' },
+		{ key: 'released', label: 'Released' },
+		{ key: 'coverage', label: 'Coverage' },
+		{ key: 'popularity', label: 'Popularity' },
+		{ key: 'name', label: 'Name', initial: 'asc' as const },
+		{ key: 'artist', label: 'Artist', initial: 'asc' as const }
+	];
 </script>
 
 <svelte:head><title>Albums · Spotidata</title></svelte:head>
@@ -25,54 +36,74 @@
 	<SearchBox value={data.q} placeholder="Search albums or artists" />
 </header>
 
-<FilterBar groups={ALBUM_FILTERS} active={data.filters} />
+<FilterBar
+	groups={ALBUM_FILTERS}
+	active={data.filters}
+	sorts={SORTS}
+	sortsNarrowOnly
+	sort={data.sort}
+	dir={data.dir}
+/>
 
 <section class="card">
 	<div class="scroll-x">
 		<table>
 			<thead>
 				<tr>
-					<th class="idx">#</th>
+					<th class="idx wide-only">#</th>
 					<SortTh key="name" label="Album" active={data.sort} dir={data.dir} initial="asc" />
-					<SortTh key="artist" label="Artist" active={data.sort} dir={data.dir} initial="asc" />
-					<th>Type</th>
-					<SortTh key="released" label="Released" active={data.sort} dir={data.dir} right />
-					<SortTh key="tracks" label="Yours" active={data.sort} dir={data.dir} right />
-					<SortTh key="coverage" label="Coverage" active={data.sort} dir={data.dir} />
-					<SortTh key="popularity" label="Pop." active={data.sort} dir={data.dir} right />
+					<SortTh
+						key="artist"
+						label="Artist"
+						active={data.sort}
+						dir={data.dir}
+						initial="asc"
+						class="wide-only"
+					/>
+					<th class="wide-only">Type</th>
+					<SortTh key="released" label="Released" active={data.sort} dir={data.dir} right class="wide-only" />
+					<SortTh key="tracks" label="Yours" active={data.sort} dir={data.dir} right class="wide-only" />
+					<SortTh key="coverage" label="Coverage" active={data.sort} dir={data.dir} class="wide-only" />
+					<SortTh key="popularity" label="Pop." active={data.sort} dir={data.dir} right class="wide-only" />
 					<SortTh key="listened" label="Listened" active={data.sort} dir={data.dir} right />
-					<th class="r"><span class="sr">Spotify</span></th>
+					<th class="r wide-only"><span class="sr">Spotify</span></th>
 				</tr>
 			</thead>
 			<tbody>
 				{#each data.rows as a, i (a.id)}
 					{@const share = a.totalTracks ? Math.min(1, a.tracks / a.totalTracks) : 0}
 					<tr>
-						<td class="idx num faint">{(data.page - 1) * data.pageSize + i + 1}</td>
+						<td class="idx num faint wide-only">{(data.page - 1) * data.pageSize + i + 1}</td>
 						<td>
 							<a class="cell" href="/album/{a.id}">
 								<Cover src={a.cover} alt="{a.name} cover" size={40} />
-								<span class="name">{a.name}</span>
+								<span class="lines">
+									<span class="name">{a.name}</span>
+									<span class="narrow-only faint small">
+										{a.artist ?? '—'} · {a.albumType ?? 'album'}{#if a.saved}, saved{/if}{#if a.releaseDate}
+											· {a.releaseDate.slice(0, 4)}{/if} · {a.tracks}/{num(a.totalTracks)}
+									</span>
+								</span>
 							</a>
 						</td>
-						<td class="muted small">
+						<td class="muted small wide-only">
 							{#if a.artistId}<a href="/artist/{a.artistId}">{a.artist}</a>{:else}—{/if}
 						</td>
-						<td>
+						<td class="wide-only">
 							{#if a.saved}
 								<Chip tone="good" title="Saved to your albums">{a.albumType ?? 'album'}</Chip>
 							{:else}
 								<span class="faint small">{a.albumType ?? '—'}</span>
 							{/if}
 						</td>
-						<td class="r num muted small nowrap">{a.releaseDate ?? '—'}</td>
-						<td class="r num">{a.tracks}<span class="faint">/{num(a.totalTracks)}</span></td>
-						<td class="cov">
+						<td class="r num muted small nowrap wide-only">{a.releaseDate ?? '—'}</td>
+						<td class="r num wide-only">{a.tracks}<span class="faint">/{num(a.totalTracks)}</span></td>
+						<td class="cov wide-only">
 							<span class="bar" aria-label="{Math.round(share * 100)}% of the album">
 								<span class="fill" style="width:{share * 100}%"></span>
 							</span>
 						</td>
-						<td class="r num">{a.popularity ?? '—'}</td>
+						<td class="r num wide-only">{a.popularity ?? '—'}</td>
 						<td
 							class="r num small nowrap"
 							class:faint={a.plays === 0}
@@ -80,7 +111,7 @@
 						>
 							{a.plays > 0 ? longDuration(a.msPlayed) : '—'}
 						</td>
-						<td class="r"><SpotifyLink kind="album" id={a.id} compact label="Open {a.name} in Spotify" /></td>
+						<td class="r wide-only"><SpotifyLink kind="album" id={a.id} compact label="Open {a.name} in Spotify" /></td>
 					</tr>
 				{:else}
 					<tr><td colspan="10" class="empty faint">No albums match that search.</td></tr>
@@ -146,6 +177,12 @@
 	.name {
 		line-height: 1.3;
 	}
+	.lines {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		min-width: 0;
+	}
 	.small {
 		font-size: 0.82rem;
 	}
@@ -192,5 +229,12 @@
 	}
 	.nowrap {
 		white-space: nowrap;
+	}
+	/* Phone: the album and how long it was played; the rest is folded under the
+	   title and the other sorts are chips above the table. */
+	@media (max-width: 640px) {
+		table {
+			min-width: 0;
+		}
 	}
 </style>

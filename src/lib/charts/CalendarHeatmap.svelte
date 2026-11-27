@@ -202,6 +202,7 @@
 	ariaLabel={label}
 	{height}
 	{minWidth}
+	scrollStart="end"
 	margin={{ top: 4, right: 8, bottom: 4, left: 6 }}
 	empty={parsed.length === 0}
 >
