@@ -67,6 +67,9 @@ export async function startWorker(): Promise<void> {
 				// dropping a song into a folder — which no sync run is waiting to
 				// hear about.
 				'10 * * * * automation:run-all ?jobKey=automation-run-all',
+				// Every finished sync seeds the song radios too; this catches the
+				// days a sync never finishes.
+				'40 5 * * * radio:seed ?jobKey=radio-seed',
 				// AIMD ramp back toward the target request rate.
 				'* * * * * maintenance:rate-recover ?jobKey=rate-recover',
 				'*/5 * * * * maintenance:watchdog ?jobKey=watchdog',

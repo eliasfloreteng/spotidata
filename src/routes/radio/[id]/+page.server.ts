@@ -3,7 +3,7 @@ import { radioFailure, songRadio, type SongRadio } from '$lib/server/entities/ra
 import { statusesFor } from '$lib/server/engine/downloads.ts';
 import type { PageServerLoad } from './$types';
 
-/** A track's Spotify radio, by the track's Spotify id. Read live; nothing is stored. */
+/** A track's Spotify radio, by the track's Spotify id. Read live, and stored as the track's synced radio. */
 export const load: PageServerLoad = async ({ params }) => {
 	if (!/^[A-Za-z0-9]{22}$/.test(params.id)) error(400, 'Not a Spotify track id.');
 

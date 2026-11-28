@@ -141,7 +141,9 @@ ${SPOTIFY_API_RULES}`,
 
 spotify_api cannot do this: the Web API hides every Spotify-owned playlist from this app (search returns null in their place, and GET /playlists/{id} answers 404 for one), and nothing in it says which playlist is a song's radio. This reads Spotify's own web-player API anonymously, so the radio is the one anyone would get, not one tuned to the account.
 
-Each track carries \`canonical_id\` (the recording, matched by Spotify id or ISRC; null when the archive has never seen it), \`in_library\`, \`liked\` and \`plays\` — so "what in this radio don't I have yet" needs no follow-up query.`,
+Each track carries \`canonical_id\` (the recording, matched by Spotify id or ISRC; null when the archive has never seen it), \`in_library\`, \`liked\` and \`plays\` — so "what in this radio don't I have yet" needs no follow-up query.
+
+The radio read here is also stored. For questions across many songs ("which artists do my radios keep coming back to"), query \`song_radios\` and \`song_radio_tracks\` instead: every library recording's radio is synced there in the background.`,
 			inputSchema: {
 				type: 'object',
 				properties: {

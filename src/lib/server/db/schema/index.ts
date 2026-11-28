@@ -6,3 +6,4 @@ export * from './library.ts';
 export * from './plays.ts';
 export * from './sortify.ts';
 export * from './sync.ts';
+export * from './radios.ts';

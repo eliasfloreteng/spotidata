@@ -20,3 +20,5 @@ export const PRIORITY_ONDEMAND = -1000;
 export const PRIORITY_ONDEMAND_FOLLOWUP = -500;
 /** Hydration is the least urgent phase; every chart is correct without it. */
 export const PRIORITY_HYDRATE = 100;
+/** Song radios rank the DJ tab's suggestions; nothing waits on a backfill. */
+export const PRIORITY_RADIO = 200;

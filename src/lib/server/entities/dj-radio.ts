@@ -1,4 +1,6 @@
-import { radioFailure, songRadio, type SongRadio } from './radio.ts';
+import { sql } from 'drizzle-orm';
+import { query } from '../db/index.ts';
+import { radioFailure, syncSongRadio } from './radio.ts';
 
 /**
  * What Spotify's radio says about a set, as the DJ tab's "sounds like" signal.
@@ -12,119 +14,126 @@ import { radioFailure, songRadio, type SongRadio } from './radio.ts';
  * and a suggestion scores by being in one (the recording or another release
  * of the song) or, more weakly, by sharing an artist with one.
  *
- * Unlike `/radio/<id>`, which shows what Spotify plays right now, this is
- * cached: every track added to a set reloads the page, and the radio of a
- * track three back has not changed in the meantime. Only in memory — it is a
- * ranking hint, and losing it on a restart costs one refetch per track.
+ * The radios are the synced ones (`song_radios`, kept for every library
+ * recording by `queue/tasks/radios.ts`). A set track the sync has not reached
+ * yet is fetched here, and stored, so the next page load reads it too.
  */
 
 /** The set's last tracks, newest first, and how much each one's radio counts. */
 export const RADIO_SEED_WEIGHTS = [1, 0.5, 0.25] as const;
 
-/** How long the page waits for radios before ranking without the missing ones. */
+/** How long the page waits for a radio not synced yet before ranking without it. */
 const BUDGET_MS = 5_000;
-const TTL_MS = 6 * 60 * 60_000;
-/** A failure is remembered briefly, so an outage does not cost every page load a wait. */
-const FAILURE_TTL_MS = 2 * 60_000;
-const MAX_CACHED = 200;
 
-export interface RadioEntry {
-	/** Which of the set's tracks this radio came from: 0 is the last one. */
+/** A radio to rank by: the seed whose stored radio it is, and its weight. */
+export interface RadioSeed {
+	/** Which of the set's tracks: 0 is the last one. */
 	seed: number;
+	trackId: string;
 	weight: number;
-	/** The Spotify id the radio plays. */
-	id: string;
-	/** The recording, when the archive has seen any copy of it. */
-	canonicalId: string | null;
-	title: string;
-	/** Every credited artist, the primary one first. */
-	artistIds: string[];
 }
 
 export interface SetRadio {
-	entries: RadioEntry[];
-	/** How many of the asked-for radios came in. */
+	seeds: RadioSeed[];
+	/** Records across those radios. */
+	tracks: number;
+	/** How many of the asked-for radios are known — a track with no radio counts. */
 	heard: number;
 	asked: number;
-	/** Why one or more did not, for a person; null when all did. */
+	/** Why one or more are not, for a person; null when all are. */
 	problem: string | null;
 }
 
-interface Cached {
-	expires: number;
-	radio: Promise<SongRadio | null>;
+interface Stored {
+	canonicalId: string;
+	trackId: string;
+	playlistId: string | null;
+	trackCount: number;
 }
 
-const cache = new Map<string, Cached>();
+/** The freshest stored radio of each recording, under any of its copies. */
+async function stored(canonicalIds: string[]): Promise<Map<string, Stored>> {
+	const rows = await query<Stored>(sql`
+		select distinct on (st.canonical_track_id)
+		       st.canonical_track_id as "canonicalId",
+		       sr.seed_track_id as "trackId",
+		       sr.playlist_id as "playlistId",
+		       sr.track_count as "trackCount"
+		  from song_radios sr
+		  join spotify_tracks st on st.id = sr.seed_track_id
+		 where st.canonical_track_id in (
+		         select value from jsonb_array_elements_text(${JSON.stringify(canonicalIds)}::jsonb)
+		       )
+		 order by st.canonical_track_id, sr.fetched_at desc
+	`);
+	return new Map(rows.map((r) => [r.canonicalId, r]));
+}
 
-function cachedRadio(trackId: string): Promise<SongRadio | null> {
-	const now = Date.now();
-	const hit = cache.get(trackId);
-	if (hit && hit.expires > now) {
-		// Re-inserting keeps the Map in least-recently-used order for eviction.
-		cache.delete(trackId);
-		cache.set(trackId, hit);
-		return hit.radio;
+/** Fetches still running, so a reload while one is slow does not start a second. */
+const inFlight = new Map<string, Promise<boolean>>();
+
+function syncOnce(trackId: string): Promise<boolean> {
+	let p = inFlight.get(trackId);
+	if (!p) {
+		p = syncSongRadio(trackId).finally(() => inFlight.delete(trackId));
+		inFlight.set(trackId, p);
 	}
-	const entry: Cached = { expires: now + TTL_MS, radio: songRadio(trackId) };
-	entry.radio.catch(() => {
-		entry.expires = Math.min(entry.expires, Date.now() + FAILURE_TTL_MS);
-	});
-	cache.delete(trackId);
-	cache.set(trackId, entry);
-	while (cache.size > MAX_CACHED) {
-		const oldest = cache.keys().next().value;
-		if (oldest === undefined) break;
-		cache.delete(oldest);
-	}
-	return entry.radio;
+	return p;
 }
 
 const TIMED_OUT = Symbol('timed out');
 
 /**
- * The radios of `trackIds` (Spotify ids, newest first), merged. Never throws:
- * a radio that fails or is slow is left out and named in `problem`, and the
- * suggestions are ranked on what did come in. A slow one keeps loading into
- * the cache, so the next page load has it.
+ * The radios of a set's last tracks, given newest first as recordings and
+ * the Spotify id to seed a missing one from. Never throws: a radio that
+ * cannot be had is left out and named in `problem`, and the suggestions rank
+ * on the rest. A slow fetch carries on and is stored when it lands.
  */
-export async function setRadio(trackIds: string[]): Promise<SetRadio> {
-	const seeds = trackIds.slice(0, RADIO_SEED_WEIGHTS.length);
-	if (seeds.length === 0) return { entries: [], heard: 0, asked: 0, problem: null };
+export async function setRadio(set: Array<{ canonicalId: string; trackId: string }>): Promise<SetRadio> {
+	const wanted = set.slice(0, RADIO_SEED_WEIGHTS.length);
+	if (wanted.length === 0) return { seeds: [], tracks: 0, heard: 0, asked: 0, problem: null };
 
-	let timer: ReturnType<typeof setTimeout> | undefined;
-	const deadline = new Promise<typeof TIMED_OUT>((resolve) => {
-		timer = setTimeout(() => resolve(TIMED_OUT), BUDGET_MS);
-	});
-	const results = await Promise.allSettled(seeds.map((id) => Promise.race([cachedRadio(id), deadline])));
-	clearTimeout(timer);
-
-	const entries: RadioEntry[] = [];
+	let have = await stored(wanted.map((t) => t.canonicalId));
+	const missing = wanted.filter((t) => !have.has(t.canonicalId));
 	const problems = new Set<string>();
+
+	if (missing.length > 0) {
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const deadline = new Promise<typeof TIMED_OUT>((resolve) => {
+			timer = setTimeout(() => resolve(TIMED_OUT), BUDGET_MS);
+		});
+		const results = await Promise.allSettled(
+			missing.map((t) => Promise.race([syncOnce(t.trackId), deadline]))
+		);
+		clearTimeout(timer);
+		for (const [i, r] of results.entries()) {
+			if (r.status === 'rejected') {
+				const failure = radioFailure(r.reason);
+				if (!failure) console.error('[dj radio]', missing[i]?.trackId, r.reason);
+				problems.add(failure?.message ?? 'Fetching the radio failed.');
+			} else if (r.value === TIMED_OUT) {
+				problems.add('Spotify was slow to answer; the radio will be in on the next load.');
+			}
+		}
+		have = await stored(wanted.map((t) => t.canonicalId));
+	}
+
+	const seeds: RadioSeed[] = [];
+	let tracks = 0;
 	let heard = 0;
-	results.forEach((r, seed) => {
-		if (r.status === 'rejected') {
-			const failure = radioFailure(r.reason);
-			if (!failure) console.error('[dj radio]', seeds[seed], r.reason);
-			problems.add(failure?.message ?? 'Fetching the radio failed.');
-			return;
-		}
-		if (r.value === TIMED_OUT) {
-			problems.add('Spotify was slow to answer; the radio will be in on the next load.');
-			return;
-		}
+	wanted.forEach((t, seed) => {
+		const radio = have.get(t.canonicalId);
+		if (!radio) return;
 		heard++;
-		// No radio for a track is an answer, not a failure: it simply adds nothing.
-		for (const t of r.value?.tracks ?? []) {
-			entries.push({
-				seed,
-				weight: RADIO_SEED_WEIGHTS[seed] ?? 0,
-				id: t.id,
-				canonicalId: t.canonical_id,
-				title: t.title,
-				artistIds: t.artists.map((a) => a.id)
-			});
-		}
+		if (!radio.playlistId || radio.trackCount === 0) return;
+		tracks += radio.trackCount;
+		seeds.push({ seed, trackId: radio.trackId, weight: RADIO_SEED_WEIGHTS[seed] ?? 0 });
 	});
-	return { entries, heard, asked: seeds.length, problem: problems.size ? [...problems].join(' ') : null };
+	return {
+		seeds,
+		tracks,
+		heard,
+		asked: wanted.length,
+		problem: problems.size ? [...problems].join(' ') : null
+	};
 }

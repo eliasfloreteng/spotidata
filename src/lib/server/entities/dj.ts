@@ -2,7 +2,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import { anyOf, notIn } from '../db/arrays.ts';
 import { query } from '../db/index.ts';
 import { recordings } from '../engine/recordings.ts';
-import type { RadioEntry } from './dj-radio.ts';
+import type { RadioSeed } from './dj-radio.ts';
 import { movesFrom, type KeyMode, type KeyMove } from '../../utils/music.ts';
 import { like, thumb, total, type ArtistRef } from './shared.ts';
 
@@ -294,10 +294,10 @@ export interface NextOptions {
 	exclude: string[];
 	limit: number;
 	/**
-	 * The set's radio (`dj-radio.ts`). Empty ranks on key, tempo and plays
-	 * alone, with the weights the score had before the radio.
+	 * The stored radios to rank by (`dj-radio.ts`). Empty ranks on key, tempo
+	 * and plays alone, with the weights the score had before the radio.
 	 */
-	radio: RadioEntry[];
+	radio: RadioSeed[];
 }
 
 /**
@@ -347,15 +347,7 @@ export async function nextTracks(seed: string, opts: NextOptions): Promise<NextT
 	const moves = movesFrom(s.code, searching ? 'any' : opts.keyMode);
 	const tol = opts.tolerance;
 	const w = opts.radio.length > 0 ? WEIGHTS.radio : WEIGHTS.plain;
-	const radio = opts.radio.map((r) => ({
-		seed: r.seed,
-		w: r.weight,
-		id: r.id,
-		canonical: r.canonicalId,
-		title: r.title,
-		artist: r.artistIds[0] ?? null,
-		artists: r.artistIds
-	}));
+	const radio = opts.radio.map((r) => ({ seed: r.seed, track: r.trackId, w: r.weight }));
 
 	const gates: SQL[] = [sql`c.id ${notIn(opts.exclude)}`];
 	if (!searching) gates.push(sql`abs(t.pct) <= ${tol}`);
@@ -378,15 +370,20 @@ export async function nextTracks(seed: string, opts: NextOptions): Promise<NextT
 		),
 		rad as materialized (
 		  select r.seed, r.w, r.canonical, r.artists,
-		         (coalesce(nullif(spotidata.song_title_key(r.title), ''), r.canonical, r.id)
-		          || '|' || coalesce(r.artist, '')) as song
-		    from jsonb_to_recordset(${JSON.stringify(radio)}::jsonb)
-		      as r(seed int, w real, id text, canonical text, title text, artist text, artists jsonb)
+		         (coalesce(nullif(spotidata.song_title_key(r.title), ''), r.canonical, r.track_id)
+		          || '|' || coalesce(r.artists[1], '')) as song
+		    from (
+		      select s.seed, s.w, t.track_id, t.title, t.artist_ids as artists,
+		             coalesce(st.canonical_track_id, 'isrc:' || t.isrc) as canonical
+		        from jsonb_to_recordset(${JSON.stringify(radio)}::jsonb) as s(seed int, track text, w real)
+		        join song_radio_tracks t on t.seed_track_id = s.track
+		        left join spotify_tracks st on st.id = t.track_id
+		    ) r
 		),
 		rad_artist as materialized (
 		  select a.id, sum(r.w) as w
 		    from rad r
-		    cross join jsonb_array_elements_text(r.artists) as a(id)
+		    cross join unnest(r.artists) as a(id)
 		   group by a.id
 		),
 		gated as materialized (
@@ -402,7 +399,9 @@ export async function nextTracks(seed: string, opts: NextOptions): Promise<NextT
 		    from gated c
 		    join canonical_tracks ct on ct.id = c.id
 		),
-		scored as (
+		-- Materialized, or each radio subquery runs once for the score and again
+		-- for the label.
+		scored as materialized (
 		  select c.*,
 		         greatest(0, 1 - abs(c.pct) / ${tol}) * case when c.factor = 1 then 1 else 0.8 end as tempo_score,
 		         -- least() skips nulls, so the sum of no radios has to be 0 first.

@@ -39,6 +39,7 @@ import {
 } from './history.ts';
 import { ondemandEntity } from './ondemand.ts';
 import { runAllAutomations, runAutomationTask } from './automations.ts';
+import { seedRadios, syncRadio } from './radios.ts';
 
 /**
  * Album-track overflow is seeded implicitly: `sync:albums-batch` enqueues a
@@ -124,6 +125,10 @@ export const taskList: TaskList = {
 	// Automations: append what the source playlists gained to a normal playlist.
 	'automation:run': runAutomationTask,
 	'automation:run-all': runAllAutomations,
+
+	// Song radios, for the DJ tab: one per library recording, refreshed monthly.
+	'radio:seed': seedRadios,
+	'radio:sync': syncRadio,
 
 	// Maintenance
 	'maintenance:rate-recover': rateRecover,

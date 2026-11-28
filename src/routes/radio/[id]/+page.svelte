@@ -46,7 +46,7 @@
 			<Chip title="Read anonymously from Spotify's web player, so it is the radio anyone would get">
 				Not personalised
 			</Chip>
-			<Chip title="Spotify regenerates a radio; this is what it plays right now">Live, not stored</Chip>
+			<Chip title="Spotify regenerates a radio; this is what it plays right now, and opening it stored this copy for the DJ tab">Live</Chip>
 		</div>
 		<div class="actions"><SpotifyLink kind="playlist" id={r.id} /></div>
 	</div>

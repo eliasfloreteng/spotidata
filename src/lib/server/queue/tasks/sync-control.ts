@@ -239,6 +239,9 @@ export const finalize: Task = async (payload, helpers) => {
 		jobKey: 'automation-run-all',
 		jobKeyMode: 'preserve_run_at'
 	});
+
+	// And a song liked since the last sync gets its radio, for the DJ tab.
+	await helpers.addJob('radio:seed', {}, { jobKey: 'radio-seed', jobKeyMode: 'preserve_run_at' });
 };
 
 // ------------------------------------------------------------- maintenance

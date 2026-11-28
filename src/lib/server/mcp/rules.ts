@@ -49,7 +49,13 @@ through thousands of items here. The app's grant bounds what is reachable; a
 
 Spotify-owned playlists (radios, editorial playlists, Discover Weekly) are
 hidden from this app: search returns null in their place and fetching one by
-id is a 404. For a song's radio, use \`song_radio\` instead.`;
+id is a 404. For a song's radio, use \`song_radio\` instead — or, across many
+songs, the synced copies in \`song_radios\` (one row per seed track: the
+playlist, or a null \`playlist_id\` when Spotify has none, and \`fetched_at\`)
+and \`song_radio_tracks\` (its records in order, with \`isrc\`, \`title\` and
+\`artist_ids\`, primary first). Every library recording's radio is kept there,
+refreshed monthly; a seed is a \`spotify_tracks.id\`, so reach a recording's
+radio through any of its copies.`;
 
 function coreRules(timezone: string, plays: boolean, playStats: boolean): string {
 	return `# Spotidata

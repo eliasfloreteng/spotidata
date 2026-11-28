@@ -115,7 +115,12 @@ export async function getSyncStatus(runId?: number): Promise<SyncStatus> {
 		       (select count(*)::int from albums)            as albums,
 		       (select count(*)::int from artists)           as artists,
 		       (select count(*)::int from playlists where removed_at is null) as playlists,
-		       (select count(*)::int from saved_tracks where removed_at is null) as liked
+		       (select count(*)::int from saved_tracks where removed_at is null) as liked,
+		       -- Library recordings with a synced song radio, under any copy.
+		       (select count(*)::int from library_canonical lc
+		         where exists (select 1 from spotify_tracks st
+		                         join song_radios sr on sr.seed_track_id = st.id
+		                        where st.canonical_track_id = lc.canonical_track_id)) as radios
 	`);
 
 	// Whole-run ETA: remaining work across unfinished phases divided by the

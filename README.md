@@ -230,10 +230,11 @@ radios of the set's last three tracks, weighted 1, ½ and ¼, feed the score
 with 30% of it: a suggestion scores fully when a radio plays the recording or
 another release of the song, and up to 60% of that when a radio plays its
 artist. The same seed, ranked with and without it, goes from Pitbull, Lana
-Del Rey and Florence + The Machine to Chris Lake, FISHER and Mau P. Radios are
-cached in memory for six hours, since every track added reloads the page; the
-page waits at most five seconds for them and ranks on whatever came in,
-saying so, and `?radio=off` ranks without them.
+Del Rey and Florence + The Machine to Chris Lake, FISHER and Mau P. The
+radios are the synced ones (below), so ranking by them is a join; a set track
+the sync has not reached yet is fetched and stored on the spot, the page
+waiting at most five seconds for it and saying so if it ranked without.
+`?radio=off` ranks without any.
 
 **Analytics are raw SQL, no materialized views.** Every chart is a `GROUP BY`
 over `library_canonical` (8.8k rows, resident in shared buffers) — all sixteen
@@ -396,10 +397,26 @@ scrapes that token (no cookie, no account) and the radio is the one anyone
 would get, not one tuned to this account. The tracks are then filled in by the
 ordinary `/tracks?ids=` (one request per 50, through the bucket) and marked
 with what the library holds, matched on the ISRC so a different release of a
-song you keep still counts. Nothing is stored; Spotify regenerates radios (the DJ tab keeps a six-hour in-memory cache).
+song you keep still counts.
 It is at `/radio/<track id>` (linked from every track page), at
 `/api/radio/<track id>` as JSON, as the MCP tool `song_radio`, and behind the
 DJ tab's suggestions.
+
+**Every song's radio is synced.** `song_radios` holds one per library
+recording (or the fact that Spotify has none), and `song_radio_tracks` its
+fifty records with the ISRC, title and artists, which is all that matching
+them to the library takes. Both key on the seed's Spotify id, like anything
+that must outlive a regrouping; a recording's radio is whichever of its copies
+has one. After every completed sync, and daily, `radio:seed` queues a
+`radio:sync` for each recording whose radio is missing or a month old —
+missing first, downloaded ones before the rest — and those run one at a time
+in a queue of their own, below everything else: two calls to the web player
+and, for the records the archive has never seen as full tracks, usually one
+`/tracks` request. The first backfill of ~9k songs takes a few hours. A radio
+page read live is stored too, so the copy is always the last one anyone saw;
+`/sync` counts how many recordings have one. The radio tracks are not
+ingested into `spotify_tracks`: fifty per song would multiply the catalog for
+records nobody kept.
 
 ## Deckhand's engine
 

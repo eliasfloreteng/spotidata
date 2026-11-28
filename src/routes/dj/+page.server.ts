@@ -66,7 +66,11 @@ export const load: PageServerLoad = async ({ url }) => {
 		// Newest first; a track without a file still has a radio worth asking.
 		const radio: SetRadio | null =
 			mixable && useRadio
-				? await setRadio(set.map((t) => t.representativeTrackId).reverse())
+				? await setRadio(
+						set
+							.map((t) => ({ canonicalId: t.canonicalTrackId, trackId: t.representativeTrackId }))
+							.reverse()
+					)
 				: null;
 		const next = mixable
 			? await nextTracks(seed.canonicalTrackId, {
@@ -75,7 +79,7 @@ export const load: PageServerLoad = async ({ url }) => {
 					q,
 					exclude: set.map((t) => t.canonicalTrackId),
 					limit: SUGGESTIONS,
-					radio: radio?.entries ?? []
+					radio: radio?.seeds ?? []
 				})
 			: [];
 		return {
@@ -90,7 +94,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			radio: radio && {
 				heard: radio.heard,
 				asked: radio.asked,
-				tracks: radio.entries.length,
+				tracks: radio.tracks,
 				problem: radio.problem
 			},
 			maxSet: MAX_SET,
