@@ -13,6 +13,14 @@ types.setTypeParser(types.builtins.NUMERIC, (v) => Number.parseFloat(v));
 types.setTypeParser(types.builtins.INT8, (v) => Number.parseInt(v, 10));
 
 /**
+ * JIT off for every connection. Every query here is an analytic GROUP BY over
+ * a few hundred thousand rows, which the planner costs high enough to compile,
+ * and on the Pi compiling costs more than it saves: up to 0.9s of inlining
+ * and optimisation in front of a query that runs in 0.2s without it.
+ */
+const options = '-c jit=off';
+
+/**
  * The application pool, used by SvelteKit request handlers.
  *
  * Graphile Worker gets its own pool (`workerPool`): it holds one connection
@@ -21,6 +29,7 @@ types.setTypeParser(types.builtins.INT8, (v) => Number.parseInt(v, 10));
  */
 export const appPool = new Pool({
 	connectionString: config.databaseUrl,
+	options,
 	max: 10,
 	idleTimeoutMillis: 30_000,
 	application_name: 'spotidata-app'
@@ -28,6 +37,7 @@ export const appPool = new Pool({
 
 export const workerPool = new Pool({
 	connectionString: config.databaseUrl,
+	options,
 	max: config.worker.concurrency + 4,
 	idleTimeoutMillis: 30_000,
 	application_name: 'spotidata-worker'

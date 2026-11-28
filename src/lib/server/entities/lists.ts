@@ -194,10 +194,10 @@ export const ARTIST_SORTS = {
 	duration: 'sum(lc.duration_ms)',
 	popularity: 'a.popularity',
 	followers: 'a.followers_total',
-	// max() over a value that is constant within the group: the lateral produces
+	// max() over a value that is constant within the group: `artist_plays` has
 	// one row per artist, but an aggregate query cannot say so without it.
-	plays: 'max(ps.plays)',
-	listened: 'max(ps.ms)'
+	plays: 'coalesce(max(ps.plays), 0)',
+	listened: 'coalesce(max(ps.ms), 0)'
 } as const;
 export type ArtistSort = keyof typeof ARTIST_SORTS;
 
@@ -239,6 +239,19 @@ export async function artistIndex(opts: {
 		: sql``;
 	const having = havingAll([clauseFor(opts.filters.followed, FOLLOWED_CLAUSES)]);
 	return query<ArtistIndexRow>(sql`
+		-- Counted over EVERY recording credited to the artist, not just the ones
+		-- in the library: half of what you play by an artist you never saved,
+		-- and a column that quietly excluded it would contradict the overview.
+		-- Summed for every artist in one pass rather than per artist: a lateral
+		-- here runs once per credit row the group is built from, ~14k probes of
+		-- the credits table, where the one GROUP BY is a pair of hash joins.
+		with artist_plays as (
+		  select x.artist_id, sum(c.plays) as plays, sum(c.ms_played) as ms
+		    from canonical_play_stats c
+		    join canonical_track_artists x
+		      on x.canonical_track_id = c.canonical_track_id and x.on_representative
+		   group by x.artist_id
+		)
 		select ${total},
 		       a.id,
 		       a.name,
@@ -251,22 +264,13 @@ export async function artistIndex(opts: {
 		       (select g.genre from artist_genres g where g.artist_id = a.id order by g.genre limit 1)
 		                         as genre,
 		       bool_or(fa.artist_id is not null) as followed,
-		       max(ps.plays)::int as plays,
-		       max(ps.ms)::bigint as "msPlayed"
+		       coalesce(max(ps.plays), 0)::int as plays,
+		       coalesce(max(ps.ms), 0)::bigint as "msPlayed"
 		  from artists a
 		  join canonical_track_artists cta on cta.artist_id = a.id
 		  join library_canonical lc on lc.canonical_track_id = cta.canonical_track_id
 		  left join followed_artists fa on fa.artist_id = a.id and fa.removed_at is null
-		  -- Counted over EVERY recording credited to the artist, not just the ones
-		  -- in the library: half of what you play by an artist you never saved,
-		  -- and a column that quietly excluded it would contradict the overview.
-		  left join lateral (
-		    select coalesce(sum(c.plays), 0) as plays, coalesce(sum(c.ms_played), 0) as ms
-		      from canonical_play_stats c
-		      join canonical_track_artists x
-		        on x.canonical_track_id = c.canonical_track_id and x.on_representative
-		     where x.artist_id = a.id
-		  ) ps on true
+		  left join artist_plays ps on ps.artist_id = a.id
 		 where true${filter}${genre}
 		 group by a.id, a.name, a.popularity, a.followers_total
 		 ${having}
@@ -297,6 +301,24 @@ export async function libraryGenres(limit = 40): Promise<{ genre: string; artist
 /** How much of the album is in the library, as a fraction — the "coverage" bar. */
 const albumShare = 'count(distinct st.canonical_track_id)::numeric / nullif(al.total_tracks, 0)';
 
+/**
+ * An album's listening, over every recording it carries, whether or not the
+ * copy you played was the one on this edition: the same "do I play this
+ * record?" reading the coverage column uses.
+ *
+ * A subquery in the select list rather than a lateral join, so that Postgres
+ * evaluates it after the sort and limit: for the 50 rows on the page, unless
+ * the page is sorted by it. As a lateral it ran for every library track of
+ * every album, ~11k times, before the first row could be returned.
+ */
+const albumListening = (column: 'plays' | 'ms_played') => `(
+	select coalesce(sum(c.${column}), 0)
+	  from canonical_play_stats c
+	 where c.canonical_track_id in (
+	   select t.canonical_track_id from spotify_tracks t
+	    where t.album_id = al.id and t.canonical_track_id is not null
+	 ))`;
+
 export const ALBUM_SORTS = {
 	tracks: 'count(distinct st.canonical_track_id)',
 	coverage: albumShare,
@@ -305,8 +327,8 @@ export const ALBUM_SORTS = {
 	released: 'al.release_date_start',
 	total: 'al.total_tracks',
 	popularity: 'al.popularity',
-	plays: 'max(ps.plays)',
-	listened: 'max(ps.ms)'
+	plays: albumListening('plays'),
+	listened: albumListening('ms_played')
 } as const;
 export type AlbumSort = keyof typeof ALBUM_SORTS;
 
@@ -370,8 +392,8 @@ export async function albumIndex(opts: {
 		       bool_or(sa.album_id is not null) as saved,
 		       max(pa.name) as artist,
 		       max(pa.id)   as "artistId",
-		       max(ps.plays)::int as plays,
-		       max(ps.ms)::bigint as "msPlayed"
+		       ${sql.raw(ALBUM_SORTS.plays)} as plays,
+		       ${sql.raw(ALBUM_SORTS.listened)} as "msPlayed"
 		  from albums al
 		  join spotify_tracks st on st.album_id = al.id
 		  join library_tracks lt on lt.track_id = st.id
@@ -380,17 +402,6 @@ export async function albumIndex(opts: {
 		    select ar.id, ar.name from album_artists aa join artists ar on ar.id = aa.artist_id
 		     where aa.album_id = al.id order by aa.position limit 1
 		  ) pa on true
-		  -- Over every recording the album carries, whether or not the copy you
-		  -- played was the one on this edition — the same "do I play this record?"
-		  -- reading the coverage column uses.
-		  left join lateral (
-		    select coalesce(sum(c.plays), 0) as plays, coalesce(sum(c.ms_played), 0) as ms
-		      from canonical_play_stats c
-		     where c.canonical_track_id in (
-		       select t.canonical_track_id from spotify_tracks t
-		        where t.album_id = al.id and t.canonical_track_id is not null
-		     )
-		  ) ps on true
 		 where true${filter}${where}
 		 group by al.id, al.name, al.album_type, al.release_date, al.release_date_start,
 		          al.total_tracks, al.popularity
@@ -400,6 +411,23 @@ export async function albumIndex(opts: {
 	`);
 }
 
+/**
+ * A playlist's listening, summed over its DISTINCT recordings rather than
+ * over its item rows: a playlist that lists the same song twice would
+ * otherwise double its own plays, and a playlist is a set of songs for this
+ * purpose. In the select list, like `albumListening`, so that it runs for the
+ * rows on the page only.
+ */
+const playlistListening = (column: 'plays' | 'ms_played') => `(
+	select coalesce(sum(c.${column}), 0)
+	  from canonical_play_stats c
+	 where c.canonical_track_id in (
+	   select st2.canonical_track_id
+	     from playlist_tracks pt2
+	     join spotify_tracks st2 on st2.id = pt2.track_id
+	    where pt2.playlist_id = p.id and st2.canonical_track_id is not null
+	 ))`;
+
 export const PLAYLIST_SORTS = {
 	tracks: 's.stored',
 	name: 'p.name',
@@ -407,8 +435,8 @@ export const PLAYLIST_SORTS = {
 	duration: 's.duration_ms',
 	added: 's.last_added',
 	owner: 'coalesce(u.display_name, p.owner_id)',
-	plays: 'pl.plays',
-	listened: 'pl.ms_played'
+	plays: playlistListening('plays'),
+	listened: playlistListening('ms_played')
 } as const;
 export type PlaylistSort = keyof typeof PLAYLIST_SORTS;
 
@@ -471,8 +499,8 @@ export async function playlistIndex(opts: {
 		       s.in_library    as "libraryTracks",
 		       s.duration_ms   as "durationMs",
 		       ${iso('s.last_added')} as "lastAddedAt",
-		       coalesce(pl.plays, 0)    as plays,
-		       coalesce(pl.ms_played, 0)::bigint as "msPlayed"
+		       ${sql.raw(PLAYLIST_SORTS.plays)} as plays,
+		       ${sql.raw(PLAYLIST_SORTS.listened)} as "msPlayed"
 		  from playlists p
 		  left join spotify_users u on u.id = p.owner_id
 		  left join lateral (
@@ -485,20 +513,6 @@ export async function playlistIndex(opts: {
 		      left join library_tracks lt on lt.track_id = pt.track_id
 		     where pt.playlist_id = p.id
 		  ) s on true
-		  -- Summed over DISTINCT recordings rather than over the item rows: a
-		  -- playlist that lists the same song twice would otherwise double its
-		  -- own plays, and a playlist is a set of songs for this purpose.
-		  left join lateral (
-		    select coalesce(sum(c.plays), 0)::int as plays,
-		           coalesce(sum(c.ms_played), 0)::bigint as ms_played
-		      from canonical_play_stats c
-		     where c.canonical_track_id in (
-		       select distinct st2.canonical_track_id
-		         from playlist_tracks pt2
-		         join spotify_tracks st2 on st2.id = pt2.track_id
-		        where pt2.playlist_id = p.id and st2.canonical_track_id is not null
-		     )
-		  ) pl on true
 		 where p.removed_at is null${filter}${where}
 		 order by ${opts.order}, p.name
 		 limit ${opts.limit} offset ${opts.offset}
