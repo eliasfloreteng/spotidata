@@ -1,12 +1,14 @@
 import type { Handle, ServerInit } from '@sveltejs/kit';
 import { startWorker, stopWorker } from '$lib/server/queue/runner.ts';
 import { loadSettings } from '$lib/server/settings.ts';
+import { warmOverview } from '$lib/server/stats/overview.ts';
 import { flushCallStats } from '$lib/server/spotify/ratelimit.ts';
 
 export const init: ServerInit = async () => {
 	// The queue lives in-process: verified under Bun at ~4,500 jobs/s with
 	// ~12ms wakeup latency. WORKER_MODE=external moves it to `bun run worker`.
 	await startWorker();
+	warmOverview(loadSettings);
 };
 
 let cached: { value: Awaited<ReturnType<typeof loadSettings>>; at: number } | null = null;

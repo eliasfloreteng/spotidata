@@ -9,8 +9,9 @@ import type { Range } from './range.ts';
  * These read `plays` directly rather than the `canonical_play_stats` rollup:
  * that table exists so a list page can order 8.8k recordings without touching
  * 167k events, but it cannot be re-cut by an arbitrary window and everything
- * here answers to the range picker. 167k rows is a sub-100ms GROUP BY and the
- * table sits in shared buffers, so the honest query is also the fast one.
+ * here answers to the range picker. On the Pi each of these costs a few hundred
+ * milliseconds; the overview pays that once per data version, not per visit
+ * (see `overview.ts`).
  *
  * A play joins the catalog through `spotify_tracks`, never directly to a
  * canonical id — see the note on `plays.trackId`. Plays whose URI the catalog

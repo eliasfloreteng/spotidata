@@ -171,13 +171,3 @@ export async function resolveRange(
 
 	return { from, to: now, tz, preset, isAllTime: preset === 'all' };
 }
-
-/** Cache key that changes whenever a sync commits new data. */
-export async function dataVersion(): Promise<string> {
-	const { rows } = await db.execute<{ v: string }>(sql`
-		select coalesce(max(finished_at)::text, 'none') || ':' ||
-		       (select count(*)::text from library_canonical) as v
-		  from sync_runs where status = 'completed'
-	`);
-	return rows[0]?.v ?? 'none';
-}

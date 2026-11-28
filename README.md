@@ -237,9 +237,16 @@ waiting at most five seconds for it and saying so if it ranked without.
 `?radio=off` ranks without any.
 
 **Analytics are raw SQL, no materialized views.** Every chart is a `GROUP BY`
-over `library_canonical` (8.8k rows, resident in shared buffers) — all sixteen
-dashboard queries run in ~130 ms total. MVs also cannot be parameterized by an
-arbitrary time range, which the range picker requires.
+over `library_canonical` (8.8k rows) or `plays` (184k), because MVs cannot be
+parameterized by an arbitrary time range, which the range picker requires.
+The listening half is the expensive one: the overview's ~30 queries keep the
+Pi's four cores busy for about five seconds. So the overview is computed once
+per *data version* and served from memory (`src/lib/server/stats/overview.ts`).
+The version is Postgres's own count of rows written to the data tables
+(`pg_stat_user_tables`), so every write path invalidates it without announcing
+itself, and the default view is recomputed in the background once a write has
+settled. JIT is off for the app's connections: on the Pi, compiling a query
+cost up to 0.9 s, several times what running it saves.
 
 **Charts are d3 for maths, Svelte for DOM** — no `d3-selection`. Every component
 in `src/lib/charts` renders at `/_charts` against synthetic data, including the
